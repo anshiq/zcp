@@ -7,8 +7,18 @@ runtimes: [dynamic, implicit-webserver]
 multiService: aggregate
 title: "First deploy — verify rules"
 references-fields: [ops.VerifyResult.Status, ops.VerifyResult.Checks, ops.CheckResult.Status, ops.CheckResult.Detail]
-references-atoms: [develop-auto-close-semantics, develop-verify-matrix]
+references-atoms: [develop-auto-close-semantics, develop-verify-matrix, develop-dynamic-runtime-start-container]
 ---
+
+### Before verify on dev-mode dynamic runtimes
+
+Dev-mode dynamic runtimes deploy with `start: zsc noop --silent` —
+nothing is listening yet. `zerops_verify` will return `http_root: HTTP
+502` and that is NOT a deploy failure. Start the dev process via
+`zerops_dev_server action=start` first, then verify.
+
+For simple-mode and standard-mode runtimes the runtime starts on
+deploy; verify directly.
 
 ### Verify the first deploy
 

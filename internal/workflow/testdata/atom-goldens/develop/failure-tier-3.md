@@ -512,6 +512,16 @@ It has the `Agent(model="sonnet", prompt=...)` template; substitute
 
 ---
 
+### Before verify on dev-mode dynamic runtimes
+
+Dev-mode dynamic runtimes deploy with `start: zsc noop --silent` —
+nothing is listening yet. `zerops_verify` will return `http_root: HTTP
+502` and that is NOT a deploy failure. Start the dev process via
+`zerops_dev_server action=start` first, then verify.
+
+For simple-mode and standard-mode runtimes the runtime starts on
+deploy; verify directly.
+
 ### Verify the first deploy
 
 After running `zerops_verify`, the returned `status` is `healthy`,
