@@ -6,19 +6,20 @@ title: "Bootstrap route discovery"
 references-fields: [workflow.BootstrapDiscoveryResponse.RouteOptions, workflow.BootstrapRouteOption.Route, workflow.BootstrapRouteOption.ResumeSession, workflow.BootstrapRouteOption.AdoptServices, workflow.BootstrapRouteOption.RecipeSlug, workflow.BootstrapRouteOption.Collisions]
 ---
 
-### Bootstrap route discovery
+### Bootstrap is two-phase
 
-Start with discovery:
+First call returns `kind: "route-menu"` listing `routeOptions[]` — no
+session is open yet. Second call opens the session and returns
+`kind: "session-active"`. Read `kind` on every response.
 
 ```
 zerops_workflow action="start" workflow="bootstrap" intent="<one-sentence>"
+   → kind="route-menu", routeOptions=[...]
+zerops_workflow action="start" workflow="bootstrap" route="<picked>" \
+   recipeSlug="<slug>"   # if route="recipe"
+   sessionId="<id>"      # if route="resume"
+   → kind="session-active"
 ```
-
-Do this **without** `route`. `BootstrapDiscoveryResponse` returns
-priority-ordered `routeOptions[]`; no session is committed.
-
-Pick one option, then call `start` again with its route plus required
-`recipeSlug` / `sessionId`.
 
 ### Ranked options
 
