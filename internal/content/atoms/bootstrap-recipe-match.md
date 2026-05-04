@@ -17,7 +17,26 @@ coverageExempt: "recipe+discover step — 30 canonical scenarios cover recipe at
 
 ### Plan shape (no collisions)
 
-Per runtime pair: `devHostname`/`stageHostname` from recipe's `zeropsSetup: dev`/`prod` services; `type` + `bootstrapMode` verbatim (mode from banner); `dependencies[]` hostname+type verbatim with `resolution: "CREATE"`; `isExisting: false`.
+`bootstrapMode` and `stageHostname` MUST be inside `runtime` — flat placement is hard-rejected.
+
+```json
+[
+  {
+    "runtime": {
+      "devHostname": "appdev",
+      "stageHostname": "appstage",
+      "type": "nodejs@22",
+      "bootstrapMode": "standard",
+      "isExisting": false
+    },
+    "dependencies": [
+      {"hostname": "db", "type": "postgresql@18", "resolution": "CREATE"}
+    ]
+  }
+]
+```
+
+Pair fields (`devHostname`/`stageHostname`/`type`) come from the recipe's `zeropsSetup: dev`/`prod` services; `bootstrapMode` from the banner; `dependencies[]` lists managed services verbatim with `resolution: "CREATE"`.
 
 ### Collision recovery (route option has `collisions: [...]`)
 
