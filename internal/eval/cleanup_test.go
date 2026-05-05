@@ -284,7 +284,12 @@ func TestRemoveClaudeMD_AbsentFileNoOp(t *testing.T) {
 // platform mock so only the workdir-cleanup half is exercised; the
 // service-deletion half is covered by sibling tests.
 func TestCleanupProject_RemovesClaudeMD_EndToEnd(t *testing.T) {
-	t.Parallel()
+	// non-parallel: withTuneables mutates package-level cleanup tuneables
+	// (CleanupSettleTimeout, CleanupVerifyInterval, CleanupVerifyMaxRetries,
+	// CleanupProcessPollInterval). Other parallel tests in this package
+	// transitively read those via deleteServices → pollProcess. Sibling
+	// withTuneables-using tests (TestDeleteAllUserServices_*) are correctly
+	// non-parallel for the same reason.
 	withTuneables(t, 200*time.Millisecond, 5*time.Millisecond, 2)
 
 	dir := t.TempDir()
