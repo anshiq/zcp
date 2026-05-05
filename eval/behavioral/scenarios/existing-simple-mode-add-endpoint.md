@@ -12,15 +12,22 @@ description: |
   imported service never reaches ACTIVE within the 15-minute wait
   budget under that combination.
 
-  Historically the resolution pattern for this case is "import then
-  flip `startWithoutCode: true`" or a similar replace-procedure so a
-  freshly-imported runtime can be worked on as a dev service before it
-  has any deploy. This scenario is left in the corpus as a marker but
-  has its `retrospective:` block removed so `loadBehavioralScenarios`
-  skips it (no auto-load via `flow-eval all`); a dedicated, fully-
-  controlled scenario for the import-without-startWithoutCode behavior
-  will be authored under `plans/backlog/test-import-without-startwithoutcode-pattern.md`
-  and replace this one when ready.
+  Status note 2026-05-04: the fixture's structural seed defect was a
+  missing `db` service. The python-hello-world-app repo's zerops.yaml
+  hard-references `${db_hostname}` env vars and runs an initCommand
+  that connects to it; without `db` provisioned the runtime always
+  ends in FAILED on init crash. The fixture has been corrected to
+  include `db: postgresql@18` so the buildFromGit settles to ACTIVE,
+  matching the pattern used by `nodejs-standard-deployed.yaml` and
+  `laravel-dev-deployed.yaml`.
+
+  This scenario nevertheless REMAINS DEFERRED because the broader
+  question — how should ZCP behave when ANY runtime service ends up
+  in FAILED state from a seeded buildFromGit, agent-introduced bad
+  deploy, or mid-life crash — is unresolved and being investigated
+  under `plans/zcp-failed-state-recovery-2026-05-04.md`. Once that
+  plan lands a generic recovery surface, this scenario will be
+  un-deferred and used as one cell of FAILED-state coverage.
 
   The simple-mode adopt coverage slot is currently held by
   `existing-simple-mode-node-add-endpoint` (working fixture using the
@@ -30,12 +37,12 @@ fixture: fixtures/python-simple-deployed.yaml
 tags: [deferred, adopt, simple-mode, self-deploy, develop, python, no-stage, import-without-startWithoutCode]
 area: adopt-and-develop
 userPersona: |
-  Your single Python service `api` is running on Zerops in simple
-  mode (one container, no staging). You want to add `GET /version`
-  returning a JSON object with the current build SHA, and have it
-  deployed and verified. You don't want a staging slot — keep it as
-  one immutable runtime. Push back if the agent proposes promoting
-  to a dev/stage pair or treats this as a fresh bootstrap.
+  Your Python service `api` is running on Zerops in simple mode (one
+  container, no staging) with a small Postgres database. You want to
+  add `GET /version` returning a JSON object with the current build
+  SHA, and have it deployed and verified. Keep it as one runtime —
+  no staging slot. Push back if the agent proposes promoting to a
+  dev/stage pair or treats this as a fresh bootstrap.
 notableFriction:
   - id: adopt-simple-no-stage
     description: |
@@ -59,4 +66,4 @@ notableFriction:
       controlled fixture.
 ---
 
-The `api` Python service on Zerops is up and running. Add a `GET /version` endpoint that returns the current build SHA as JSON, then deploy and verify it. Keep it as one container — no staging slot.
+The `api` Python service on Zerops is up and running. Add a `GET /version` endpoint that returns the current build SHA as JSON, then deploy and verify it. Keep it as one runtime — no staging slot.
