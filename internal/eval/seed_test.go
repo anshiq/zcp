@@ -70,6 +70,102 @@ func TestSeedImported_MissingFixture_Errors(t *testing.T) {
 	}
 }
 
+// TestSeedSettled_TolerantOfFailed pins the recovery-seed contract: an import
+// process ending FAILED is NOT a seed error, and a service stuck in FAILED is
+// reported as settled (not transitional). Mirror SeedImported_CallsImportServices
+// with a tweaked process state machine.
+func TestSeedSettled_TolerantOfFailed(t *testing.T) {
+	t.Parallel()
+
+	mock := platform.NewMock().
+		WithImportResult(&platform.ImportResult{
+			ProjectID: "proj-1",
+			ServiceStacks: []platform.ImportedServiceStack{
+				{ID: "svc-failed", Name: "api", Processes: []platform.Process{{ID: "proc-import-1"}}},
+			},
+		}).
+		WithProcess(&platform.Process{ID: "proc-import-1", Status: "FAILED"})
+	// SeedSettled calls SeedEmpty first; mock starts empty so no delete dance is
+	// needed. After ImportServices the test arranges ListServices to report the
+	// api stack in FAILED so waitAllSettled returns immediately.
+	mock = mock.WithServices([]platform.ServiceStack{
+		{ID: "svc-failed", Name: "api", Status: "FAILED",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeCategoryName: "USER"}},
+	})
+	// Note: the mock's ListServices returns this list both before AND after
+	// the cleanup step. Cleanup tries to delete each non-system service; the
+	// helper below registers the delete-process FINISHED so cleanup stops
+	// looping. WithDeleteRemovesService removes the service from the mock's
+	// list when the delete completes — leaving an empty list that
+	// post-import switches back to the FAILED snapshot below.
+	mock = mock.WithDeleteRemovesService(true)
+	mock = mock.WithProcess(&platform.Process{ID: "proc-delete-svc-failed", Status: "FINISHED"})
+
+	fixture := writeTempFixture(t, "services:\n  - hostname: api\n    type: python@3.12\n")
+	tmp := t.TempDir()
+
+	if err := SeedSettled(context.Background(), mock, "proj-1", fixture, tmp, "abc"); err != nil {
+		t.Fatalf("SeedSettled: %v (FAILED process should be tolerated)", err)
+	}
+}
+
+// TestSeedSettled_TolerantOfCanceled pins the recovery-seed contract for
+// import-orchestration parents. Empirically Zerops marks the parent process
+// CANCELED (not FAILED) when a child deploy fails — both are terminal and both
+// are valid outcomes for a recovery scenario.
+func TestSeedSettled_TolerantOfCanceled(t *testing.T) {
+	t.Parallel()
+
+	mock := platform.NewMock().
+		WithImportResult(&platform.ImportResult{
+			ProjectID: "proj-1",
+			ServiceStacks: []platform.ImportedServiceStack{
+				{ID: "svc-x", Name: "api", Processes: []platform.Process{{ID: "proc-canceled"}}},
+			},
+		}).
+		WithProcess(&platform.Process{ID: "proc-canceled", Status: "CANCELED"}).
+		WithDeleteRemovesService(true).
+		WithProcess(&platform.Process{ID: "proc-delete-svc-x", Status: "FINISHED"})
+	mock = mock.WithServices([]platform.ServiceStack{
+		{ID: "svc-x", Name: "api", Status: "FAILED",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeCategoryName: "USER"}},
+	})
+
+	fixture := writeTempFixture(t, "services:\n  - hostname: api\n    type: python@3.12\n")
+	tmp := t.TempDir()
+
+	if err := SeedSettled(context.Background(), mock, "proj-1", fixture, tmp, "abc"); err != nil {
+		t.Fatalf("SeedSettled: %v (CANCELED process should be tolerated)", err)
+	}
+}
+
+func TestIsTerminalServiceStatus(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		status string
+		want   bool
+	}{
+		{"ACTIVE", true},
+		{"FAILED", true},
+		{"READY_TO_DEPLOY", true},
+		{"RUNNING", true},
+		{"STOPPED", true},
+		{"NEW", false},
+		{"BUILDING", false},
+		{"DEPLOYING", false},
+		{"CREATING", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		t.Run(c.status, func(t *testing.T) {
+			t.Parallel()
+			if got := isTerminalServiceStatus(c.status); got != c.want {
+				t.Errorf("isTerminalServiceStatus(%q) = %v, want %v", c.status, got, c.want)
+			}
+		})
+	}
+}
+
 func TestSeedImported_InterpolatesSuiteID(t *testing.T) {
 	t.Parallel()
 

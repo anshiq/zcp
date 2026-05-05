@@ -155,6 +155,9 @@ func (r *Runner) seedScenario(ctx context.Context, sc *Scenario, suiteID string)
 	case ModeDeployed:
 		fixture := resolveFixturePath(sc)
 		return SeedDeployed(ctx, r.client, r.projectID, fixture, r.config.WorkDir, suiteID)
+	case ModeSettled:
+		fixture := resolveFixturePath(sc)
+		return SeedSettled(ctx, r.client, r.projectID, fixture, r.config.WorkDir, suiteID)
 	default:
 		return fmt.Errorf("unknown seed mode %q", sc.Seed)
 	}

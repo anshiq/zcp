@@ -15,6 +15,12 @@ const (
 	ModeEmpty    SeedMode = "empty"
 	ModeImported SeedMode = "imported"
 	ModeDeployed SeedMode = "deployed"
+	// ModeSettled imports the fixture and waits for every non-system service
+	// to reach a terminal status (ACTIVE/FAILED/READY_TO_DEPLOY/RUNNING/STOPPED).
+	// Differs from ModeDeployed by NOT aborting on FAILED — used by recovery
+	// scenarios that intentionally seed a broken runtime to test the agent's
+	// FAILED-state recovery surface.
+	ModeSettled SeedMode = "settled"
 )
 
 // Scenario is one runnable eval scenario parsed from a markdown file with
@@ -159,9 +165,9 @@ func (s *Scenario) validate() error {
 		return fmt.Errorf("id required")
 	}
 	switch s.Seed {
-	case ModeEmpty, ModeImported, ModeDeployed:
+	case ModeEmpty, ModeImported, ModeDeployed, ModeSettled:
 	default:
-		return fmt.Errorf("invalid seed mode %q (want empty|imported|deployed)", s.Seed)
+		return fmt.Errorf("invalid seed mode %q (want empty|imported|deployed|settled)", s.Seed)
 	}
 	if s.Seed != ModeEmpty && s.Fixture == "" {
 		return fmt.Errorf("fixture required for seed=%s", s.Seed)

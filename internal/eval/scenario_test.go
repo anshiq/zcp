@@ -20,6 +20,7 @@ func TestParseScenario_Valid_Success(t *testing.T) {
 		{"empty_seed", "empty_seed.md", "test-empty", ModeEmpty, 5},
 		{"imported_seed", "imported_seed.md", "test-imported", ModeImported, 10},
 		{"deployed_seed", "deployed_seed.md", "test-deployed", ModeDeployed, 3},
+		{"settled_seed", "settled_seed.md", "test-settled", ModeSettled, 4},
 	}
 
 	for _, tt := range tests {
