@@ -162,6 +162,24 @@ Spec: `docs/spec-architecture.md` — per-package mapping + examples.
   Recovery struct (tool + action + args) pointing at the exact next call.
   Skip status reserved for non-actionable transients (URL not yet resolved).
   Pinned by TestVerify_* cases asserting Recovery shape on http_root failure.
+- **Diagnose-before-destruct gates always-dangerous operations** —
+  `zerops_import override=true` (and future destructive tools) refuse to
+  mutate when target services have failed-appVersion history unless the
+  call carries `confirmDestructive: {operation, acknowledgedTargets,
+  diagnosedFailureClass?}` matching the structured `wouldDestroy` payload
+  returned in the first-call rejection. Failure context surfaces lazily
+  via `zerops_events` (`internal/ops/events.go::ClassifyDeployFailure`
+  reuse path). Recovery hints on `verify::service_running`,
+  `workflow_checks::checkServiceStatusAny`, `deploy` pre-flight, and
+  `dev_server` pre-spawn point at the same gate. Lives on
+  `ErrDiagnosisRequired` error code + `tools.DiagnosedDestruction` wire
+  shape + `ops.LatestFailedAppVersionContext` helper. Recovery is
+  promoted to `topology.Recovery` so `ops.Recovery` and
+  `tools.RecoveryHint` are the same type. Pinned by
+  `TestImport_OverrideOnFailedRequiresAck`,
+  `TestCheckServiceStatusAny_ReadyToDeployWithFailedAppVersion_RecoveryToImport`,
+  `TestLatestFailedAppVersionContext_*`, `TestNonRunningRecovery_*`,
+  `TestGateNonRunningOnDeploy_*`, `TestDevServer_FailedRefusesWithRecovery`.
 - **tools/eval reach platform via ops** — `client.ListServices` /
   `client.GetServiceEnv` is forbidden outside of `internal/ops/`,
   `internal/platform/`, and `internal/workflow/` (peer layer). Use
