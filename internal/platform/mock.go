@@ -32,6 +32,13 @@ type Mock struct {
 	exportYAML         string   // project export YAML
 	serviceExportYAML  string   // service export YAML
 
+	// deleteRemovesService — when true, a successful DeleteService call
+	// drops the service from m.services so subsequent ListServices reflects
+	// the deletion. Default off preserves backwards-compatibility with
+	// tests that model the eventual-consistency window (delete process
+	// FINISHED but list still reports the service).
+	deleteRemovesService bool
+
 	// CapturedImportYAML stores the YAML content passed to ImportServices.
 	CapturedImportYAML string
 
@@ -189,6 +196,19 @@ func (m *Mock) WithServiceExportYAML(yaml string) *Mock {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.serviceExportYAML = yaml
+	return m
+}
+
+// WithDeleteRemovesService toggles the realistic-platform behavior on
+// DeleteService: when true, a successful DeleteService call drops the
+// matching service from the mock's services list so the next ListServices
+// reflects deletion. Default off keeps existing tests that intentionally
+// model the eventual-consistency race ("process FINISHED but service
+// still listed") and don't expect the mock to honor the delete.
+func (m *Mock) WithDeleteRemovesService(b bool) *Mock {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deleteRemovesService = b
 	return m
 }
 

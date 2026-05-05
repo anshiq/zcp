@@ -5,9 +5,28 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zeropsio/zcp/internal/platform"
 )
+
+// withTuneables shrinks cleanup-loop timing knobs for unit tests and
+// restores them on cleanup. Production defaults stay untouched.
+func withTuneables(t *testing.T, settle, interval time.Duration, maxRetries int) {
+	t.Helper()
+	prevSettle, prevInterval, prevRetries, prevProcInterval :=
+		CleanupSettleTimeout, CleanupVerifyInterval, CleanupVerifyMaxRetries, CleanupProcessPollInterval
+	CleanupSettleTimeout = settle
+	CleanupVerifyInterval = interval
+	CleanupVerifyMaxRetries = maxRetries
+	CleanupProcessPollInterval = interval
+	t.Cleanup(func() {
+		CleanupSettleTimeout = prevSettle
+		CleanupVerifyInterval = prevInterval
+		CleanupVerifyMaxRetries = prevRetries
+		CleanupProcessPollInterval = prevProcInterval
+	})
+}
 
 func TestDeleteServices_ServiceAlreadyGone_Succeeds(t *testing.T) {
 	t.Parallel()
@@ -73,6 +92,123 @@ func TestDeleteServices_NotFoundViaMessage_Skips(t *testing.T) {
 
 	if err := deleteServices(context.Background(), mock, services); err != nil {
 		t.Fatalf("message-only 'not found' must be tolerated: %v", err)
+	}
+}
+
+// TestVerifyProjectEmpty_NamesResidual pins the residual-error shape: the
+// caller (next scenario) needs to read which service is still alive and in
+// what status, so it can decide whether to bail or wait.
+func TestVerifyProjectEmpty_NamesResidual(t *testing.T) {
+	t.Parallel()
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-zcp", Name: "zcp", Status: "ACTIVE"},
+		{ID: "svc-app", Name: "appdev", Status: "CREATING"},
+	})
+	err := verifyProjectEmpty(context.Background(), mock, "proj-1")
+	if err == nil {
+		t.Fatal("expected residual error, got nil")
+	}
+	if !strings.Contains(err.Error(), "appdev(CREATING)") {
+		t.Fatalf("error must name service+status; got: %v", err)
+	}
+}
+
+// TestVerifyProjectEmpty_OnlyZcp_PassesClean covers the happy path: zcp
+// itself is the protected service and must not count as residual.
+func TestVerifyProjectEmpty_OnlyZcp_PassesClean(t *testing.T) {
+	t.Parallel()
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-zcp", Name: "zcp", Status: "ACTIVE"},
+	})
+	if err := verifyProjectEmpty(context.Background(), mock, "proj-1"); err != nil {
+		t.Fatalf("zcp-only project must verify clean: %v", err)
+	}
+}
+
+// TestIsAllSettled_TerminalStates pins which statuses count as
+// terminal-deletable. CREATING/NEW/STARTING are NOT — they would race
+// the platform's create flow and either fail or leave the service stuck.
+func TestIsAllSettled_TerminalStates(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		status string
+		want   bool
+	}{
+		{"ACTIVE", true},
+		{"READY_TO_DEPLOY", true},
+		{"RUNNING", true},
+		{"FAILED", true},
+		{"STOPPED", true},
+		{"CREATING", false},
+		{"NEW", false},
+		{"STARTING", false},
+		{"DELETING", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			t.Parallel()
+			got := isAllSettled([]platform.ServiceStack{{Name: "x", Status: tt.status}})
+			if got != tt.want {
+				t.Errorf("isAllSettled(%s) = %v, want %v", tt.status, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDeleteAllUserServices_CreatingServiceWaitsThenDeletes simulates the
+// observed friction surface: a service is in CREATING when cleanup runs.
+// The settle-wait must hold off DeleteService until the service reaches
+// ACTIVE, then delete and verify clean.
+func TestDeleteAllUserServices_CreatingServiceWaitsThenDeletes(t *testing.T) {
+	withTuneables(t, 500*time.Millisecond, 5*time.Millisecond, 3)
+
+	// Mock starts with appdev in CREATING. After ~20ms a goroutine flips
+	// it to ACTIVE so settle-wait can advance. WithDeleteRemovesService
+	// makes the mock honor the eventual delete, so verify-empty passes
+	// after the delete process FINISHEs.
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-app", Name: "appdev", Status: "CREATING"},
+	}).WithProcess(&platform.Process{ID: "proc-delete-svc-app", Status: "FINISHED"}).
+		WithDeleteRemovesService(true)
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		mock.WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "appdev", Status: "ACTIVE"},
+		})
+	}()
+
+	if err := deleteAllUserServices(context.Background(), mock, "proj-1"); err != nil {
+		t.Fatalf("expected clean cleanup, got: %v", err)
+	}
+	if got := mock.CallCounts["DeleteService"]; got != 1 {
+		t.Fatalf("DeleteService calls: got %d, want 1", got)
+	}
+}
+
+// TestDeleteAllUserServices_PersistentResidualFailsLoud covers the
+// pathological case where a service stays CREATING across all retries.
+// Cleanup must not silently proceed — the next scenario needs the
+// "residual services" error so the suite stops on a real platform
+// problem rather than running a confused agent.
+func TestDeleteAllUserServices_PersistentResidualFailsLoud(t *testing.T) {
+	withTuneables(t, 30*time.Millisecond, 5*time.Millisecond, 2)
+
+	// Service stays in CREATING forever. Settle-wait times out, delete
+	// fires (and "succeeds" per mock), but verify-empty still sees it.
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-stuck", Name: "appdev", Status: "CREATING"},
+	}).WithProcess(&platform.Process{ID: "proc-delete-svc-stuck", Status: "FINISHED"})
+
+	err := deleteAllUserServices(context.Background(), mock, "proj-1")
+	if err == nil {
+		t.Fatal("expected residual error after retries, got nil")
+	}
+	if !strings.Contains(err.Error(), "residual services") || !strings.Contains(err.Error(), "appdev(CREATING)") {
+		t.Fatalf("error must name residual + status; got: %v", err)
+	}
+	if got := mock.CallCounts["DeleteService"]; got != 2 {
+		t.Fatalf("DeleteService should fire once per retry: got %d, want 2", got)
 	}
 }
 

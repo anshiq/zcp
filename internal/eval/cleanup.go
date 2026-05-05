@@ -65,6 +65,38 @@ func CleanupEvalServices(ctx context.Context, client platform.Client, projectID,
 	return deleteServices(ctx, client, toDelete)
 }
 
+// Cleanup tunables. Exposed as package vars so tests can shrink them to
+// millisecond scale without changing production semantics.
+var (
+	// CleanupSettleTimeout caps how long pre-delete waits for transitional
+	// (CREATING/NEW/STARTING) services to reach a deletable state.
+	CleanupSettleTimeout = 90 * time.Second
+	// CleanupVerifyMaxRetries caps the list → delete → verify loop. The
+	// agent-observed friction was: cleanup said "deleting N services" and
+	// the delete processes finished, yet the next scenario's first
+	// discover saw a residual service stuck in CREATING. Verification
+	// catches that and retries instead of silently proceeding.
+	CleanupVerifyMaxRetries = 3
+	// CleanupVerifyInterval is the spacing between settle/verify polls.
+	CleanupVerifyInterval = 3 * time.Second
+	// CleanupProcessPollInterval is the spacing between GetProcess polls
+	// when waiting for a delete process to finish. Exposed for tests.
+	CleanupProcessPollInterval = 3 * time.Second
+)
+
+// terminalDeletableStatuses are the service statuses where DeleteService
+// is safe to call. Services in NEW/CREATING/STARTING are still being
+// provisioned and the platform may reject delete with a transient error
+// or leave the service half-created. DELETING is treated as "wait for
+// the existing deletion to finish" — already on its way out.
+var terminalDeletableStatuses = map[string]bool{
+	platform.ServiceStatusActive:        true,
+	platform.ServiceStatusReadyToDeploy: true,
+	platform.ServiceStatusRunning:       true,
+	"FAILED":                            true,
+	"STOPPED":                           true,
+}
+
 // CleanupProject performs a full project cleanup after an eval run:
 //  1. Delete all services except zcp (and system services)
 //  2. Clean generated files in workDir (keep protected paths)
@@ -76,19 +108,14 @@ func CleanupEvalServices(ctx context.Context, client platform.Client, projectID,
 // regardless of name. Stale ServiceMeta entries from prior runs naming
 // services that no longer exist are tolerated.
 func CleanupProject(ctx context.Context, client platform.Client, projectID, workDir string) error {
-	// 1. Delete all non-protected services. The list is the live truth — we
-	// never carry hostnames across runs. deleteServices tolerates services
-	// that vanish between list and delete (scenario races, retries).
-	toDelete, err := listDeletableServices(ctx, client, projectID)
-	if err != nil {
-		return fmt.Errorf("cleanup list services: %w", err)
-	}
-
-	if len(toDelete) > 0 {
-		fmt.Fprintf(os.Stderr, "  deleting %d services...\n", len(toDelete))
-		if err := deleteServices(ctx, client, toDelete); err != nil {
-			return fmt.Errorf("cleanup delete services: %w", err)
-		}
+	// 1. Delete all non-protected services with settle-wait + post-verify.
+	// Cleanup runs at suite boundaries; agents observed (suite 20260504-142503)
+	// that a single list+delete pass can leave a residual mid-CREATING
+	// service that confuses the next scenario's first discover. The loop
+	// waits for transitional services to settle, deletes, then re-lists to
+	// confirm the project is actually empty before declaring success.
+	if err := deleteAllUserServices(ctx, client, projectID); err != nil {
+		return err
 	}
 
 	// 2. Unmount stale SSHFS entries before removing files
@@ -123,6 +150,94 @@ func CleanupProject(ctx context.Context, client platform.Client, projectID, work
 	}
 
 	return nil
+}
+
+// deleteAllUserServices is the robust list → settle → delete → verify loop
+// for the service-side half of CleanupProject. Returns a residual-services
+// error if non-system, non-zcp services persist after CleanupVerifyMaxRetries
+// attempts, so the next scenario fails loud instead of starting on dirty
+// state.
+func deleteAllUserServices(ctx context.Context, client platform.Client, projectID string) error {
+	var lastVerifyErr error
+	for attempt := 0; attempt < CleanupVerifyMaxRetries; attempt++ {
+		services, err := waitForDeletableSettlement(ctx, client, projectID)
+		if err != nil {
+			return fmt.Errorf("cleanup wait for settlement: %w", err)
+		}
+		if len(services) > 0 {
+			fmt.Fprintf(os.Stderr, "  deleting %d services (attempt %d)...\n", len(services), attempt+1)
+			if err := deleteServices(ctx, client, services); err != nil {
+				return fmt.Errorf("cleanup delete services: %w", err)
+			}
+		}
+		if err := verifyProjectEmpty(ctx, client, projectID); err == nil {
+			return nil
+		} else {
+			lastVerifyErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(CleanupVerifyInterval):
+		}
+	}
+	return fmt.Errorf("cleanup: %w (after %d attempts)", lastVerifyErr, CleanupVerifyMaxRetries)
+}
+
+// waitForDeletableSettlement polls the project until every non-system,
+// non-zcp service is in a terminal-deletable status, or CleanupSettleTimeout
+// elapses. On timeout it returns the latest list anyway so deleteServices
+// can surface specific per-service errors instead of waiting indefinitely.
+func waitForDeletableSettlement(ctx context.Context, client platform.Client, projectID string) ([]platform.ServiceStack, error) {
+	deadline := time.Now().Add(CleanupSettleTimeout)
+	for {
+		services, err := listDeletableServices(ctx, client, projectID)
+		if err != nil {
+			return nil, err
+		}
+		if isAllSettled(services) {
+			return services, nil
+		}
+		if time.Now().After(deadline) {
+			return services, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(CleanupVerifyInterval):
+		}
+	}
+}
+
+// isAllSettled reports true when every listed service is in a status
+// DeleteService can act on directly.
+func isAllSettled(services []platform.ServiceStack) bool {
+	for _, svc := range services {
+		if !terminalDeletableStatuses[svc.Status] {
+			return false
+		}
+	}
+	return true
+}
+
+// verifyProjectEmpty re-lists services and returns an error naming any
+// residual non-system, non-zcp services. Used post-delete to catch the
+// case where DeleteService said FINISHED but the platform's list still
+// reports the service as live (eventual consistency window or stuck
+// CREATING from a prior session that this cleanup pass didn't catch).
+func verifyProjectEmpty(ctx context.Context, client platform.Client, projectID string) error {
+	services, err := listDeletableServices(ctx, client, projectID)
+	if err != nil {
+		return err
+	}
+	if len(services) == 0 {
+		return nil
+	}
+	names := make([]string, len(services))
+	for i, s := range services {
+		names[i] = fmt.Sprintf("%s(%s)", s.Name, s.Status)
+	}
+	return fmt.Errorf("residual services after delete pass: %s", strings.Join(names, ", "))
 }
 
 // IsProtectedPath returns true if the given filename should survive cleanup.
@@ -294,7 +409,7 @@ func cleanClaudeMemoryDir(base string) error {
 
 // pollProcess waits for a process to reach a terminal state.
 func pollProcess(ctx context.Context, client platform.Client, processID string) error {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(CleanupProcessPollInterval)
 	defer ticker.Stop()
 
 	for {

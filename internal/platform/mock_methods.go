@@ -271,6 +271,17 @@ func (m *Mock) DeleteService(_ context.Context, serviceID string) (*Process, err
 	if err := m.getError("DeleteService"); err != nil {
 		return nil, err
 	}
+	if m.deleteRemovesService {
+		m.mu.Lock()
+		filtered := m.services[:0]
+		for _, s := range m.services {
+			if s.ID != serviceID {
+				filtered = append(filtered, s)
+			}
+		}
+		m.services = filtered
+		m.mu.Unlock()
+	}
 	return &Process{
 		ID:            "proc-delete-" + serviceID,
 		ActionName:    "delete",

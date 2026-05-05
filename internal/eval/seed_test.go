@@ -17,7 +17,8 @@ func TestSeedEmpty_DeletesNonSystemServices(t *testing.T) {
 		WithServices([]platform.ServiceStack{
 			{ID: "svc-1", Name: "app", Status: "ACTIVE", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeCategoryName: "USER"}},
 		}).
-		WithProcess(&platform.Process{ID: "proc-delete-svc-1", Status: "FINISHED"})
+		WithProcess(&platform.Process{ID: "proc-delete-svc-1", Status: "FINISHED"}).
+		WithDeleteRemovesService(true)
 	tmp := t.TempDir()
 
 	if err := SeedEmpty(context.Background(), mock, "proj-1", tmp); err != nil {
