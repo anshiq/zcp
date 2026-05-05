@@ -131,6 +131,12 @@ func (s *Store) OpenOrCreate(slug, outputRoot string) (*Session, error) {
 	if sess, ok := s.sessions[slug]; ok {
 		return sess, nil
 	}
+	// F-28 (run-25 §Axis Z) — refuse outputRoot AT or above the SSHFS
+	// mount base before MkdirAll touches disk. The mount base hosts the
+	// dev codebase mounts; writing recipe outputs there shadows source.
+	if err := refuseIfMountBaseAncestor(outputRoot, slug); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(outputRoot, 0o755); err != nil {
 		return nil, fmt.Errorf("create output root: %w", err)
 	}
@@ -164,7 +170,7 @@ const errSessionNotOpen = "session not open"
 type RecipeInput struct {
 	Action           string      `json:"action"                     jsonschema:"One of: start, enter-phase, complete-phase, build-brief, build-subagent-prompt, verify-subagent-dispatch, record-fact, record-fragment, fill-fact-slot, resolve-chain, emit-yaml, update-plan, stitch-content, status."`
 	Slug             string      `json:"slug,omitempty"             jsonschema:"Recipe slug (e.g. {framework}-showcase). Required for every action."`
-	OutputRoot       string      `json:"outputRoot,omitempty"       jsonschema:"Directory where the recipe tree + facts log live. Required for 'start'."`
+	OutputRoot       string      `json:"outputRoot,omitempty"       jsonschema:"Directory where the recipe tree + facts log live. Required for 'start'. Canonical shape: '/var/www/zcprecipator/<slug>/' — outputs MUST nest one level under the SSHFS mount base ('/var/www/'); the engine refuses outputRoot at or above the mount base because that path hosts dev-codebase mounts (apidev/, appdev/, workerdev/) and stitched output would shadow source."`
 	Phase            string      `json:"phase,omitempty"            jsonschema:"Phase name for enter-phase / complete-phase: research, provision, scaffold, feature, codebase-content, env-content, finalize, refinement."`
 	BriefKind        string      `json:"briefKind,omitempty"        jsonschema:"For build-brief: scaffold, feature, codebase-content, claudemd-author, env-content, finalize, refinement."`
 	Codebase         string      `json:"codebase,omitempty"         jsonschema:"For build-brief when kind=scaffold: the codebase hostname to compose for. For complete-phase: when set, scopes codebase-surface validators to that one codebase only — the sub-agent's pre-termination self-validate path. Phase advance only fires when codebase is empty (the main-agent's post-sub-agent-return path)."`

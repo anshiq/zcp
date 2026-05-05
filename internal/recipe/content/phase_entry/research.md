@@ -5,6 +5,14 @@ Don't call `zerops_knowledge` — the tool's own description says it's the
 wrong tool during recipe authoring, and this atom supplies the
 authoritative service set + runtime table below.
 
+## Where to write outputs
+
+Pass `outputRoot=/var/www/zcprecipator/<slug>/` at `action=start`. The
+workspace at `/var/www/` holds the SSHFS dev mounts (`apidev/`,
+`appdev/`, `workerdev/` — one per codebase) — recipe outputs nest one
+level down under `/var/www/zcprecipator/<slug>/` so they don't shadow
+the dev codebases. The engine refuses `outputRoot=/var/www` directly.
+
 ## Canonical services — authoritative versions
 
 Do not guess versions. Use these exactly. Do not add services not in
