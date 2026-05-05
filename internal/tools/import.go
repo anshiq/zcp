@@ -18,11 +18,21 @@ import (
 // boolean input (some LLM agents serialize primitives as quoted
 // strings, and the raw-bool schema would reject those at the protocol
 // layer with a non-actionable error).
+//
+// ConfirmDestructive is the diagnose-before-destruct ack required when
+// override=true would REPLACE a service that has failed appVersion
+// history (plan v4 §3.2). Absent on the first call → handler returns
+// ErrDiagnosisRequired with a structured wouldDestroy payload describing
+// the targets and loss; second call must echo the operation +
+// acknowledgedTargets to proceed.
 type ImportInput struct {
-	Content  string   `json:"content,omitempty"`
-	FilePath string   `json:"filePath,omitempty"`
-	Override FlexBool `json:"override,omitempty"`
+	Content            string          `json:"content,omitempty"`
+	FilePath           string          `json:"filePath,omitempty"`
+	Override           FlexBool        `json:"override,omitempty"`
+	ConfirmDestructive *DestructiveAck `json:"confirmDestructive,omitempty"`
 }
+
+const importOverrideOperation = "import-override"
 
 // importInputSchema is the explicit InputSchema for zerops_import. Lives
 // here rather than on struct tags so `override` can declare the
@@ -38,6 +48,25 @@ func importInputSchema() *jsonschema.Schema {
 			Description: "Path to a YAML file containing the import definition. Provide either filePath or content.",
 		},
 		"override": flexBoolSchema("Set override: true on every imported service so the API replaces existing service stacks with matching hostnames. DESTRUCTIVE: replacement tears down the previous container, deployed code, env vars, and the SSHFS mount on those services — back up any uncommitted work first. The response Warnings name the replaced hostnames so the destruction is never silent. Required when re-importing a service that already exists (e.g. to transition READY_TO_DEPLOY to ACTIVE by adding startWithoutCode: true)."),
+		"confirmDestructive": {
+			Type:        "object",
+			Description: "Acknowledgment that override=true may proceed. REQUIRED on the second call when the first call refused with code=DIAGNOSIS_REQUIRED + a structured wouldDestroy payload (services with failed appVersion history). Set operation to wouldDestroy.operation and acknowledgedTargets to the same hostname set wouldDestroy.targets carries. Read zerops_logs / zerops_events for the affected services before acknowledging.",
+			Properties: map[string]*jsonschema.Schema{
+				"operation": {
+					Type:        "string",
+					Description: "Must equal wouldDestroy.operation from the first-call refusal (e.g. \"import-override\").",
+				},
+				"acknowledgedTargets": {
+					Type:        "array",
+					Items:       &jsonschema.Schema{Type: "string"},
+					Description: "Service hostnames being acknowledged for destruction. Must match wouldDestroy.targets as a set (order-insensitive, no extras, no missing).",
+				},
+				"diagnosedFailureClass": {
+					Type:        "string",
+					Description: "Optional: the topology FailureClass observed via zerops_events (e.g. \"build\", \"start\"). Future-proofing for stricter enforcement.",
+				},
+			},
+		},
 	})
 }
 
@@ -60,6 +89,13 @@ func RegisterImport(srv *mcp.Server, client platform.Client, projectID string, e
 		if blocked := requireWorkflowContext(engine, stateDir, recipeProbe); blocked != nil {
 			return blocked, nil, nil
 		}
+		if input.Override.Bool() {
+			if blocked, gateErr := gateOverrideOnFailedHistory(ctx, client, projectID, input); gateErr != nil {
+				return convertError(gateErr, WithRecoveryStatus()), nil, nil
+			} else if blocked != nil {
+				return blocked, nil, nil
+			}
+		}
 		result, err := ops.Import(ctx, client, projectID, input.Content, input.FilePath, input.Override.Bool())
 		if err != nil {
 			return convertError(err, WithRecoveryStatus()), nil, nil
@@ -70,6 +106,86 @@ func RegisterImport(srv *mcp.Server, client platform.Client, projectID string, e
 
 		return jsonResult(result), nil, nil
 	})
+}
+
+// gateOverrideOnFailedHistory enforces plan v4 §3.2: when override=true
+// would REPLACE a service that has failed appVersion history, refuse the
+// first call with ErrDiagnosisRequired + a structured wouldDestroy payload.
+// Returns (blocked, nil) when the gate fires (caller emits blocked verbatim);
+// (nil, nil) when the gate passes (no failed targets OR matching ack);
+// (nil, err) when target identification itself fails.
+func gateOverrideOnFailedHistory(
+	ctx context.Context,
+	client platform.Client,
+	projectID string,
+	input ImportInput,
+) (*mcp.CallToolResult, error) {
+	overrideTargets, err := ops.IdentifyOverrideTargets(ctx, client, projectID, input.Content, input.FilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var failedTargets []string
+	envVarsByService := make(map[string][]string)
+	for _, hostname := range overrideTargets {
+		failed, err := ops.LatestFailedAppVersionContext(ctx, client, nil, projectID, hostname)
+		if err != nil {
+			return nil, err
+		}
+		if failed != nil {
+			failedTargets = append(failedTargets, hostname)
+		}
+	}
+
+	if len(failedTargets) == 0 {
+		// Gate bypassed: all override targets are healthy or healthy-after-
+		// success. The standard B10 warning in ops.Import still fires.
+		return nil, nil //nolint:nilnil // gate-passed sentinel: caller proceeds with import
+	}
+
+	expected := DiagnosedDestruction{
+		Operation: importOverrideOperation,
+		Targets:   failedTargets,
+		Loss: DestructionLoss{
+			ServiceStacks: failedTargets,
+			EnvVars:       collectEnvVarKeys(envVarsByService, failedTargets),
+		},
+	}
+
+	if validateErr := ValidateDestructiveAck(input.ConfirmDestructive, expected); validateErr != nil {
+		return convertError(validateErr,
+			WithWouldDestroy(&expected),
+			WithRecovery(&RecoveryHint{
+				Tool:   "zerops_logs",
+				Action: "fetch",
+				Args: map[string]string{
+					"serviceHostname": failedTargets[0],
+					"facility":        "application",
+					"since":           "15m",
+				},
+			}),
+		), nil
+	}
+	return nil, nil //nolint:nilnil // gate-passed sentinel: matching ack, proceed with import
+}
+
+// collectEnvVarKeys flattens the per-service env-var keys for the wire
+// payload. Empty list when none of the targets had a usable env vars
+// snapshot — the gate fires regardless; this just enriches the
+// wouldDestroy payload when keys are available.
+func collectEnvVarKeys(envVarsByService map[string][]string, targets []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, t := range targets {
+		for _, k := range envVarsByService[t] {
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // pollImportProcesses polls each import process until completion, updating
