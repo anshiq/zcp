@@ -23,7 +23,7 @@ type RunnerConfig struct {
 	ResultsDir string        // Base directory for results output
 	WorkDir    string        // Working directory on zcp (default: /var/www)
 	Model      string        // Claude model to use (default: "sonnet")
-	MaxTurns   int           // Max turns per eval (default: 60)
+	MaxTurns   int           // Max turns per eval (default: 100)
 	Timeout    time.Duration // Timeout per recipe (default: 15 min)
 }
 
@@ -43,7 +43,13 @@ func NewRunner(config RunnerConfig, store *knowledge.Store, client platform.Clie
 		config.Model = defaultModel
 	}
 	if config.MaxTurns == 0 {
-		config.MaxTurns = 60
+		// 100 (was 60). Multi-runtime fullstack scenarios and frontend SSR
+		// recipes routinely cross 60 in suite 20260504-104436 — both
+		// greenfield-fullstack-multi-runtime and recipe-nextjs-ssr-frontend-
+		// standard hit error_max_turns there. 100 is the smallest cap that
+		// covered every observed legitimate happy-path run while still
+		// bounding runaway sessions.
+		config.MaxTurns = 100
 	}
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Minute

@@ -3,6 +3,8 @@ package eval
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -241,5 +243,65 @@ func TestIsServiceAlreadyGone_AllChannels(t *testing.T) {
 				t.Errorf("isServiceAlreadyGone(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestRemoveClaudeMD_PresentFileRemoved is the happy path: a workdir with a
+// CLAUDE.md (with REFLOG content) is wiped clean. Pinned because cleanup's
+// step 6 is the explicit guarantee that init.Run on the next scenario sees
+// no stale REFLOG; if this regresses, the cross-scenario contamination trap
+// (plans/backlog/reflog-vs-live-discover-staleness.md) reopens.
+func TestRemoveClaudeMD_PresentFileRemoved(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "CLAUDE.md")
+	contents := "<!-- ZCP:BEGIN -->\nbody\n<!-- ZCP:END -->\n\n<!-- ZEROPS:REFLOG -->\nstale-entry\n<!-- /ZEROPS:REFLOG -->\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("seed CLAUDE.md: %v", err)
+	}
+	if err := removeClaudeMD(dir); err != nil {
+		t.Fatalf("removeClaudeMD on present file: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("CLAUDE.md should be gone; stat err: %v", err)
+	}
+}
+
+// TestRemoveClaudeMD_AbsentFileNoOp covers the post-cleanWorkDir path:
+// cleanWorkDir already removed CLAUDE.md, so step 6 sees nothing to do.
+// Must NOT return an error — that would convert a benign double-pass into
+// a hard cleanup failure.
+func TestRemoveClaudeMD_AbsentFileNoOp(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := removeClaudeMD(dir); err != nil {
+		t.Fatalf("removeClaudeMD on absent file must be no-op; got: %v", err)
+	}
+}
+
+// TestCleanupProject_RemovesClaudeMD_EndToEnd pins that the full
+// CleanupProject sequence ends with no CLAUDE.md in workDir. Uses a clean
+// platform mock so only the workdir-cleanup half is exercised; the
+// service-deletion half is covered by sibling tests.
+func TestCleanupProject_RemovesClaudeMD_EndToEnd(t *testing.T) {
+	t.Parallel()
+	withTuneables(t, 200*time.Millisecond, 5*time.Millisecond, 2)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "CLAUDE.md")
+	if err := os.WriteFile(path, []byte("<!-- ZCP:BEGIN -->\n...\n"), 0o644); err != nil {
+		t.Fatalf("seed CLAUDE.md: %v", err)
+	}
+
+	// Empty project (only zcp), so service-deletion half is a no-op.
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-zcp", Name: "zcp", Status: "ACTIVE"},
+	})
+
+	if err := CleanupProject(context.Background(), mock, "proj-1", dir); err != nil {
+		t.Fatalf("CleanupProject: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("CLAUDE.md should be gone after CleanupProject; stat err: %v", err)
 	}
 }

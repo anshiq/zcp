@@ -1,0 +1,20 @@
+# Single simple-mode Node service deployed externally — no dev/stage pair,
+# no managed dep. Adopt-into-simple is a different flow than the
+# standard-pair adopt fixture: there is no stage to promote to and no
+# develop scope question; the agent owns one immutable runtime.
+#
+# Uses the `prod` zeropsSetup block of zerops-recipe-apps/nodejs-hello-world-app
+# (the same repo that backs nodejs-standard-deployed.yaml, where prod is the
+# production-style immutable build). This combination reliably reaches ACTIVE
+# at SeedDeployed under the 15-minute wait budget.
+
+services:
+  - hostname: api
+    type: nodejs@22
+    zeropsSetup: prod
+    buildFromGit: https://github.com/zerops-recipe-apps/nodejs-hello-world-app
+    enableSubdomainAccess: true
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 0.5

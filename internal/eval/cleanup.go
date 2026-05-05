@@ -149,6 +149,40 @@ func CleanupProject(ctx context.Context, client platform.Client, projectID, work
 		return fmt.Errorf("cleanup remove service metas: %w", err)
 	}
 
+	// 6. Explicit CLAUDE.md removal + post-verify. cleanWorkDir already
+	// removes non-protected entries (and CLAUDE.md is not protected), but
+	// REFLOG persistence is the highest-leverage cross-scenario contamination
+	// vector — the bootstrap workflow appends `<!-- ZEROPS:REFLOG -->` blocks
+	// outside the ZCP managed-section markers, and `init.Run` preserves them
+	// by design (real users want REFLOG carried across re-init). For eval-zcp,
+	// a stale REFLOG can claim infrastructure exists when live discover shows
+	// none of it (see plans/backlog/reflog-vs-live-discover-staleness.md).
+	// This belt-and-braces step removes CLAUDE.md explicitly and fails loud
+	// if it can't, so init.Run on the next scenario always starts from a
+	// REFLOG-free file.
+	if err := removeClaudeMD(workDir); err != nil {
+		return fmt.Errorf("cleanup remove CLAUDE.md: %w", err)
+	}
+
+	return nil
+}
+
+// removeClaudeMD deletes the workdir's CLAUDE.md and verifies it is gone.
+// IsNotExist on the initial Remove is benign (cleanWorkDir already handled
+// it). Any other error, or a file that survives the Remove call, is a hard
+// failure: the next scenario's init.Run would otherwise read stale REFLOG
+// content and the agent would face a "context claims infrastructure exists
+// but discover shows none of it" trap.
+func removeClaudeMD(workDir string) error {
+	path := filepath.Join(workDir, "CLAUDE.md")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("CLAUDE.md still present at %s after explicit remove", path)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s after remove: %w", path, err)
+	}
 	return nil
 }
 
@@ -170,11 +204,11 @@ func deleteAllUserServices(ctx context.Context, client platform.Client, projectI
 				return fmt.Errorf("cleanup delete services: %w", err)
 			}
 		}
-		if err := verifyProjectEmpty(ctx, client, projectID); err == nil {
+		verifyErr := verifyProjectEmpty(ctx, client, projectID)
+		if verifyErr == nil {
 			return nil
-		} else {
-			lastVerifyErr = err
 		}
+		lastVerifyErr = verifyErr
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
