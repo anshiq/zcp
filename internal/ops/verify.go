@@ -115,7 +115,7 @@ func verifyService(
 	}
 
 	// Check 1: service_running (must pass first).
-	runningCheck := checkServiceRunning(svc)
+	runningCheck := checkServiceRunning(ctx, client, fetcher, projectID, svc)
 	result.Checks = append(result.Checks, runningCheck)
 
 	// Managed services: only check service_running.
@@ -130,9 +130,24 @@ func verifyService(
 		len(svc.Ports) > 0,
 	)
 
-	// If not running, skip remaining checks based on runtime class.
+	// If not running, skip remaining checks based on runtime class — but
+	// preserve the subdomain Recovery emission. Subdomain access is
+	// independent of running state (the agent can enable it any time);
+	// short-circuiting here would hide it until service_running passes,
+	// forcing serial recovery instead of parallel. Plan v4 §2.1 side fix.
 	if runningCheck.Status != CheckPass {
 		result.Checks = append(result.Checks, skipChecksForClass(rc)...)
+		// Replace the http_root skip with a subdomain-disabled fail when
+		// the service has neither subdomain access nor a running container,
+		// so the agent sees BOTH actionable hints in one verify pass.
+		if !svc.SubdomainAccess && (rc == RuntimeDynamic || rc == RuntimeImplicit || rc == RuntimeStatic) {
+			replaceCheck(result.Checks, "http_root", CheckResult{
+				Name:     "http_root",
+				Status:   CheckFail,
+				Detail:   "subdomain access not enabled — service is not reachable via HTTP (independent of service_running)",
+				Recovery: &Recovery{Tool: "zerops_subdomain", Action: subdomainActionEnable, Args: map[string]string{"serviceHostname": svc.Name}},
+			})
+		}
 		result.Status = aggregateStatus(result.Checks)
 		return result, nil
 	}
@@ -218,6 +233,19 @@ func verifyService(
 
 	result.Status = aggregateStatus(result.Checks)
 	return result, nil
+}
+
+// replaceCheck overwrites the named check in-place with the replacement.
+// No-op when the check is absent. Used by the service-not-running branch
+// to upgrade an http_root skip to a subdomain-disabled fail with Recovery
+// (plan v4 §2.1 side fix).
+func replaceCheck(checks []CheckResult, name string, replacement CheckResult) {
+	for i := range checks {
+		if checks[i].Name == name {
+			checks[i] = replacement
+			return
+		}
+	}
 }
 
 // skipChecksForClass returns skip results for all checks applicable to the runtime class.

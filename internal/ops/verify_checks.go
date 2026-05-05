@@ -53,14 +53,15 @@ func classifyRuntime(serviceType string, hasPorts bool) RuntimeClass {
 	return RuntimeDynamic
 }
 
-func checkServiceRunning(svc *platform.ServiceStack) CheckResult {
-	if svc.Status == "RUNNING" || svc.Status == "ACTIVE" {
+func checkServiceRunning(ctx context.Context, client platform.Client, fetcher platform.LogFetcher, projectID string, svc *platform.ServiceStack) CheckResult {
+	if svc.Status == platform.ServiceStatusRunning || svc.Status == platform.ServiceStatusActive {
 		return CheckResult{Name: "service_running", Status: CheckPass}
 	}
 	return CheckResult{
-		Name:   "service_running",
-		Status: CheckFail,
-		Detail: fmt.Sprintf("service status: %s", svc.Status),
+		Name:     "service_running",
+		Status:   CheckFail,
+		Detail:   fmt.Sprintf("service status: %s", svc.Status),
+		Recovery: NonRunningRecovery(ctx, client, fetcher, projectID, svc.Name, svc.Status),
 	}
 }
 

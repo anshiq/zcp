@@ -198,9 +198,13 @@ func TestVerify_DynamicRuntime_AllChecks(t *testing.T) {
 func TestVerify_RuntimeStopped(t *testing.T) {
 	t.Parallel()
 
+	// SubdomainAccess: true so the §2.1 side fix doesn't replace http_root
+	// — the original semantics (service_running fail + remaining skips)
+	// stay intact. The side fix is exercised separately in
+	// TestVerify_PreservesSubdomainRecoveryWhenServiceNotRunning.
 	mock := platform.NewMock().
 		WithServices([]platform.ServiceStack{
-			{ID: "svc-1", Name: "app", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22", ServiceStackTypeCategoryName: "USER"}, Status: "READY_TO_DEPLOY", Ports: []platform.Port{{Port: 3000}}},
+			{ID: "svc-1", Name: "app", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22", ServiceStackTypeCategoryName: "USER"}, Status: "READY_TO_DEPLOY", SubdomainAccess: true, Ports: []platform.Port{{Port: 3000}}},
 		})
 
 	result, err := Verify(context.Background(), mock, platform.NewMockLogFetcher(), http.DefaultClient, "proj-1", "app")
@@ -795,7 +799,7 @@ func TestCheckServiceRunning(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			svc := &platform.ServiceStack{Status: tt.status}
-			c := checkServiceRunning(svc)
+			c := checkServiceRunning(context.Background(), platform.NewMock(), nil, "proj-1", svc)
 			if c.Status != tt.wantStatus {
 				t.Errorf("status = %q, want %q", c.Status, tt.wantStatus)
 			}
