@@ -136,6 +136,8 @@ const (
 	ServiceStatusActive        = "ACTIVE"
 	ServiceStatusReadyToDeploy = "READY_TO_DEPLOY"
 	ServiceStatusRunning       = "RUNNING"
+	ServiceStatusFailed        = "FAILED"
+	ServiceStatusStopped       = "STOPPED"
 )
 
 // ServiceStackRef is a lightweight service reference in a process.

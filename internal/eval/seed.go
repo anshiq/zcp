@@ -123,7 +123,7 @@ func pollProcessSettled(ctx context.Context, client platform.Client, processID s
 				return fmt.Errorf("poll process %s: %w", processID, err)
 			}
 			switch proc.Status {
-			case "FINISHED", "FAILED", "CANCELED":
+			case platform.ProcessStatusFinished, platform.ProcessStatusFailed, platform.ProcessStatusCanceled:
 				return nil
 			}
 		}
@@ -172,8 +172,8 @@ func isTerminalServiceStatus(s string) bool {
 	case platform.ServiceStatusActive,
 		platform.ServiceStatusReadyToDeploy,
 		platform.ServiceStatusRunning,
-		"FAILED",
-		"STOPPED":
+		platform.ServiceStatusFailed,
+		platform.ServiceStatusStopped:
 		return true
 	}
 	return false
@@ -198,9 +198,9 @@ func waitAllActive(ctx context.Context, client platform.Client, projectID string
 				continue
 			}
 			switch svc.Status {
-			case "ACTIVE":
+			case platform.ServiceStatusActive:
 				continue
-			case "FAILED", "DELETING":
+			case platform.ServiceStatusFailed, "DELETING":
 				return fmt.Errorf("service %s entered terminal status %q", svc.Name, svc.Status)
 			default:
 				allActive = false

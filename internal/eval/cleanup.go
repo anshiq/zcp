@@ -93,8 +93,8 @@ var terminalDeletableStatuses = map[string]bool{
 	platform.ServiceStatusActive:        true,
 	platform.ServiceStatusReadyToDeploy: true,
 	platform.ServiceStatusRunning:       true,
-	"FAILED":                            true,
-	"STOPPED":                           true,
+	platform.ServiceStatusFailed:        true,
+	platform.ServiceStatusStopped:       true,
 }
 
 // CleanupProject performs a full project cleanup after an eval run:
@@ -456,15 +456,15 @@ func pollProcess(ctx context.Context, client platform.Client, processID string) 
 				return fmt.Errorf("poll process %s: %w", processID, err)
 			}
 			switch proc.Status {
-			case "FINISHED":
+			case platform.ProcessStatusFinished:
 				return nil
-			case "FAILED":
+			case platform.ProcessStatusFailed:
 				reason := "unknown"
 				if proc.FailReason != nil {
 					reason = *proc.FailReason
 				}
 				return fmt.Errorf("process %s failed: %s", processID, reason)
-			case "CANCELED":
+			case platform.ProcessStatusCanceled:
 				return fmt.Errorf("process %s canceled", processID)
 			}
 		}
