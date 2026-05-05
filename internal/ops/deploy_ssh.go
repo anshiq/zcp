@@ -99,6 +99,15 @@ func deploySSH(
 		return nil, err
 	}
 
+	// Pre-flight diagnose-before-destruct gate (plan v4 §2.2). Same
+	// semantics as DeployLocal — refuse on FAILED or
+	// READY_TO_DEPLOY-with-failed-history; let first-deploy through.
+	if rec, gateErr := GateNonRunningOnDeploy(ctx, client, nil, projectID, target); gateErr != nil {
+		return nil, gateErr
+	} else if rec != nil {
+		return nil, NewDeployGateError(target, rec)
+	}
+
 	if workingDir == "" {
 		workingDir = defaultWorkingDir
 	}

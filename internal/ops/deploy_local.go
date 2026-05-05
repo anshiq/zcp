@@ -87,6 +87,16 @@ func DeployLocal(
 		return nil, err
 	}
 
+	// Pre-flight: refuse to deploy onto a service whose previous deploy
+	// already failed. The Recovery hint points the agent at the diagnostic
+	// path (zerops_events / zerops_logs) BEFORE another build cycle is
+	// burned. Plan v4 §2.2.
+	if rec, gateErr := GateNonRunningOnDeploy(ctx, client, nil, projectID, target); gateErr != nil {
+		return nil, gateErr
+	} else if rec != nil {
+		return nil, NewDeployGateError(target, rec)
+	}
+
 	// 3. Default workingDir.
 	if workingDir == "" {
 		workingDir = "."
