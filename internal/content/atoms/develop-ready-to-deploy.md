@@ -1,7 +1,7 @@
 ---
 id: develop-ready-to-deploy
 priority: 2
-phases: [develop-active]
+phases: [develop-active, bootstrap-active]
 modes: [dev, simple, standard, local-stage]
 environments: [container]
 serviceStatus: [READY_TO_DEPLOY]
