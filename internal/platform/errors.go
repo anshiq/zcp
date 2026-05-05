@@ -59,6 +59,14 @@ const (
 	// Eliminates the plain-text wire shape — every tool error response is
 	// typed JSON.
 	ErrUnknown = "UNKNOWN"
+	// ErrDiagnosisRequired marks a destructive operation that refused to
+	// proceed because the agent has not acknowledged what would be lost.
+	// The error response carries a structured wouldDestroy payload (the
+	// DiagnosedDestruction shape in tools/errwire.go); the second call
+	// must include a matching confirmDestructive ack to proceed. Plan v4
+	// §3.1 (diagnose-before-destruct invariant). Pinned by
+	// TestImport_OverrideOnFailedRequiresAck and friends.
+	ErrDiagnosisRequired = "DIAGNOSIS_REQUIRED"
 )
 
 // PlatformError carries a ZCP error code, message, and suggestion.

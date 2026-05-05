@@ -41,6 +41,12 @@ type ErrorWire struct {
 	// Populated via WithFailureClassification — handlers that aren't
 	// deploy-related leave it nil.
 	FailureClassification *topology.DeployFailureClassification `json:"failureClassification,omitempty"`
+
+	// WouldDestroy carries the structured "what's about to be erased"
+	// payload on a diagnose-before-destruct refusal (ErrDiagnosisRequired).
+	// Populated via WithWouldDestroy by destructive-tool handlers that
+	// gate on agent acknowledgment. Plan v4 §3.1.
+	WouldDestroy *DiagnosedDestruction `json:"wouldDestroy,omitempty"`
 }
 
 // CheckWire is the wire form of a single check failure. Generic enough
