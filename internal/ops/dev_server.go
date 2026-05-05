@@ -252,8 +252,12 @@ func validateDevServerParams(p DevServerParams) error {
 }
 
 // verifyDevServerTarget confirms the hostname resolves to an actual
-// service in the current project — catches typos early with a clear
-// error instead of an opaque SSH failure.
+// service in the current project AND that the service is in a state where
+// dev_server can usefully operate — the SSH layer below would otherwise
+// produce an opaque connection error on FAILED / READY_TO_DEPLOY targets.
+// Plan v4 §2.3 — the diagnose-before-destruct gate fires here so the
+// agent gets the canonical Recovery hint pointing at the failure context
+// (events / import override) instead of an SSH timeout.
 func verifyDevServerTarget(ctx context.Context, client platform.Client, projectID, hostname string) error {
 	if client == nil {
 		// Unit tests can pass a nil client when only the SSH shape matters.
@@ -263,10 +267,18 @@ func verifyDevServerTarget(ctx context.Context, client platform.Client, projectI
 	if err != nil {
 		return err
 	}
-	if _, lookupErr := FindService(services, hostname); lookupErr != nil {
+	target, lookupErr := FindService(services, hostname)
+	if lookupErr != nil {
 		return platform.NewPlatformError(platform.ErrServiceNotFound,
 			fmt.Sprintf("No service with hostname %q in this project", hostname),
 			"Pass the hostname of a dev container that exists in the current project (e.g. apidev, appdev, workerdev).")
+	}
+	rec, gateErr := GateNonRunningOnDeploy(ctx, client, nil, projectID, target)
+	if gateErr != nil {
+		return gateErr
+	}
+	if rec != nil {
+		return NewDeployGateError(target, rec)
 	}
 	return nil
 }

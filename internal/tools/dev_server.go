@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -116,6 +117,14 @@ func RegisterDevServer(srv *mcp.Server, client platform.Client, projectID string
 			NoHTTPProbe:  input.NoHTTPProbe.Bool(),
 		})
 		if err != nil {
+			// Plan v4 §2.3 — non-running terminal target gate. The
+			// structured Recovery hint flows through to the wire so the
+			// agent can read events / re-import without inferring the
+			// next call from an opaque SSH-layer error.
+			var gateErr *ops.DeployGateError
+			if errors.As(err, &gateErr) {
+				return convertError(err, WithRecovery(gateErr.Recovery)), nil, nil
+			}
 			return convertError(err), nil, nil
 		}
 		return jsonResult(result), nil, nil
