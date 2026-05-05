@@ -393,6 +393,83 @@ func TestDevServer_Start_MissingCommand(t *testing.T) {
 	}
 }
 
+// TestDevServer_RejectsShellEnvPrefix_SuggestsEnvForm pins Phase 3.3 of the
+// diagnose-before-destruct plan: the dev_server spawn path uses exec (not a
+// shell), so `KEY=VAL cmd` is parsed as the program name and fails with
+// `: not found`. The validator catches this early with a structured Recovery
+// hint pointing at `env KEY=VAL cmd`. Empirically reproduced in the
+// `recover-failed-buildfromgit-missing-dep` baseline run 2026-05-05.
+func TestDevServer_RejectsShellEnvPrefix_SuggestsEnvForm(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		command string
+		wantTok string
+	}{
+		{"single_var", "PYTHONPATH=/var/www/vendor gunicorn app:app", "PYTHONPATH=/var/www/vendor"},
+		{"underscore_var", "MY_VAR=x cmd", "MY_VAR=x"},
+		{"all_caps_assign", "FOO=bar python app.py", "FOO=bar"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			ssh := &scriptSSH{}
+			_, err := ExecuteDevServer(context.Background(), ssh, mockClientWithServices("apidev"), "p1",
+				DevServerParams{
+					Action:   "start",
+					Hostname: "apidev",
+					Command:  c.command,
+					Port:     3000,
+				})
+			if err == nil {
+				t.Fatal("expected error for shell env-prefix command")
+			}
+			var pe *platform.PlatformError
+			if !errors.As(err, &pe) {
+				t.Fatalf("expected PlatformError, got %T", err)
+			}
+			if pe.Code != platform.ErrInvalidParameter {
+				t.Errorf("expected ErrInvalidParameter, got %s", pe.Code)
+			}
+			if !strings.Contains(pe.Message, c.wantTok) {
+				t.Errorf("expected message to quote rejected token %q, got: %s", c.wantTok, pe.Message)
+			}
+			if !strings.Contains(pe.Suggestion, "env KEY=VAL") {
+				t.Errorf("expected suggestion to point at `env KEY=VAL cmd`, got: %s", pe.Suggestion)
+			}
+			if len(ssh.calls) != 0 {
+				t.Errorf("expected no SSH calls on validation error, got %d", len(ssh.calls))
+			}
+		})
+	}
+}
+
+// TestDevServer_AcceptsEnvPrefixForm pins the positive case: `env KEY=VAL cmd`
+// passes validation. The validator only rejects the shell-prefix form.
+func TestDevServer_AcceptsEnvPrefixForm(t *testing.T) {
+	t.Parallel()
+	// The validator should not reject this form during params validation;
+	// downstream errors are mock-dependent so we only verify the validator
+	// did not synthesize an ErrInvalidParameter.
+	ssh := &scriptSSH{}
+	_, err := ExecuteDevServer(context.Background(), ssh, mockClientWithServices("apidev"), "p1",
+		DevServerParams{
+			Action:   "start",
+			Hostname: "apidev",
+			Command:  "env PYTHONPATH=/var/www/vendor gunicorn app:app",
+			Port:     3000,
+		})
+	// Whatever error comes back must NOT be the shell-env-prefix rejection.
+	if err != nil {
+		var pe *platform.PlatformError
+		if errors.As(err, &pe) && pe.Code == platform.ErrInvalidParameter &&
+			strings.Contains(pe.Suggestion, "env KEY=VAL") {
+			t.Fatalf("env KEY=VAL form was rejected — should pass shell-prefix guard: %v", err)
+		}
+	}
+}
+
 func TestDevServer_Start_InvalidHostname(t *testing.T) {
 	t.Parallel()
 

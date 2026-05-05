@@ -93,6 +93,7 @@ func RegisterDevServer(srv *mcp.Server, client platform.Client, projectID string
 			"polls the health endpoint server-side in a single round-trip, and returns structured {running, startMillis, healthStatus, logTail, reason} " +
 			"with a specific reason code on failure (spawn_timeout, spawn_error, health_probe_*) so the agent can diagnose without a follow-up call. " +
 			"For worker services with no HTTP port (NATS/queue consumers, cron runners), pass noHttpProbe=true — the tool spawns through the same bounded-timeout path, skips the HTTP probe, and scans the post-spawn log tail for crash markers instead (missing module, broker auth failure, panic). " +
+			"command runs via exec, NOT a shell — for env-var prefixes use `env KEY=VAL cmd` (the env binary handles the assignment before exec), NOT `KEY=VAL cmd` (parsed as program name). " +
 			"Prefer this tool over raw Bash + ssh for every dev-server lifecycle operation.",
 		InputSchema: devServerInputSchema(),
 		Annotations: &mcp.ToolAnnotations{

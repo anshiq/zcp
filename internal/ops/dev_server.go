@@ -161,6 +161,14 @@ var (
 	// with no shell metacharacters. The tool always double-quotes
 	// the path in shell commands, but we also pre-filter for safety.
 	devLogPathRe = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,256}$`)
+	// devShellEnvPrefixRe detects the `KEY=VAL ...` shell-prefix env
+	// var assignment at the start of a command. The dev-server spawn
+	// path uses `exec` directly (not a shell), so this prefix is
+	// parsed as the program name and exec fails with `: not found`.
+	// Caught early here with a structured Recovery hint pointing at
+	// `env KEY=VAL cmd` form. Empirically reproduced 2026-05-05 in
+	// `recover-failed-buildfromgit-missing-dep` baseline retrospective.
+	devShellEnvPrefixRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=`)
 )
 
 // ExecuteDevServer is the single entry point for all dev_server actions.
@@ -216,10 +224,17 @@ func validateDevServerParams(p DevServerParams) error {
 	}
 	action := strings.ToLower(p.Action)
 	if action == devServerActionStart || action == devServerActionRestart {
-		if strings.TrimSpace(p.Command) == "" {
+		trimmed := strings.TrimSpace(p.Command)
+		if trimmed == "" {
 			return platform.NewPlatformError(platform.ErrInvalidParameter,
 				"Missing dev server command",
 				"Pass the exact shell command that starts the dev server, e.g. 'npm run start:dev' or 'vite --host 0.0.0.0'.")
+		}
+		if devShellEnvPrefixRe.MatchString(trimmed) {
+			firstToken, _, _ := strings.Cut(trimmed, " ")
+			return platform.NewPlatformError(platform.ErrInvalidParameter,
+				fmt.Sprintf("Shell-prefix env-var assignment in command: %q", firstToken),
+				"dev_server spawns commands via exec (not a shell), so `KEY=VAL cmd` is parsed as the program name and fails. Use `env KEY=VAL cmd` instead — the env binary handles the assignment before exec'ing the real command. Example: `env PYTHONPATH=/var/www/vendor gunicorn --bind 0.0.0.0:8000 app:app`.")
 		}
 		if !p.NoHTTPProbe {
 			if p.Port <= 0 || p.Port > 65535 {
