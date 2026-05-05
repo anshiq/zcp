@@ -37,16 +37,16 @@ const (
 	defaultSkipReason = "skipped by user"
 )
 
-func buildStepChecker(step string, client platform.Client, _ platform.LogFetcher, projectID string, _ ops.HTTPDoer, engine *workflow.Engine, _ string) workflow.StepChecker {
+func buildStepChecker(step string, client platform.Client, fetcher platform.LogFetcher, projectID string, _ ops.HTTPDoer, engine *workflow.Engine, _ string) workflow.StepChecker {
 	if step == stepProvision {
-		return checkProvision(client, projectID, engine)
+		return checkProvision(client, fetcher, projectID, engine)
 	}
 	// discover and close steps have nil checkers (attestation-only triggers
 	// under Option A — bootstrap owns infra provisioning, not deploy).
 	return nil
 }
 
-func checkProvision(client platform.Client, projectID string, engine *workflow.Engine) workflow.StepChecker {
+func checkProvision(client platform.Client, fetcher platform.LogFetcher, projectID string, engine *workflow.Engine) workflow.StepChecker {
 	return func(ctx context.Context, plan *workflow.ServicePlan, _ *workflow.BootstrapState) (*workflow.StepCheckResult, error) {
 		if plan == nil || len(plan.Targets) == 0 {
 			return nil, nil
@@ -66,7 +66,7 @@ func checkProvision(client platform.Client, projectID string, engine *workflow.E
 
 		for _, target := range plan.Targets {
 			// Check dev runtime exists and is RUNNING.
-			checks = append(checks, checkServiceRunning(svcMap, target.Runtime.DevHostname)...)
+			checks = append(checks, checkServiceRunning(ctx, client, fetcher, projectID, svcMap, target.Runtime.DevHostname)...)
 
 			// Cross-check runtime type matches plan.
 			checks = append(checks, checkServiceType(svcMap, target.Runtime.DevHostname, target.Runtime.Type)...)
@@ -75,12 +75,12 @@ func checkProvision(client platform.Client, projectID string, engine *workflow.E
 			// Stage may be newly imported (NEW/READY_TO_DEPLOY) or already running (RUNNING/ACTIVE).
 			// Mixed cases (existing dev + new stage) are valid for adoption scenarios.
 			if stage := target.Runtime.StageHostname(); stage != "" {
-				checks = append(checks, checkServiceStatusAny(svcMap, stage, serviceStatusNew, serviceStatusReadyToDeploy, serviceStatusRunning, serviceStatusActive)...)
+				checks = append(checks, checkServiceStatusAny(ctx, client, fetcher, projectID, svcMap, stage, serviceStatusNew, serviceStatusReadyToDeploy, serviceStatusRunning, serviceStatusActive)...)
 			}
 
 			// Check dependencies.
 			for _, dep := range target.Dependencies {
-				checks = append(checks, checkServiceRunning(svcMap, dep.Hostname)...)
+				checks = append(checks, checkServiceRunning(ctx, client, fetcher, projectID, svcMap, dep.Hostname)...)
 
 				// Cross-check dependency type matches plan.
 				checks = append(checks, checkServiceType(svcMap, dep.Hostname, dep.Type)...)
@@ -156,12 +156,16 @@ func checkProvision(client platform.Client, projectID string, engine *workflow.E
 }
 
 // checkServiceRunning checks a service exists and is running (RUNNING or ACTIVE).
-func checkServiceRunning(svcMap map[string]platform.ServiceStack, hostname string) []workflow.StepCheck {
-	return checkServiceStatusAny(svcMap, hostname, serviceStatusRunning, serviceStatusActive)
+func checkServiceRunning(ctx context.Context, client platform.Client, fetcher platform.LogFetcher, projectID string, svcMap map[string]platform.ServiceStack, hostname string) []workflow.StepCheck {
+	return checkServiceStatusAny(ctx, client, fetcher, projectID, svcMap, hostname, serviceStatusRunning, serviceStatusActive)
 }
 
-// checkServiceStatusAny checks a service exists with any of the expected statuses.
-func checkServiceStatusAny(svcMap map[string]platform.ServiceStack, hostname string, statuses ...string) []workflow.StepCheck {
+// checkServiceStatusAny checks a service exists with any of the expected
+// statuses. On rejection by status, attaches a structured Recovery hint via
+// ops.NonRunningRecovery so the agent has an explicit next-tool pointer for
+// non-running terminal states (FAILED → events; READY_TO_DEPLOY with failed
+// history → import override; READY_TO_DEPLOY clean → logs). Plan v4 §1.4.
+func checkServiceStatusAny(ctx context.Context, client platform.Client, fetcher platform.LogFetcher, projectID string, svcMap map[string]platform.ServiceStack, hostname string, statuses ...string) []workflow.StepCheck {
 	svc, exists := svcMap[hostname]
 	if !exists {
 		return []workflow.StepCheck{{
@@ -176,11 +180,13 @@ func checkServiceStatusAny(svcMap map[string]platform.ServiceStack, hostname str
 			Status: statusPass,
 		}}
 	}
-	return []workflow.StepCheck{{
+	check := workflow.StepCheck{
 		Name:   hostname + "_status",
 		Status: statusFail,
 		Detail: fmt.Sprintf("expected one of [%s], got %s", strings.Join(statuses, ", "), svc.Status),
-	}}
+	}
+	check.Recovery = ops.NonRunningRecovery(ctx, client, fetcher, projectID, hostname, svc.Status)
+	return []workflow.StepCheck{check}
 }
 
 // checkServiceType verifies a service's API type matches the plan type.

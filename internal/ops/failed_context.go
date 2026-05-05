@@ -42,6 +42,19 @@ type FailedDeployContext struct {
 // gate; 10 entries cover typical service churn comfortably.
 const failedContextLimit = 10
 
+// appVersionSourceNone is the marker for `startWithoutCode: true` bootstrap
+// stamps that carry no real build (Source="NONE", Build=nil). Skipped by
+// timeline construction (events.go) and failed-history scans alike — they
+// are never failures.
+const appVersionSourceNone = "NONE"
+
+// logFacilityApplication is the log facility for application-tier output
+// (build container, runtime container). Used in Recovery hint args and
+// FetchBuildLogs scoping. The literal `"application"` is also pinned in
+// build_logs.go by an AST contract test — kept as a string there so the
+// contract test stays valid.
+const logFacilityApplication = "application"
+
 // LatestFailedAppVersionContext returns the most-recent failed appVersion's
 // classification + a suggested-read tool hint for the named service, or nil
 // when no failed history exists.
@@ -50,8 +63,9 @@ const failedContextLimit = 10
 // ClassifyDeployFailure) so async webhook builds, sync deploy responses, and
 // pre-flight gates all emit the same diagnostic vocabulary. fetcher feeds
 // FetchBuildLogs to enrich the classifier when the failure has recognizable
-// patterns; pass platform.NewMockLogFetcher() in tests where logs aren't
-// asserted.
+// patterns; pass nil to skip log enrichment (callers that just need the
+// failure-class verdict — e.g. a workflow_checks rejection — don't need
+// LikelyCause text refinement, and the phase baseline is sufficient).
 //
 // Returns (nil, nil) when:
 //   - hostname is not in the project's service list
@@ -78,7 +92,7 @@ func LatestFailedAppVersionContext(
 		}
 	}
 	if serviceStackID == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // not-found sentinel: hostname doesn't resolve to a service in this project
 	}
 
 	appVersions, err := client.SearchAppVersions(ctx, projectID, failedContextLimit)
@@ -94,7 +108,7 @@ func LatestFailedAppVersionContext(
 		}
 		// Mirror ops/events.go: skip startWithoutCode appVersions
 		// (Source="NONE", no build info) — bootstrap stamps, not real builds.
-		if av.Source == "NONE" && av.Build == nil {
+		if av.Source == appVersionSourceNone && av.Build == nil {
 			continue
 		}
 		phase := FailurePhaseFromStatus(av.Status)
@@ -102,7 +116,10 @@ func LatestFailedAppVersionContext(
 			continue
 		}
 
-		buildLogs := FetchBuildLogs(ctx, client, fetcher, projectID, &av, 200)
+		var buildLogs []string
+		if fetcher != nil {
+			buildLogs = FetchBuildLogs(ctx, client, fetcher, projectID, &av, 200)
+		}
 		cls := ClassifyDeployFailure(FailureInput{
 			Phase:     phase,
 			Status:    av.Status,
@@ -122,7 +139,7 @@ func LatestFailedAppVersionContext(
 		}, nil
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil // not-found sentinel: no failed appVersion in scope window
 }
 
 // suggestedReadArgs builds the MCP-tool argument map for the diagnostic
@@ -131,6 +148,10 @@ func LatestFailedAppVersionContext(
 //   - build / prepare ran in the build container → facility=application
 //   - init crashed the runtime container → severity=ERROR (DEPLOY_FAILED
 //     hint in events.go appVersionHintMap mirrors this)
+//
+// Transport / preflight phases never reach this helper — failed-history
+// scans only walk completed builds, and those phases never produce an
+// AppVersion event.
 func suggestedReadArgs(phase DeployFailurePhase, hostname string) map[string]string {
 	args := map[string]string{
 		"serviceHostname": hostname,
@@ -138,9 +159,12 @@ func suggestedReadArgs(phase DeployFailurePhase, hostname string) map[string]str
 	}
 	switch phase {
 	case PhaseBuild, PhasePrepare:
-		args["facility"] = "application"
+		args["facility"] = logFacilityApplication
 	case PhaseInit:
 		args["severity"] = "ERROR"
+	case PhaseTransport, PhasePreflight:
+		// Unreachable in this caller path — these phases never produce
+		// an AppVersion event the failed-history scan walks.
 	}
 	return args
 }

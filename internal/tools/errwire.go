@@ -49,24 +49,27 @@ type ErrorWire struct {
 // fields (PreAttestCmd, ExpectedExit) are preserved when present so the
 // agent can re-run the check itself — these come from
 // workflow.StepCheck and pre-existed the unification.
+//
+// Recovery carries the structured next-tool pointer when the check
+// rejected on a recoverable condition (e.g. service in non-running
+// terminal status with a diagnose-before-destruct gate). Omitted when
+// the check has no actionable recovery beyond "fix and re-run".
 type CheckWire struct {
-	Kind         string `json:"kind"` // "preflight" | "verify" | "mount"
-	Name         string `json:"name"`
-	Status       string `json:"status"` // "pass" | "fail" | "skip"
-	Detail       string `json:"detail,omitempty"`
-	PreAttestCmd string `json:"preAttestCmd,omitempty"` // shell cmd agent can re-run
-	ExpectedExit int    `json:"expectedExit,omitempty"` // exit code that means pass
+	Kind         string        `json:"kind"` // "preflight" | "verify" | "mount"
+	Name         string        `json:"name"`
+	Status       string        `json:"status"` // "pass" | "fail" | "skip"
+	Detail       string        `json:"detail,omitempty"`
+	PreAttestCmd string        `json:"preAttestCmd,omitempty"` // shell cmd agent can re-run
+	ExpectedExit int           `json:"expectedExit,omitempty"` // exit code that means pass
+	Recovery     *RecoveryHint `json:"recovery,omitempty"`
 }
 
-// RecoveryHint points the agent at the canonical lifecycle recovery
-// surface. P4 contract: status is the single entry point for envelope
-// + plan + guidance. The hint never duplicates that data — it only
-// names the call.
-type RecoveryHint struct {
-	Tool   string            `json:"tool"`
-	Action string            `json:"action"`
-	Args   map[string]string `json:"args,omitempty"`
-}
+// RecoveryHint is the wire-form alias of topology.Recovery — promoted to
+// layer-2 vocabulary so workflow.StepCheck.Recovery and CheckWire.Recovery
+// share one struct. P4 contract: status is the canonical lifecycle entry
+// point; the hint never duplicates envelope/plan/guidance, it only names
+// the call.
+type RecoveryHint = topology.Recovery
 
 // ErrorOption configures the wire DTO. Composable.
 type ErrorOption func(*ErrorWire)
@@ -89,6 +92,7 @@ func WithChecks(kind string, checks []workflow.StepCheck) ErrorOption {
 				Detail:       c.Detail,
 				PreAttestCmd: c.PreAttestCmd,
 				ExpectedExit: c.ExpectedExit,
+				Recovery:     c.Recovery,
 			})
 		}
 		w.Checks = out

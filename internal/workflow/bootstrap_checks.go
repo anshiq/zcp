@@ -1,6 +1,10 @@
 package workflow
 
-import "context"
+import (
+	"context"
+
+	"github.com/zeropsio/zcp/internal/topology"
+)
 
 // StepCheckResult holds the outcome of a hard check on a bootstrap step.
 //
@@ -50,6 +54,15 @@ type StepCheck struct {
 	// condition — none in the current catalog. Omitted from JSON when
 	// zero.
 	ExpectedExit int `json:"expectedExit,omitempty"`
+
+	// Recovery is the structured next-tool pointer attached when this
+	// check failed in a way the agent can recover from (non-running
+	// terminal status, missing precondition that another tool can fix).
+	// Omitted from JSON when nil. Diagnose-before-destruct gates surface
+	// Recovery here so the engine's check-rejection path can pass it
+	// through to tools.CheckWire without a separate plumbing channel.
+	// Plan v4 §1.4.
+	Recovery *topology.Recovery `json:"recovery,omitempty"`
 }
 
 // StepChecker validates that a bootstrap step's requirements are met.

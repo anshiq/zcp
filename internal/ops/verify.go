@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/zeropsio/zcp/internal/platform"
+	"github.com/zeropsio/zcp/internal/topology"
 )
 
 // Verify status constants.
@@ -33,12 +34,10 @@ type VerifyResult struct {
 	Checks   []CheckResult `json:"checks"`
 }
 
-// Recovery carries a structured next-tool pointer for a failing check. Plain DTO — ops cannot import tools, so this is the ops-side mirror of tools.RecoveryHint.
-type Recovery struct {
-	Tool   string            `json:"tool"`
-	Action string            `json:"action"`
-	Args   map[string]string `json:"args,omitempty"`
-}
+// Recovery is the ops-layer alias of topology.Recovery — promoted to layer-2
+// vocabulary so workflow.StepCheck and tools.CheckWire both reference the
+// same struct without per-layer mirrors.
+type Recovery = topology.Recovery
 
 // CheckResult is the result of a single verification check.
 type CheckResult struct {

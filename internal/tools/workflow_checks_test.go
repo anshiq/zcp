@@ -26,7 +26,7 @@ func TestCheckProvision_AllServicesExist_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -56,7 +56,7 @@ func TestCheckProvision_ActiveStatus_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -84,7 +84,7 @@ func TestCheckProvision_MissingService_Fail(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -121,7 +121,7 @@ func TestCheckProvision_NoEnvVars_Fail(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -148,7 +148,7 @@ func TestCheckProvision_SharedStorage_SkipEnvCheck(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -177,7 +177,7 @@ func TestCheckProvision_ObjectStorage_SkipEnvCheck(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -190,7 +190,7 @@ func TestCheckProvision_ObjectStorage_SkipEnvCheck(t *testing.T) {
 func TestCheckProvision_NilPlan_ReturnsNil(t *testing.T) {
 	t.Parallel()
 	mock := platform.NewMock()
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -208,7 +208,7 @@ func TestCheckProvision_APIError_ReturnsError(t *testing.T) {
 			Runtime: workflow.RuntimeTarget{DevHostname: "appdev", Type: "nodejs@22", BootstrapMode: "standard", ExplicitStage: "appstage"},
 		}},
 	}
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	_, err := checker(context.Background(), plan, nil)
 	if err == nil {
 		t.Fatal("expected error from API failure")
@@ -288,7 +288,7 @@ func TestCheckProvision_StoresDiscoveredEnvVars(t *testing.T) {
 		t.Fatalf("GetState: %v", err)
 	}
 
-	checker := checkProvision(mock, "proj-1", eng)
+	checker := checkProvision(mock, nil, "proj-1", eng)
 	result, err := checker(context.Background(), state.Bootstrap.Plan, state.Bootstrap)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -328,7 +328,7 @@ func TestCheckProvision_ExistingRuntime_StageActive_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -358,7 +358,7 @@ func TestCheckProvision_ExistingRuntime_StageRunning_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -385,7 +385,7 @@ func TestCheckProvision_NewRuntime_StageActive_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -429,7 +429,7 @@ func TestCheckProvision_ExistsDep_StoresEnvVars(t *testing.T) {
 		t.Fatalf("GetState: %v", err)
 	}
 
-	checker := checkProvision(mock, "proj-1", eng)
+	checker := checkProvision(mock, nil, "proj-1", eng)
 	result, err := checker(context.Background(), state.Bootstrap.Plan, state.Bootstrap)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -471,7 +471,7 @@ func TestCheckProvision_ExistsDep_NoEnvVars_Fail(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -528,7 +528,7 @@ func TestCheckProvision_MixedResolution_StoresBoth(t *testing.T) {
 		t.Fatalf("GetState: %v", err)
 	}
 
-	checker := checkProvision(mock, "proj-1", eng)
+	checker := checkProvision(mock, nil, "proj-1", eng)
 	result, err := checker(context.Background(), state.Bootstrap.Plan, state.Bootstrap)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -571,7 +571,7 @@ func TestCheckProvision_SimpleMode_NoStage_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -600,7 +600,7 @@ func TestCheckProvision_DevMode_NoStage_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -635,7 +635,7 @@ func TestCheckProvision_StoreEnvVarsError_Fail(t *testing.T) {
 		{Key: "connectionString", Content: "pg://..."},
 	})
 
-	checker := checkProvision(mock, "proj-1", eng)
+	checker := checkProvision(mock, nil, "proj-1", eng)
 	result, err := checker(context.Background(), plan, &workflow.BootstrapState{})
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
@@ -722,7 +722,7 @@ func TestCheckProvision_TypeMismatch_Fail(t *testing.T) {
 				}},
 			}
 
-			checker := checkProvision(mock, "proj-1", nil)
+			checker := checkProvision(mock, nil, "proj-1", nil)
 			result, err := checker(context.Background(), plan, nil)
 			if err != nil {
 				t.Fatalf("checker error: %v", err)
@@ -778,7 +778,7 @@ func TestCheckProvision_TypeMatch_Pass(t *testing.T) {
 		}},
 	}
 
-	checker := checkProvision(mock, "proj-1", nil)
+	checker := checkProvision(mock, nil, "proj-1", nil)
 	result, err := checker(context.Background(), plan, nil)
 	if err != nil {
 		t.Fatalf("checker error: %v", err)
