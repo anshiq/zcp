@@ -64,6 +64,195 @@ PASS — tier-4 small-prod app block:
 Mechanism (two containers always running) → outcome (rolling deploys
 without downtime) → operational reality (autoscaling absorbs spikes).
 
+## Friendly-authority phrasing — the adapt-path contract
+
+The refinement rubric grades these import-comments against Criterion 2
+(Voice). Engineering-spec prose ("Single instance with the smallest
+managed RAM. Snapshots run, but there is no replica…") describes the
+shape correctly but doesn't tell the porter what to change. **Aim for
+the 8.5 anchor at first write** — at least one friendly-authority
+phrasing per service block, each tied to a concrete porter signal —
+not the 7.0 engineering-spec floor that refinement then has to lift.
+Voice rewrites across 50+ blocks at refinement time exceed the F-27
+threshold; voice belongs in env-content authoring.
+
+### Canonical phrasing patterns (count toward the score)
+
+- *"Feel free to ..."*
+- *"Configure this to ..."*
+- *"Replace ... with ..."*
+- *"Disabling ... is recommended ..."* / *"Enabling ... is recommended ..."*
+- *"Adapt this ..."* / *"Adjust this ..."*
+- *"Bump ... if ..."* / *"Switch ... when ..."*
+- *"... once you ..."* (conditional adapt)
+
+Each phrasing MUST name a concrete porter signal: a numeric threshold,
+a configuration state, or a named external condition (custom domain
+configured, monitoring shows X approaching ceiling, steady-state
+traffic spikes saturate fan-out, dataset size crosses N GB). Without a
+signal, it's a hedge — not friendly authority — and doesn't count.
+
+**Forbidden hedge phrasings** — weasel words that name no signal:
+
+- *"you might want to consider ..."*
+- *"perhaps this could ..."*
+- *"in some cases ..."*
+- *"depending on your needs ..."* (without a named need)
+
+The voice is *"this is the choice; here's the mechanism; you can
+change it for your needs IF X"* — declarative + invitation, never
+hedge.
+
+### Worked example — runtime block (api/worker/app)
+
+**BEFORE** — engineering-spec, 7.0 floor:
+
+```yaml
+# Two containers minimum on dedicated CPU — predictable latency
+# under load, no shared-CPU jitter from neighbour services. The
+# L7 balancer distributes requests across containers.
+- hostname: api
+  type: nodejs@22
+  zeropsSetup: prod
+  enableSubdomainAccess: true
+  minContainers: 2
+  verticalAutoscaling:
+    minRam: 0.5
+    minFreeRamGB: 0.25
+```
+
+The mechanism is named, but the porter doesn't know which knob to
+turn when their own traffic shape diverges.
+
+**AFTER** — friendly authority, 9.0 anchor:
+
+```yaml
+# Two containers minimum on dedicated CPU — predictable latency
+# under load, no shared-CPU jitter from neighbour services. Bump
+# minContainers to 3 if your steady-state traffic spikes saturate
+# the two-replica fan-out; switch verticalAutoscaling.maxRam upward
+# when monitoring shows containers approaching the current ceiling.
+# Subdomain access is on by default — disable it once you have a
+# custom domain configured.
+- hostname: api
+  type: nodejs@22
+  zeropsSetup: prod
+  enableSubdomainAccess: true
+  minContainers: 2
+  verticalAutoscaling:
+    minRam: 0.5
+    minFreeRamGB: 0.25
+```
+
+Three friendly-authority phrasings (*"Bump … if"*, *"switch … when"*,
+*"… once you"*); each tied to a concrete porter signal (steady-state
+saturation; monitoring shows ceiling approach; custom domain
+configured). The mechanism still leads.
+
+### Worked example — managed-service block (db/cache/broker/search)
+
+**BEFORE** — engineering-spec, 7.0 floor:
+
+```yaml
+# Single instance with the smallest managed RAM. Snapshots run,
+# but there is no replica — restoring means downtime, which is
+# acceptable because tier-3 stage data is rehearsal-grade.
+- hostname: db
+  type: postgresql@18
+  priority: 10
+  mode: NON_HA
+  verticalAutoscaling:
+    minRam: 0.25
+```
+
+**AFTER** — friendly authority, 8.5 anchor:
+
+```yaml
+# Single instance with the smallest managed RAM. Snapshots run,
+# but there is no replica — restoring means downtime, which is
+# acceptable because tier-3 stage data is rehearsal-grade. Switch
+# mode to HA once you need failover without a manual-restore
+# window; bump verticalAutoscaling.minRam if working-set growth
+# pushes query latency past your stage SLO.
+- hostname: db
+  type: postgresql@18
+  priority: 10
+  mode: NON_HA
+  verticalAutoscaling:
+    minRam: 0.25
+```
+
+Two friendly-authority phrasings (*"Switch … once you"*, *"bump …
+if"*); each names the porter signal that triggers the adapt
+(failover-without-downtime requirement; working-set-vs-SLO).
+
+### Worked example — project-level block (secrets, URL constants)
+
+**BEFORE** — engineering-spec, 7.0 floor:
+
+```yaml
+# APP_SECRET is generated once at import and shared across api +
+# worker so JWT verification holds across the L7 balancer.
+# STAGE_API_URL and STAGE_FRONTEND_URL are the single-slot stage
+# URLs that frontends and CORS allow-lists consume.
+project:
+  name: <recipe-slug>-stage
+  envVariables:
+    APP_SECRET: <@generateRandomString(<32>)>
+    STAGE_API_URL: https://api-stage.example.com
+    STAGE_FRONTEND_URL: https://app-stage.example.com
+```
+
+**AFTER** — friendly authority, 8.5 anchor:
+
+```yaml
+# APP_SECRET is generated once at import and shared across api +
+# worker so JWT verification holds across the L7 balancer. Rotate
+# this via the Zerops UI's project envs once you suspect leakage
+# — every container picks up the new value on next restart.
+# Replace STAGE_API_URL and STAGE_FRONTEND_URL with your own
+# stage hostnames once subdomain access is swapped for a custom
+# domain.
+project:
+  name: <recipe-slug>-stage
+  envVariables:
+    APP_SECRET: <@generateRandomString(<32>)>
+    STAGE_API_URL: https://api-stage.example.com
+    STAGE_FRONTEND_URL: https://app-stage.example.com
+```
+
+Two friendly-authority phrasings (*"Rotate … once you"*, *"Replace
+… once"*); each tied to a porter signal (suspected leakage;
+custom-domain swap).
+
+### Tier-specific carve-outs (HOLDs)
+
+Some tier × service combinations don't carry a clean adapt path.
+Be explicit rather than forcing a phrasing that strains:
+
+- **Tier 0 / tier 1 (workspace tiers)** — the porter is iterating,
+  not adapting. Friendly-authority phrasings strain because there's
+  no production-shaped knob to turn yet. Use **orientation framing**
+  ("This single instance with smallest managed RAM is enough for
+  agent / human-porter iteration; production scale arrives at
+  tier 4") rather than adapt-path framing. The voice score softens
+  here by design.
+- **`object-storage`** — no `mode` field, no replica option, no
+  `verticalAutoscaling`. The only adapt path is `objectStorageSize`.
+  **One adapt phrasing is fine** ("Bump objectStorageSize when
+  uploads outgrow the current quota").
+- **`meilisearch`** — no HA mode at any tier (platform contract).
+  Adapt path is `verticalAutoscaling.minRam` if index size grows.
+  Don't force a `mode`-flip phrasing; it doesn't exist.
+- **Single-valued mode fields** — at tier 5 db, mode is `HA` and
+  there is no further mode upgrade. **HOLD on the mode-flip
+  phrasing** for that field; pivot to `verticalAutoscaling`
+  adapt paths or backup retention adapt paths in the same block.
+
+When all adapt paths in a block fall under a HOLD, the block can
+land at the 7.0 voice floor without penalty — orientation framing
+is the correct shape.
+
 ## One causal teaching per block, deduped across services + tiers
 
 Each block teaches a non-obvious choice. Two different dedup rules

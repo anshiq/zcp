@@ -381,6 +381,66 @@ Cap 8 bullets. Cross-surface dedup: if a topic is taught in IG (with
 code/diff), do NOT duplicate in KB. KB is for topics that DON'T have
 a codebase-side landing point.
 
+### Pre-record classification — the 3-check discriminator
+
+**Before recording a KB bullet, classify it.** Spec §337-358 routes
+`platform-invariant` + `intersection` → KB; `framework-quirk` +
+`library-metadata` + `self-inflicted` → DISCARD. The classification
+table above is the routing rule; below is the discriminator to walk
+for each candidate before `record-fragment` (mirrors refinement-pass
+Action 1a):
+
+(i) **Walk the body, not the stem.** Look for ANY Zerops-side
+mechanism, concrete OR abstract. Concrete: `${db_*}`, `${broker_*}`,
+`${zeropsSubdomainHost}`, project-scope constants (`STAGE_*`/
+`DEV_*`), `zerops.yaml` directives, named managed services.
+Abstract: "project-scope URL constants", "the L7 balancer", "the
+auto-injected cross-service var", "container lifecycle". Both count.
+
+(ii) **Will you cite a Zerops guide?** (`env-var-model`,
+`init-commands`, `managed-services-nats`, `object-storage`,
+`rolling-deploys`.) An inline cite means a Zerops thread.
+
+(iii) **"Different scaffold code?" test** — does the trap fire
+regardless of platform (any user of NestJS / Vite / CORS / HTTP
+hits it anywhere), or does it require this recipe's Zerops wiring
+to manifest (project-scope env in CORS allow-list, `zsc execOnce`
+with `${appVersionId}`, `${db_*}` injection, `readinessCheck` +
+SIGTERM)? Platform-agnostic → DISCARD. Zerops-required →
+intersection → KB.
+
+Drop ONLY when (i) AND (ii) AND (iii) all return "no Zerops thread".
+A single anchor anywhere flips to KB-eligible.
+
+**DROP** (framework / spec / library quirks):
+
+- *"`@sveltejs/vite-plugin-svelte@^5` peer-requires Vite 6"* — pure
+  npm metadata; same trap on Vercel/Netlify/bare-Docker.
+- *"`createApplicationContext` + `app.listen()` crashes"* when body
+  teaches ONLY the NestJS factory contract with no yaml-shape
+  consequence — framework throws regardless of platform.
+- *"`@Controller('api')` collides with `setGlobalPrefix('api')`"* —
+  pure NestJS routing internals.
+
+**KEEP** (intersection):
+
+- *"`fetch().headers.get('X-Cache')` returns null"* with body naming
+  project-scope URL constants driving the CORS allow-list — abstract
+  Zerops reference + scaffold dependency.
+- *"TypeORM `synchronize: true` corrupts schema on multi-replica
+  boot"* — framework fact (DDL on boot) AND platform fact
+  (`minContainers ≥ 2` parallel boots) both contribute.
+- *"nats.js v2 strips URL-embedded creds silently"* — library fact +
+  `${broker_*}` injection both contribute.
+
+**Anti-pattern: the "headline test".** Classify by BODY, not stem.
+*"X-Cache returns null"* with body citing `env-var-model` + project-
+scope envs → KB; same stem with body mentioning only `Access-
+Control-Expose-Headers` + zero env vars → pure W3C CORS, DISCARD.
+
+Applying this at authoring time reduces refinement load — the
+refinement-pass Action 1a is the safety net, not the primary filter.
+
 Trade-offs are two-sided: name the chosen path AND the rejected
 alternative when one is namable. "Pin `synchronize: false`" alone is
 one-sided; "Pin `synchronize: false` and own DDL in an idempotent
