@@ -93,6 +93,23 @@ func runEmit(args []string) error {
 		if err := stageCodebaseArtifacts(runHostDir, simSrcRoot); err != nil {
 			return fmt.Errorf("stage codebase %s artifacts: %w", cb.Hostname, err)
 		}
+		// Run-23 §sim-scope — claudemd-author is policy-skipped in sim
+		// (the Zerops-free `/init` shape brief tests nothing sim-scoped).
+		// Instead, copy the source run's <host>dev/CLAUDE.md verbatim
+		// into fragments-new/<host>/codebase__<host>__claude-md.md so
+		// stitch picks it up like a real authored fragment. If the
+		// source run has no CLAUDE.md (fresh run, no claudemd phase
+		// completed), warn and skip — stitch falls back to engine
+		// placeholder.
+		fragsRootEarly := filepath.Join(*outDir, "fragments-new")
+		hostFragDir := filepath.Join(fragsRootEarly, cb.Hostname)
+		if err := os.MkdirAll(hostFragDir, 0o755); err != nil {
+			return err
+		}
+		if err := copyClaudeMDFromRun(runHostDir, cb.Hostname, hostFragDir); err != nil {
+			fmt.Fprintf(os.Stderr, "warn: %s/CLAUDE.md not staged: %v (stitch will fall back to engine placeholder)\n",
+				cb.Hostname, err)
+		}
 		plan.Codebases[i].SourceRoot = simSrcRoot
 		fmt.Printf("staged %s/zerops.yaml (%d → %d bytes after strip) + code artifacts\n",
 			cb.Hostname, len(raw), len(bare))
@@ -270,6 +287,29 @@ func stripYAMLCommentsForEmit(yamlBody string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// copyClaudeMDFromRun copies <runHostDir>/CLAUDE.md into the per-codebase
+// fragments-new dir as `codebase__<host>__claude-md.md` so stitch picks
+// it up as an authored fragment. Run-23 sim-scope policy: claudemd-author
+// is not replayed in sim; the source run's CLAUDE.md is reused verbatim.
+// Returns an error when the source file is missing so the caller can
+// emit a soft warning (stitch will fall back to engine placeholder).
+func copyClaudeMDFromRun(runHostDir, hostname, hostFragDir string) error {
+	src := filepath.Join(runHostDir, "CLAUDE.md")
+	body, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if len(body) == 0 {
+		return fmt.Errorf("CLAUDE.md at %s is empty", src)
+	}
+	dst := filepath.Join(hostFragDir, "codebase__"+hostname+"__claude-md.md")
+	if err := os.WriteFile(dst, body, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", dst, err)
+	}
+	fmt.Printf("copied %s/CLAUDE.md → %s (%d bytes)\n", hostname, dst, len(body))
+	return nil
 }
 
 func copyFile(src, dst string) error {

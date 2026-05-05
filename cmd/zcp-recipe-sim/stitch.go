@@ -287,9 +287,19 @@ func firstDiffOffset(a, b string) int {
 // (matching the production record-fragment path).
 //
 // Filename `__`-separator converts back to fragment id via `/` per the
-// replay-adapter convention. Directories are accepted regardless of
-// name; codebase hosts and the literal "env" subdir are the expected
-// layout but unrecognized subdirs aren't an error (just informational).
+// replay-adapter convention.
+//
+// Load order is explicitly [<codebase hosts>, env, finalize, refinement]
+// so refinement fragments override prior phases at the same fragmentId
+// (last write wins via `frags[fragmentID] = ...`). Production semantics:
+// refinement is the editorial pass and overrides codebase-content +
+// env-content + finalize; finalize sits between env-content and
+// refinement so its `root/intro` stamp doesn't get clobbered by
+// earlier alphabetic-order loads (os.ReadDir returns sorted entries).
+//
+// Recognized subdirs: every codebase hostname in the plan, plus the
+// literal "env", "finalize", and "refinement" directories. Other
+// subdirs are skipped with an informational note.
 func loadFragmentsTree(root string, planForRouting *recipe.Plan, codebaseHosts map[string]bool) error {
 	frags := planForRouting.Fragments
 	entries, err := os.ReadDir(root)
@@ -299,14 +309,40 @@ func loadFragmentsTree(root string, planForRouting *recipe.Plan, codebaseHosts m
 		}
 		return err
 	}
-	loaded := 0
+	// Bucket subdirs by phase so we can apply load-order semantics
+	// (refinement wins on conflict). Unknown dirs are reported but not
+	// loaded.
+	present := map[string]bool{}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		sub := e.Name()
-		if !codebaseHosts[sub] && sub != "env" {
-			fmt.Printf("(skip) unknown subdir fragments-new/%s\n", sub)
+		present[e.Name()] = true
+	}
+	// Build the load order: every codebase host (alphabetic), then
+	// env, finalize, refinement. Anything in present but not in this
+	// list is unknown.
+	hosts := make([]string, 0, len(codebaseHosts))
+	for h := range codebaseHosts {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+	order := make([]string, 0, len(hosts)+3)
+	order = append(order, hosts...)
+	order = append(order, "env", "finalize", "refinement")
+	known := map[string]bool{"env": true, "finalize": true, "refinement": true}
+	for _, h := range hosts {
+		known[h] = true
+	}
+	for name := range present {
+		if !known[name] {
+			fmt.Printf("(skip) unknown subdir fragments-new/%s\n", name)
+		}
+	}
+
+	loaded := 0
+	for _, sub := range order {
+		if !present[sub] {
 			continue
 		}
 		subDir := filepath.Join(root, sub)
@@ -327,7 +363,9 @@ func loadFragmentsTree(root string, planForRouting *recipe.Plan, codebaseHosts m
 			// plan.Fragments — they route into the typed plan.EnvComments
 			// map via the canonical engine helper. The yaml emitter
 			// reads from EnvComments, not Fragments, so skipping this
-			// step leaves every tier yaml uncommented.
+			// step leaves every tier yaml uncommented. ApplyEnvComment
+			// is overwrite-on-conflict, so refinement-phase env
+			// import-comments override env-content's at re-stitch.
 			if strings.HasPrefix(fragmentID, "env/") && strings.Contains(fragmentID, "/import-comments/") {
 				if err := recipe.ApplyEnvComment(planForRouting, fragmentID, string(body)); err != nil {
 					return fmt.Errorf("ApplyEnvComment %s: %w", fragmentID, err)
