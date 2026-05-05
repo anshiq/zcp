@@ -106,6 +106,86 @@ already catches many misroutings; refinement is the backstop:
    a recipe-preference), ACT — move the principle to IG (or HOLD
    with notice if the move requires a NEW IG item, which exceeds
    refinement scope).
+1a. If a KB bullet's mechanism is pure framework or pure spec quirk
+    (the trap fires regardless of where the framework runs; Zerops
+    contributes nothing structural), ACT: drop the bullet. Spec
+    §337-345 routes framework-quirks and spec-quirks to DISCARD.
+
+    The discard test (apply ALL three before dropping):
+
+    (i) **Walk the bullet's full body** — not just the stem. Look for
+    ANY mention of Zerops-side mechanisms, **abstract or concrete**.
+    Concrete: explicit env-var names (`${db_*}`, `${broker_*}`,
+    `${zeropsSubdomainHost}`, project-scope constants like
+    `STAGE_*`/`DEV_*`), `zerops.yaml` directives, named managed
+    services. Abstract: phrasings like "project-scope URL constants",
+    "the L7 balancer", "the auto-injected cross-service var",
+    "container lifecycle", "the platform's deploy primitive" — these
+    reference Zerops mechanisms without naming the specific token.
+    **Both shapes count for check (i).** A bullet whose body
+    abstractly references a Zerops mechanism is intersection content;
+    only bullets whose bodies make zero reference (concrete or
+    abstract) to any Zerops-side concept fail check (i).
+
+    Mechanism categories that count when referenced abstractly OR
+    concretely: env-var injection (project-scope or cross-service),
+    L7 balancer behavior, container lifecycle (rolling deploys,
+    SIGTERM, init-commands, app-version key), managed service
+    interaction (the recipe's specific service or the category),
+    deploy primitives (`zsc`, yaml directives, subdomain access),
+    VXLAN routing.
+
+    (ii) **Check inline citations** — does the body name a Zerops
+    guide (e.g. "the `env-var-model` guide on Zerops docs covers...")?
+    An inline guide cite means the bullet has a Zerops thread the
+    headline mechanism may have abstracted away. KEEP the bullet —
+    the cite is the porter's deeper-understanding pointer.
+
+    (iii) **Apply the "would they hit this with different scaffold
+    code?" test** — is the trap a property of the framework alone
+    (any user of NestJS hits it; any user of CORS hits it), or does
+    it require the recipe's specific Zerops wiring to manifest? If
+    the latter (e.g. requires the recipe to inject a project-scope
+    URL into the CORS allow-list), it's intersection — KEEP.
+
+    Drop ONLY when (i) AND (ii) AND (iii) all return "no Zerops
+    thread". A single Zerops anchor anywhere — body mention OR
+    inline cite OR scaffold-shape dependency — flips this to KEEP
+    (or to "reshape body to lead with the Zerops thread", which is
+    a separate Action: see rule 4).
+
+    Worked examples that pass all three checks (DROP):
+    - **`@sveltejs/vite-plugin-svelte@^5` peer-requires Vite 6, not
+      Vite 5** — npm registry metadata. No env injection, no
+      balancer behavior, no managed service. No inline Zerops cite.
+      Same trap fires on Vercel, Netlify, bare Docker. DROP.
+    - **`createApplicationContext` plus `app.listen()` crashes**
+      when the body teaches ONLY the NestJS factory-method contract
+      with no Zerops yaml-shape consequence. (Counter-case: a body
+      that ALSO teaches "no `ports`, no `healthCheck`, no
+      `readinessCheck` in zerops.yaml because the worker has no
+      HTTP surface" — that IS intersection; KEEP.)
+
+    Worked examples that FAIL the test (KEEP, because of body
+    content the headline abstracts):
+    - **"`X-Cache` header undefined in SPA"** with a body that ends
+      "the `env-var-model` guide covers the project-scope URL
+      constants that drive the allowed origins list" — the body has
+      a Zerops guide cite; the recipe wires project-scope env vars
+      (`STAGE_FRONTEND_URL`, `DEV_FRONTEND_URL`) into the CORS
+      allow-list. Headline is CORS; body is Zerops × CORS. KEEP —
+      or reshape to lead with the project-scope-env angle.
+    - **"`fetch().headers.get('X-Cache')` returns null"** with body
+      that mentions only `Access-Control-Expose-Headers` and zero
+      env vars/Zerops guides — pure W3C CORS. DROP.
+
+    The discriminator is the BODY content, not the stem keyword.
+    Two bullets with similar X-Cache stems can have opposite
+    verdicts depending on what the body teaches.
+
+    If dropping would bring KB below the 5-bullet floor (spec §214),
+    HOLD with notice: "framework-quirk drop blocked by KB floor;
+    upstream codebase-content classification gap."
 2. If a CLAUDE.md fragment carries Zerops-platform content
    (managed-service hostnames, env-var aliases), the record-time
    check should have refused already; if it slipped through, ACT —
@@ -114,6 +194,88 @@ already catches many misroutings; refinement is the backstop:
 3. Cross-check operational content: if a CLAUDE.md fragment carries
    build/run/test commands but the project has none of those, HOLD
    (there's nothing to fix).
+
+### Criterion 6 — Cross-surface non-duplication (IG + KB + zerops.yaml)
+
+Build a per-codebase topic-by-mechanism index. Walk each topic across
+the codebase's IG H3 headings + KB bullet stems + zerops.yaml
+block-level comments. Per `zerops://themes/refinement-references/cross_surface_dedup`:
+
+1. If the topic appears on EXACTLY ONE surface, HOLD.
+2. If the topic appears on IG (positive shape) AND KB (symptom angle)
+   AND the KB carries a UNIQUE symptom angle (an HTTP code, quoted
+   error string, observable wrong-state different from what IG names),
+   HOLD. KB legitimately complements IG when the angles diverge.
+3. If the topic appears on IG (positive shape) AND KB (symptom angle)
+   but the KB symptom restates IG's mechanism rather than carrying a
+   unique angle, ACT: rewrite the KB body so it:
+   (a) opens with the symptom — exactly the phrase a porter searches
+       for, no meta-tag;
+   (b) confirms the mechanism in 1-2 plain sentences (one breath of
+       "this is what's happening"), without re-teaching the fix;
+   (c) closes by gesturing at where the fix lives — naturally, in
+       prose, naming the *topic* that lives there ("the recommended
+       wiring pattern is in the Integration Guide above") rather
+       than item-number anchors ("see IG #3").
+
+   Forbidden meta-decoration in the rewritten body:
+   - Opener "Symptom of..." (classification-talk; goldens never use
+     this).
+   - Closer "Search anchor: ..." (meta-tag; goldens never use this).
+   - Item-number cross-references like "see IG #3" or "fix lives at
+     IG #2" (mechanical; goldens integrate cross-refs in prose).
+   - Non-Zerops tooling names (`kubectl`, `docker-compose`, etc. —
+     porters on Zerops use the dashboard or zcli).
+
+   Worked example. ORIGINAL KB body (long, re-teaches the mechanism
+   the IG owns):
+   > **`NatsError: Authorization Violation` on startup** —
+   > Hand-composing
+   > `nats://${broker_user}:${broker_password}@${broker_hostname}:${broker_port}`
+   > and passing it as `servers` to a NATS client triggers a
+   > double-auth: the client parses the embedded credentials AND
+   > issues a separate SASL exchange with the same values, the
+   > server rejects the second attempt, and the worker crashes
+   > before any subscription registers. Either pass user/pass as
+   > connect options with a credential-free `host:port` URL, or
+   > pass `${broker_connectionString}` (the platform-built URL)
+   > directly. The `managed-services-nats` guide on Zerops docs
+   > covers both supported wiring patterns.
+
+   COLLAPSED (after Action 6 rule 3):
+   > **`NatsError: Authorization Violation` on startup** — Passing
+   > `nats://user:pass@host:port` as the `servers` URL triggers
+   > double authentication. The client parses the embedded
+   > credentials, then issues a separate SASL exchange with the same
+   > values, and the server rejects the second attempt before any
+   > subscription registers. The recommended wiring (separate
+   > `user`/`pass` options with a credential-free `host:port` URL,
+   > or `${broker_connectionString}` passed through unmodified) is
+   > in the Integration Guide above; the `managed-services-nats`
+   > guide on Zerops docs covers the cluster-failover behaviour for
+   > the core pub/sub pattern this codebase uses.
+
+   The collapsed body retains: the symptom (search-anchor), the
+   failure mechanism (one paragraph), the inline guide cite (porters
+   who want depth still get the pointer), and a natural prose
+   pointer at the IG ("is in the Integration Guide above") without
+   item-number decoration.
+4. If the topic appears on IG AND zerops.yaml block comment AND the
+   yaml comment re-explains the same mechanism the IG already names,
+   ACT: replace the yaml block comment with the field-level decision
+   (the WHY of the field value), drop the mechanism re-teach. Voice
+   criterion may apply to the new shape.
+5. If the topic appears on KB AND zerops.yaml block comment with no IG
+   item, ACT: pick the more porter-relevant surface (zerops.yaml if
+   the porter would adapt the field; KB if the porter would search for
+   the symptom). Drop the other.
+6. If acting would drop KB below the 5-bullet floor (spec §214), HOLD
+   with notice: "dedup blocked by KB floor; backfill from facts.jsonl
+   exceeds refinement scope." (This is the rare honest HOLD; most
+   recipes have unique gotchas to surface.)
+
+The criterion is structural, not voice — apply it before or after the
+voice pass; order doesn't matter.
 
 ## Showcase tier worker supplements
 

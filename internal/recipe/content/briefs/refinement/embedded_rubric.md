@@ -1,6 +1,6 @@
 # Content quality rubric
 
-The rubric grades each of the seven content surfaces on five
+The rubric grades each of the seven content surfaces on six
 criteria. Each criterion has three hand-scored anchor examples
 (7.0 = run-15 floor, 8.5 = reference floor, 9.0 = above golden) and
 explicit "how to score" signals that let two graders converge to the
@@ -437,6 +437,136 @@ field_rationale / tier_decision) in facts.jsonl whose `topic` or
 
 ---
 
+## Criterion 6 — Cross-surface non-duplication (IG + KB + zerops.yaml comments)
+
+**Why this matters**: spec §410-418 ("each fact lives on ONE surface;
+cross-references rather than re-author"). When the same Zerops
+mechanism is authored across IG + KB + zerops.yaml comments of one
+codebase, the porter reads the same fact 3-5 times in one walk —
+wasted attention, and a signal that the agent didn't classify
+cleanly. Run-25 shipped 5 distinct multi-surface duplications (the
+NATS connection-string credential trap reappeared on five surfaces
+across two codebases; same-key shadow trap on five surfaces;
+forcePathStyle for MinIO on four). The rule is structural, not voice
+— it's a rubric criterion, not a stylistic preference.
+
+### 7.0 anchor — ≥3 surfaces of one codebase carry the same Zerops mechanism
+
+apidev/zerops.yaml block comment:
+
+```yaml
+# NATS_URL is composed from ${broker_*}; the nats.js client parses
+# the URL and silently drops embedded credentials, then SASL
+# re-authenticates from connect-options — declare user/pass on the
+# connect-options object, not in the URL.
+- NATS_URL: nats://${broker_user}:${broker_password}@${broker_hostname}:${broker_port}
+```
+
+apidev IG #4:
+
+> ### 4. Pass NATS credentials via connect-options, not the URL
+>
+> nats.js v2 strips URL-embedded credentials silently before its
+> SASL handshake. Declare `user` / `pass` on the connect-options
+> object so authentication actually fires…
+
+apidev KB #3:
+
+> **`Authorization Violation` on NATS connect** — nats.js v2 parses
+> the URL, drops the embedded creds, and the broker rejects the
+> handshake. Pass `user` / `pass` on the connect-options object…
+
+Each fragment is fine in isolation; collectively they triple-author
+one Zerops mechanism (the nats.js URL-cred-stripping pitfall under
+`${broker_*}` env injection). The porter reads the same fix three
+times in one codebase walk. Misclassification signal: at most ONE of
+these is the primary; the other two should be cross-references.
+
+### 8.5 anchor — every Zerops mechanism on ONE primary surface; other surfaces cross-reference in natural prose
+
+apidev IG #4 (positive shape — primary):
+
+> ### 4. Pass NATS credentials via connect-options, not the URL
+>
+> nats.js v2 strips URL-embedded credentials silently before its
+> SASL handshake. Declare `user` / `pass` on the connect-options
+> object…
+
+apidev KB #3 (symptom angle — natural-prose cross-reference):
+
+> **`NatsError: Authorization Violation` on startup** — Passing
+> `nats://user:pass@host:port` as the `servers` URL triggers
+> double authentication. The client parses the embedded
+> credentials, then issues a separate SASL exchange with the same
+> values, and the server rejects the second attempt before any
+> subscription registers. The recommended wiring (separate
+> `user`/`pass` options with a credential-free `host:port` URL,
+> or `${broker_connectionString}` passed through unmodified) is
+> in the Integration Guide above; the `managed-services-nats`
+> guide on Zerops docs covers the cluster-failover behaviour for
+> the core pub/sub pattern this codebase uses.
+
+apidev/zerops.yaml block comment (silent on the auth-violation
+mechanism — at most names the env-var composition):
+
+```yaml
+# Compose NATS_URL from the broker env-vars Zerops injects.
+- NATS_URL: nats://${broker_user}:${broker_password}@${broker_hostname}:${broker_port}
+```
+
+The IG owns the mechanism. The KB carries the symptom angle (the
+quoted error string the porter searches for), confirms the failure
+mechanism in one breath, and gestures at the IG in natural prose —
+without "Symptom of…" classification-talk, "Search anchor:"
+meta-decoration, or item-number anchors like "see IG #4". The yaml
+comment is silent on the mechanism — the porter adapting the field
+reads it WITHOUT re-encountering the auth-violation teaching.
+
+### 9.0 anchor — zero duplications + every cross-reference is integrated in natural prose
+
+Same as 8.5 but every cross-surface reference is integrated in prose
+that names the *topic* that lives at the target ("the recommended
+wiring is in the Integration Guide above") rather than mechanical
+item-number anchors ("see IG #4"); facts.jsonl shows zero
+candidate-duplicates (the recording phase already classified each
+fact to one surface, refinement only had to verify routing). A fresh
+reviewer doing a topic-by-mechanism index across one codebase finds
+each Zerops mechanism on exactly one primary surface, with every
+secondary mention cross-referencing by topic in natural prose.
+
+### How to score
+
+For each codebase, build a topic-by-mechanism index across:
+- IG items #2..N (positive shapes — H3 headings)
+- KB bullets (symptom phrases)
+- zerops.yaml block-level comments (mechanism explanations, NOT
+  field-narrating comments)
+
+For each topic appearing on ≥2 surfaces:
+- If one is positive-shape (IG) and others are symptom (KB) AND each
+  KB explicitly names a unique angle (a quoted error string, an HTTP
+  code, an observable wrong-state different from what the IG names)
+  AND gestures at the IG in natural prose for the fix, count as ONE
+  surface (the IG owns it; KB is search-anchor metadata).
+- If one is positive-shape (IG) and others repeat the same mechanism
+  with no unique angle, count as duplication.
+- If two surfaces are positive-shape on the same Zerops mechanism
+  (e.g. IG explains forcePathStyle AND zerops.yaml comment
+  re-explains forcePathStyle), count as duplication.
+
+| Distinct mechanisms duplicated across surfaces (per codebase) | Score |
+|---|---|
+| ≥3 | 7.0 |
+| 1–2 | 7.5 |
+| 0 | 8.5 |
+| 0 + every cross-reference integrated in natural prose (no "Symptom of…" openers, no "Search anchor:" meta-tags, no item-number anchors like "see IG #4") | 9.0 |
+
+The criterion is `n/a` for surfaces that own zero of the mechanism
+types (root README, intros, CLAUDE.md). Codebase intro is also `n/a`
+— intros don't host platform mechanism content.
+
+---
+
 ## Aggregate scoring
 
 Per surface (when criterion is in scope):
@@ -480,7 +610,7 @@ anchor it shares more shape signals with (not the midpoint).
 When an artifact exhibits one criterion's signal at 9.0 and another
 criterion's signal at 7.0 simultaneously (e.g. perfect stem shape +
 zero citation), the criteria are scored independently — that's the
-point of having five criteria.
+point of having six criteria.
 
 ---
 
