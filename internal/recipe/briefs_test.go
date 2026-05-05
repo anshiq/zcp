@@ -416,9 +416,13 @@ func TestBuildScaffoldBrief_FrontendIncludesTierFactTable(t *testing.T) {
 
 // TestBuildFeatureBrief_ShowcaseTierIncludesScenarioSpec — run-13 §F.
 // Showcase-tier recipes get the hardcoded scenario spec atom that
-// mandates one demonstration panel per managed-service category
-// (items / cache / queue / storage / search) plus per-panel browser-
-// verification facts.
+// mandates one card per managed-service category (items / cache /
+// queue / storage / search) — reframed as a health-dashboard grid —
+// plus per-card browser-verification with counter-delta assertion.
+// Pins also lock the load-bearing design points that two cold
+// reviewers flagged as silently-deletable: the chart-ban head term,
+// the X-Cache HIT/MISS proof, the fetch-after-trigger live-state
+// pattern, and the websocket prohibition.
 func TestBuildFeatureBrief_ShowcaseTierIncludesScenarioSpec(t *testing.T) {
 	t.Parallel()
 
@@ -430,8 +434,13 @@ func TestBuildFeatureBrief_ShowcaseTierIncludesScenarioSpec(t *testing.T) {
 	}
 	mustContain(t, brief.Body, "Showcase scenario specification")
 	mustContain(t, brief.Body, "Queue / Broker")
-	mustContain(t, brief.Body, "Per-panel browser-verification")
-	mustContain(t, brief.Body, "queue-browser")
+	mustContain(t, brief.Body, "Per-card browser-verification")
+	mustContain(t, brief.Body, `[data-test="queue-processed"]`)
+	mustContain(t, brief.Body, `[data-test="cache-state-badge"]`)
+	mustContain(t, brief.Body, "X-Cache: HIT/MISS")
+	mustContain(t, brief.Body, "Visualization vocabulary")
+	mustContain(t, brief.Body, "no websockets")
+	mustContain(t, brief.Body, "After demo trigger: re-fetch the live-state value")
 }
 
 // TestBuildFeatureBrief_MinimalTierOmitsScenarioSpec — run-13 §F.

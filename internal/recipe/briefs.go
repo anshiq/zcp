@@ -101,9 +101,19 @@ import (
 // atoms. Pass dispatch is now mandatory — the legacy "single dispatch
 // on a non-split caller" path is gone (BuildFeatureBrief rejects
 // empty pass per TestBuildFeatureBrief_RejectsEmptyPass).
+//
+// Run-25 dashboard-reframe raised FeatureBriefCap 32 → 40 KB to
+// absorb the showcase scenario rewrite: the brief shifted from "demo
+// panels in tabs" to "health-dashboard cards" and gained load-bearing
+// content (visualization-vocabulary closed list, live-state fetch
+// pattern, counter-delta verification protocol, expanded forbid-list
+// for HTML viz primitives). The atom grew from ~7 KB to ~11 KB —
+// pushed worst-case frontend-pass over the prior 32 KB cap. The
+// added bytes are not slack; trimming them re-opens the loopholes
+// codex code review flagged.
 const (
 	ScaffoldBriefCap = 48 * 1024
-	FeatureBriefCap  = 32 * 1024
+	FeatureBriefCap  = 40 * 1024
 )
 
 // BriefKind identifies a sub-agent role. Scaffold + feature have
