@@ -325,8 +325,16 @@ func ListServiceMetas(baseDir string) ([]*ServiceMeta, error) {
 	return metas, nil
 }
 
-// PruneServiceMetas removes service meta files that don't match any live hostname.
-// A meta is kept if its Hostname OR StageHostname exists in liveHostnames.
+// PruneServiceMetas removes service meta files that don't match any live
+// hostname. A container-mode meta is kept if its Hostname OR StageHostname
+// exists in liveHostnames.
+//
+// Local-mode metas (Mode = local-only / local-stage) are skipped entirely —
+// they're project-keyed (Hostname = project.Name set by LocalAutoAdopt), not
+// service-keyed, so the live-hostnames predicate never holds. Pruning them
+// silently orphaned every local meta on every develop_start, surfacing as
+// spurious ADOPT_REQUIRED rejections after a successful auto-adopt.
+//
 // Returns the sorted list of deleted primary hostnames so callers can surface
 // the cleanup transparently (e.g. bootstrap-start's `cleanedUpOrphanMetas`).
 func PruneServiceMetas(baseDir string, liveHostnames map[string]bool) []string {
@@ -338,6 +346,9 @@ func PruneServiceMetas(baseDir string, liveHostnames map[string]bool) []string {
 	var deleted []string
 	for _, m := range metas {
 		if m == nil {
+			continue
+		}
+		if m.Mode == topology.PlanModeLocalOnly || m.Mode == topology.PlanModeLocalStage {
 			continue
 		}
 		keep := false

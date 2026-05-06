@@ -482,6 +482,66 @@ func TestPruneServiceMetas_RemovesStaleEntries(t *testing.T) {
 			nil,
 			nil,
 		},
+		{
+			// Regression: local-only metas use project-name as Hostname (set by
+			// LocalAutoAdopt to project.Name), not a service name. liveHostnames
+			// holds service names — the project name is never in it. Pruning
+			// against this predicate falsely orphaned every local-only meta on
+			// every develop_start, surfacing as spurious ADOPT_REQUIRED
+			// rejections. local-only and local-stage are project-keyed; they
+			// must be skipped entirely by the orphan check.
+			"local-only meta is project-keyed and survives prune",
+			[]*ServiceMeta{
+				{Hostname: "eval-zcp", Mode: topology.PlanModeLocalOnly, BootstrapSession: "", BootstrappedAt: "2026-05-06"},
+			},
+			[]string{"app", "db", "zcp"}, // services in the project — none equal project name
+			[]string{"eval-zcp"},
+		},
+		{
+			// Sharper local-stage case: even when neither projectName nor
+			// stageHostname is in liveHostnames (e.g. user deleted the linked
+			// stage runtime in the dashboard), the local meta must still
+			// survive — it's project-keyed and the agent re-links via
+			// `adopt-local`. Pruning it would silently kick the project back
+			// to "no meta" → ADOPT_REQUIRED on the next develop_start.
+			"local-stage meta survives even when stage host is gone",
+			[]*ServiceMeta{
+				{Hostname: "eval-zcp", Mode: topology.PlanModeLocalStage, StageHostname: "deleted-stage", BootstrappedAt: "2026-05-06"},
+			},
+			[]string{"app", "db"}, // stage host disappeared
+			[]string{"eval-zcp"},
+		},
+		{
+			"local-only meta survives even when its project-name happens to collide with no service",
+			[]*ServiceMeta{
+				{Hostname: "myproject", Mode: topology.PlanModeLocalOnly, BootstrappedAt: "2026-05-06"},
+				{Hostname: "stalecontainer", Mode: topology.ModeStandard, StageHostname: "stalecontainerstage", BootstrappedAt: "2026-05-06"},
+			},
+			[]string{"app", "db"}, // neither container hostname is live → container meta pruned, local-only kept
+			[]string{"myproject"},
+		},
+		{
+			// Explicit container-mode regression: dev meta whose hostname is
+			// no longer live MUST still be pruned. The local-mode skip is
+			// narrow (PlanModeLocalOnly + PlanModeLocalStage only); every
+			// container Mode (dev / standard / stage / simple / "") must
+			// continue to flow through the live-hostname predicate.
+			"container dev meta still prunes when stale",
+			[]*ServiceMeta{
+				{Hostname: "apidev", Mode: topology.ModeDev, BootstrappedAt: "2026-05-06"},
+				{Hostname: "appdev", Mode: topology.ModeDev, BootstrappedAt: "2026-05-06"},
+			},
+			[]string{"apidev", "db"}, // appdev gone
+			[]string{"apidev"},
+		},
+		{
+			"container simple meta still prunes when stale",
+			[]*ServiceMeta{
+				{Hostname: "docs", Mode: topology.ModeSimple, BootstrappedAt: "2026-05-06"},
+			},
+			[]string{"app", "db"}, // docs gone
+			nil,
+		},
 	}
 
 	for _, tt := range tests {
