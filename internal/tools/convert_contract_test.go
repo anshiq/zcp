@@ -27,7 +27,7 @@ func TestTA07_ConvertError_JSONContractForOptionalFields(t *testing.T) {
 		pe := platform.NewPlatformError(
 			platform.ErrAPIError,
 			"Invalid parameter provided.",
-			"The platform flagged specific fields — see apiMeta.",
+			"Field '{host}.mode' (mode not supported) rejected. Fix in YAML and retry.",
 		)
 		pe.APICode = "projectImportInvalidParameter"
 		pe.Diagnostic = "full stderr tail"

@@ -1,6 +1,6 @@
 ---
 id: bootstrap/recipe/provision
-atomIds: [bootstrap-recipe-import, develop-api-error-meta]
+atomIds: [bootstrap-recipe-import]
 description: "Recipe route, provision step in progress, target service ACTIVE awaiting first deploy."
 ---
 ### Provision recipe services
@@ -38,47 +38,3 @@ Runtimes must reach a running state (`RUNNING` or `ACTIVE`) before `deploy`; the
 4. **Record discovered env vars.**
 
 After services are running, include managed-service env var keys in the provision attestation (e.g. `db: connectionString, port`) for later `run.envVariables` references.
-
----
-
-### Read `apiMeta` on every error response
-
-Any `zerops_*` tool surfacing a Zerops API 4xx may include `apiMeta`.
-Missing key = no server detail; present key = exact rejected fields.
-
-Shape:
-
-```json
-{
-  "code": "API_ERROR",
-  "apiCode": "projectImportInvalidParameter",
-  "error": "Invalid parameter provided.",
-  "suggestion": "Zerops flagged specific fields — see apiMeta for each field's failure reason.",
-  "apiMeta": [
-    {
-      "code": "projectImportInvalidParameter",
-      "error": "Invalid parameter provided.",
-      "metadata": {
-        "storage.mode": ["mode not supported"]
-      }
-    }
-  ]
-}
-```
-
-Each `apiMeta[].metadata` key is a **field path** (`<host>.mode`,
-`build.base`, `parameter`); values list reasons. Fix those YAML fields
-and retry — do not guess.
-
-Common `apiCode` shapes:
-
-| `apiCode` | `metadata` key | Meaning |
-|---|---|---|
-| `projectImportInvalidParameter` | `<host>.mode` | type/mode combination not allowed |
-| `projectImportMissingParameter` | `parameter` (value `<host>.mode`) | required field missing |
-| `serviceStackTypeNotFound` | `serviceStackTypeVersion` | version string not in platform catalog |
-| `zeropsYamlInvalidParameter` | `build.base` etc. | zerops.yaml validator caught the field pre-build |
-| `yamlValidationInvalidYaml` | `reason` (with `line N:`) | YAML syntax error |
-
-Per-service import failures use `serviceErrors[].meta` with the same
-shape, one entry per failing service-stack.

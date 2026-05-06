@@ -225,7 +225,7 @@ func TestConvertError_WithAPIMeta(t *testing.T) {
 	pe := platform.NewPlatformError(
 		platform.ErrAPIError,
 		"Invalid parameter provided.",
-		"The platform flagged specific fields — see apiMeta for each field's failure reason.",
+		"Field 'storage.mode' (mode not supported) rejected. Fix in YAML and retry.",
 	)
 	pe.APICode = "projectImportInvalidParameter"
 	pe.APIMeta = []platform.APIMetaItem{

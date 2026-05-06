@@ -1,6 +1,6 @@
 ---
 id: bootstrap/classic/discover-standard-dynamic
-atomIds: [bootstrap-intro, bootstrap-classic-plan-dynamic, bootstrap-classic-plan-static, develop-api-error-meta, bootstrap-mode-prompt, bootstrap-runtime-classes]
+atomIds: [bootstrap-intro, bootstrap-classic-plan-dynamic, bootstrap-classic-plan-static, bootstrap-mode-prompt, bootstrap-runtime-classes]
 description: "Classic route, discover step — agent inspecting an empty project for a dynamic runtime in mode=standard."
 ---
 Bootstrap is **infrastructure-only**: create services, mount filesystems, discover env var keys, write the evidence file. No application code, no `zerops.yaml`, no first deploy — those belong to the develop workflow.
@@ -52,50 +52,6 @@ Before submitting the plan, confirm with the user:
 - whether a stage pair is wanted (`standard` mode) or a single container (`simple` / `dev` mode)
 
 Close-mode, git-push capability, and the actual `zerops.yaml` (including `deployFiles` shape) are decided in develop after the first deploy lands — not here.
-
----
-
-### Read `apiMeta` on every error response
-
-Any `zerops_*` tool surfacing a Zerops API 4xx may include `apiMeta`.
-Missing key = no server detail; present key = exact rejected fields.
-
-Shape:
-
-```json
-{
-  "code": "API_ERROR",
-  "apiCode": "projectImportInvalidParameter",
-  "error": "Invalid parameter provided.",
-  "suggestion": "Zerops flagged specific fields — see apiMeta for each field's failure reason.",
-  "apiMeta": [
-    {
-      "code": "projectImportInvalidParameter",
-      "error": "Invalid parameter provided.",
-      "metadata": {
-        "storage.mode": ["mode not supported"]
-      }
-    }
-  ]
-}
-```
-
-Each `apiMeta[].metadata` key is a **field path** (`<host>.mode`,
-`build.base`, `parameter`); values list reasons. Fix those YAML fields
-and retry — do not guess.
-
-Common `apiCode` shapes:
-
-| `apiCode` | `metadata` key | Meaning |
-|---|---|---|
-| `projectImportInvalidParameter` | `<host>.mode` | type/mode combination not allowed |
-| `projectImportMissingParameter` | `parameter` (value `<host>.mode`) | required field missing |
-| `serviceStackTypeNotFound` | `serviceStackTypeVersion` | version string not in platform catalog |
-| `zeropsYamlInvalidParameter` | `build.base` etc. | zerops.yaml validator caught the field pre-build |
-| `yamlValidationInvalidYaml` | `reason` (with `line N:`) | YAML syntax error |
-
-Per-service import failures use `serviceErrors[].meta` with the same
-shape, one entry per failing service-stack.
 
 ---
 

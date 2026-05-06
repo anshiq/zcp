@@ -1,6 +1,6 @@
 ---
 id: develop/post-adopt-standard-unset
-atomIds: [develop-intro, develop-api-error-meta, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-strategy-review, develop-deploy-files-self-deploy, develop-dynamic-runtime-start-container, develop-knowledge-pointers, develop-standard-unset-iterate, develop-standard-unset-promote-stage, develop-auto-close-semantics, develop-verify-matrix, develop-platform-rules-container]
+atomIds: [develop-intro, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-strategy-review, develop-deploy-files-self-deploy, develop-dynamic-runtime-start-container, develop-knowledge-pointers, develop-standard-unset-iterate, develop-standard-unset-promote-stage, develop-auto-close-semantics, develop-verify-matrix, develop-platform-rules-container]
 description: "Adopted standard pair, both halves running, close-mode never picked."
 ---
 ### Development & Deploy
@@ -8,50 +8,6 @@ description: "Adopted standard pair, both halves running, close-mode never picke
 Infrastructure is provisioned and at least one runtime already has a
 successful first deploy on record. You're in the edit loop: discover
 the current state, implement the user's request, redeploy, verify.
-
----
-
-### Read `apiMeta` on every error response
-
-Any `zerops_*` tool surfacing a Zerops API 4xx may include `apiMeta`.
-Missing key = no server detail; present key = exact rejected fields.
-
-Shape:
-
-```json
-{
-  "code": "API_ERROR",
-  "apiCode": "projectImportInvalidParameter",
-  "error": "Invalid parameter provided.",
-  "suggestion": "Zerops flagged specific fields — see apiMeta for each field's failure reason.",
-  "apiMeta": [
-    {
-      "code": "projectImportInvalidParameter",
-      "error": "Invalid parameter provided.",
-      "metadata": {
-        "storage.mode": ["mode not supported"]
-      }
-    }
-  ]
-}
-```
-
-Each `apiMeta[].metadata` key is a **field path** (`<host>.mode`,
-`build.base`, `parameter`); values list reasons. Fix those YAML fields
-and retry — do not guess.
-
-Common `apiCode` shapes:
-
-| `apiCode` | `metadata` key | Meaning |
-|---|---|---|
-| `projectImportInvalidParameter` | `<host>.mode` | type/mode combination not allowed |
-| `projectImportMissingParameter` | `parameter` (value `<host>.mode`) | required field missing |
-| `serviceStackTypeNotFound` | `serviceStackTypeVersion` | version string not in platform catalog |
-| `zeropsYamlInvalidParameter` | `build.base` etc. | zerops.yaml validator caught the field pre-build |
-| `yamlValidationInvalidYaml` | `reason` (with `line N:`) | YAML syntax error |
-
-Per-service import failures use `serviceErrors[].meta` with the same
-shape, one entry per failing service-stack.
 
 ---
 

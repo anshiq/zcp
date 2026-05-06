@@ -1188,8 +1188,7 @@ func TestScenario_PinCoverage_AllAtomsReachable(t *testing.T) {
 		"bootstrap-runtime-classes",
 		"bootstrap-verify",
 		"bootstrap-wait-active",
-		// develop-* (47 atoms; some pinned already in earlier scenarios)
-		"develop-api-error-meta",
+		// develop-* (some pinned already in earlier scenarios)
 		"develop-auto-close-semantics",
 		"develop-change-drives-deploy",
 		"develop-checklist-dev-mode",

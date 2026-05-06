@@ -109,7 +109,7 @@ func TestMapAPIError(t *testing.T) {
 			},
 			wantCode:         ErrAPIError,
 			wantAPICode:      "projectImportInvalidParameter",
-			wantSuggContains: "apiMeta",
+			wantSuggContains: "'storage.mode' (mode not supported)",
 			wantAPIMeta: []APIMetaItem{
 				{
 					Code:  "projectImportInvalidParameter",
@@ -138,7 +138,7 @@ func TestMapAPIError(t *testing.T) {
 			},
 			wantCode:         ErrAPIError,
 			wantAPICode:      "projectImportMissingParameter",
-			wantSuggContains: "apiMeta",
+			wantSuggContains: "'db.mode' (missing)",
 			wantAPIMeta: []APIMetaItem{
 				{
 					Code:  "projectImportMissingParameter",
@@ -176,7 +176,7 @@ func TestMapAPIError(t *testing.T) {
 			},
 			wantCode:         ErrAPIError,
 			wantAPICode:      "errorList",
-			wantSuggContains: "apiMeta",
+			wantSuggContains: "'build.base' (unknown base nodejs@99)",
 			wantAPIMeta: []APIMetaItem{
 				{
 					Code:  "zeropsYamlInvalidParameter",
@@ -293,6 +293,87 @@ func TestMapAPIError(t *testing.T) {
 			}
 			if !reflect.DeepEqual(pe.APIMeta, tt.wantAPIMeta) {
 				t.Errorf("APIMeta = %+v, want %+v", pe.APIMeta, tt.wantAPIMeta)
+			}
+		})
+	}
+}
+
+// TestFormatAPIMetaActionable pins the contract that 4xx suggestion
+// text expands apiMeta inline rather than pointing at the structured
+// block. Pre-2026-05-06 the suggestion was "see apiMeta..." and an
+// out-of-band atom (`develop-api-error-meta`) taught the apiMeta
+// shape; the atom was deleted in the same change that introduced
+// this expansion. Wire shape (apiMeta JSON array) is preserved for
+// programmatic consumers; suggestion is now the actionable summary.
+func TestFormatAPIMetaActionable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		meta []APIMetaItem
+		want string
+	}{
+		{
+			name: "single_field_single_reason",
+			meta: []APIMetaItem{
+				{Code: "x", Metadata: map[string][]string{"storage.mode": {"mode not supported"}}},
+			},
+			want: "Field 'storage.mode' (mode not supported) rejected. Fix in YAML and retry.",
+		},
+		{
+			name: "parameter_special_case_flips_to_field_with_missing_reason",
+			meta: []APIMetaItem{
+				{Code: "x", Metadata: map[string][]string{"parameter": {"db.mode"}}},
+			},
+			want: "Field 'db.mode' (missing) rejected. Fix in YAML and retry.",
+		},
+		{
+			name: "multi_field_sorted_deterministic",
+			meta: []APIMetaItem{
+				{Code: "x", Metadata: map[string][]string{
+					"build.base": {"unknown base nodejs@99"},
+					"build.os":   {"unknown os "},
+				}},
+			},
+			want: "Rejected fields: 'build.base' (unknown base nodejs@99), 'build.os' (unknown os ). Fix in YAML and retry.",
+		},
+		{
+			name: "empty_reason_omits_parens",
+			meta: []APIMetaItem{
+				{Code: "x", Metadata: map[string][]string{"run.os": {""}}},
+			},
+			want: "Field 'run.os' rejected. Fix in YAML and retry.",
+		},
+		{
+			name: "multi_reason_joined_semicolon",
+			meta: []APIMetaItem{
+				{Code: "x", Metadata: map[string][]string{"port": {"required", "must be > 0"}}},
+			},
+			want: "Field 'port' (required; must be > 0) rejected. Fix in YAML and retry.",
+		},
+		{
+			name: "no_metadata_falls_back_to_pointer",
+			meta: []APIMetaItem{{Code: "x", Error: "y"}},
+			want: "The platform flagged specific fields — see apiMeta for each field's failure reason.",
+		},
+		{
+			name: "over_cap_falls_back_with_count",
+			meta: []APIMetaItem{
+				{Metadata: map[string][]string{
+					"a": {"r"}, "b": {"r"}, "c": {"r"},
+					"d": {"r"}, "e": {"r"}, "f": {"r"},
+				}},
+			},
+			want: "The platform flagged 6 fields — see apiMeta for each field's failure reason.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatAPIMetaActionable(tt.meta)
+			if got != tt.want {
+				t.Errorf("formatAPIMetaActionable\n got:  %q\n want: %q", got, tt.want)
 			}
 		})
 	}

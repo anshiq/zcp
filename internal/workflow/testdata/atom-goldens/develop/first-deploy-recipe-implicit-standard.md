@@ -1,6 +1,6 @@
 ---
 id: develop/first-deploy-recipe-implicit-standard
-atomIds: [develop-first-deploy-intro, develop-api-error-meta, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-first-deploy-env-vars, develop-first-deploy-scaffold-yaml, develop-http-diagnostic, develop-implicit-webserver, develop-platform-rules-common, develop-deploy-files-self-deploy, develop-first-deploy-write-app, develop-knowledge-pointers, develop-auto-close-semantics, develop-first-deploy-execute, develop-verify-matrix, develop-first-deploy-asset-pipeline-container, develop-first-deploy-promote-stage, develop-first-deploy-verify, develop-strategy-awareness]
+atomIds: [develop-first-deploy-intro, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-first-deploy-env-vars, develop-first-deploy-scaffold-yaml, develop-http-diagnostic, develop-implicit-webserver, develop-platform-rules-common, develop-deploy-files-self-deploy, develop-first-deploy-write-app, develop-knowledge-pointers, develop-auto-close-semantics, develop-first-deploy-execute, develop-verify-matrix, develop-first-deploy-asset-pipeline-container, develop-first-deploy-promote-stage, develop-first-deploy-verify, develop-strategy-awareness]
 description: "develop-active, mode=standard pair, php-nginx implicit-webserver runtime + db, never-deployed; bootstrap arrived via recipe route."
 ---
 ### You're in the develop first-deploy branch
@@ -38,50 +38,6 @@ The strategy-awareness section of this response covers all three axes
 
 Don't skip to edits before the first deploy lands — HTTP probes
 return errors before any code is delivered.
-
----
-
-### Read `apiMeta` on every error response
-
-Any `zerops_*` tool surfacing a Zerops API 4xx may include `apiMeta`.
-Missing key = no server detail; present key = exact rejected fields.
-
-Shape:
-
-```json
-{
-  "code": "API_ERROR",
-  "apiCode": "projectImportInvalidParameter",
-  "error": "Invalid parameter provided.",
-  "suggestion": "Zerops flagged specific fields — see apiMeta for each field's failure reason.",
-  "apiMeta": [
-    {
-      "code": "projectImportInvalidParameter",
-      "error": "Invalid parameter provided.",
-      "metadata": {
-        "storage.mode": ["mode not supported"]
-      }
-    }
-  ]
-}
-```
-
-Each `apiMeta[].metadata` key is a **field path** (`<host>.mode`,
-`build.base`, `parameter`); values list reasons. Fix those YAML fields
-and retry — do not guess.
-
-Common `apiCode` shapes:
-
-| `apiCode` | `metadata` key | Meaning |
-|---|---|---|
-| `projectImportInvalidParameter` | `<host>.mode` | type/mode combination not allowed |
-| `projectImportMissingParameter` | `parameter` (value `<host>.mode`) | required field missing |
-| `serviceStackTypeNotFound` | `serviceStackTypeVersion` | version string not in platform catalog |
-| `zeropsYamlInvalidParameter` | `build.base` etc. | zerops.yaml validator caught the field pre-build |
-| `yamlValidationInvalidYaml` | `reason` (with `line N:`) | YAML syntax error |
-
-Per-service import failures use `serviceErrors[].meta` with the same
-shape, one entry per failing service-stack.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: develop/multi-service-scope-narrow
-atomIds: [develop-intro, develop-api-error-meta, develop-change-drives-deploy, develop-close-mode-auto-deploy-container, develop-deploy-modes, develop-dev-server-triage, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-checklist-dev-mode, develop-close-mode-auto, develop-close-mode-auto-workflow-dev, develop-deploy-files-self-deploy, develop-dynamic-runtime-start-container, develop-knowledge-pointers, develop-auto-close-semantics, develop-dev-server-reason-codes, develop-verify-matrix, develop-platform-rules-container, develop-strategy-awareness, develop-mode-expansion, develop-close-mode-auto-dev]
+atomIds: [develop-intro, develop-change-drives-deploy, develop-close-mode-auto-deploy-container, develop-deploy-modes, develop-dev-server-triage, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-checklist-dev-mode, develop-close-mode-auto, develop-close-mode-auto-workflow-dev, develop-deploy-files-self-deploy, develop-dynamic-runtime-start-container, develop-knowledge-pointers, develop-auto-close-semantics, develop-dev-server-reason-codes, develop-verify-matrix, develop-platform-rules-container, develop-strategy-awareness, develop-mode-expansion, develop-close-mode-auto-dev]
 description: "Project has multiple runtimes; the active work session scopes to a single hostname so per-service axes only fire on that one."
 ---
 ### Development & Deploy
@@ -8,50 +8,6 @@ description: "Project has multiple runtimes; the active work session scopes to a
 Infrastructure is provisioned and at least one runtime already has a
 successful first deploy on record. You're in the edit loop: discover
 the current state, implement the user's request, redeploy, verify.
-
----
-
-### Read `apiMeta` on every error response
-
-Any `zerops_*` tool surfacing a Zerops API 4xx may include `apiMeta`.
-Missing key = no server detail; present key = exact rejected fields.
-
-Shape:
-
-```json
-{
-  "code": "API_ERROR",
-  "apiCode": "projectImportInvalidParameter",
-  "error": "Invalid parameter provided.",
-  "suggestion": "Zerops flagged specific fields — see apiMeta for each field's failure reason.",
-  "apiMeta": [
-    {
-      "code": "projectImportInvalidParameter",
-      "error": "Invalid parameter provided.",
-      "metadata": {
-        "storage.mode": ["mode not supported"]
-      }
-    }
-  ]
-}
-```
-
-Each `apiMeta[].metadata` key is a **field path** (`<host>.mode`,
-`build.base`, `parameter`); values list reasons. Fix those YAML fields
-and retry — do not guess.
-
-Common `apiCode` shapes:
-
-| `apiCode` | `metadata` key | Meaning |
-|---|---|---|
-| `projectImportInvalidParameter` | `<host>.mode` | type/mode combination not allowed |
-| `projectImportMissingParameter` | `parameter` (value `<host>.mode`) | required field missing |
-| `serviceStackTypeNotFound` | `serviceStackTypeVersion` | version string not in platform catalog |
-| `zeropsYamlInvalidParameter` | `build.base` etc. | zerops.yaml validator caught the field pre-build |
-| `yamlValidationInvalidYaml` | `reason` (with `line N:`) | YAML syntax error |
-
-Per-service import failures use `serviceErrors[].meta` with the same
-shape, one entry per failing service-stack.
 
 ---
 

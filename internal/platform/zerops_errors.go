@@ -89,16 +89,110 @@ func mapAPIError(apiErr apiError.Error, entityType string) error {
 	}
 
 	// Client error (4xx) — tell LLM to fix input. When the server sent
-	// field-level detail in meta, the suggestion points at apiMeta so the
-	// LLM doesn't skip the structured block in favor of the generic line.
+	// field-level detail in meta, expand it into an actionable suggestion
+	// so the agent reads "Field X rejected with reason Y" instead of a
+	// pointer at the structured block. apiMeta stays in the response for
+	// programmatic consumers; suggestion becomes the human/LLM summary.
+	// Pre-2026-05-06 the suggestion was a pointer ("see apiMeta...") and
+	// agents needed an out-of-band atom (`develop-api-error-meta`) to
+	// learn how to read the structured block. Expanding inline made the
+	// atom redundant; the response is now self-evident at the moment of
+	// failure.
 	suggestion := "Check the request parameters"
 	switch {
 	case len(meta) > 0:
-		suggestion = "The platform flagged specific fields — see apiMeta for each field's failure reason."
+		suggestion = formatAPIMetaActionable(meta)
 	case errCode != "":
 		suggestion = fmt.Sprintf("API rejected the request (code: %s) — check the input parameters", errCode)
 	}
 	return withAPICode(NewPlatformError(ErrAPIError, msg, suggestion), errCode, meta)
+}
+
+// formatAPIMetaActionable flattens APIMeta field-level detail into a
+// one-line actionable summary. The output names the rejected fields
+// and their reasons so the agent has the actionable answer in
+// `suggestion` without parsing the apiMeta tree separately.
+//
+// Falls back to the generic "see apiMeta" pointer in two edge cases:
+//   - meta items carry no metadata map (only code+error): no field
+//     paths to report, nothing to expand.
+//   - more than maxAPIMetaInlineFields rejected fields: summary would
+//     be too long to be useful; agent reads apiMeta directly.
+//
+// Special-case: the `parameter` metadata key (used by
+// projectImportMissingParameter) carries the missing field name as
+// its value — output flips so the value becomes the field path with
+// reason "missing".
+//
+// Determinism: metadata-key iteration is sorted so identical input
+// produces identical output (used in error wire goldens, MCP response
+// canonicalization).
+func formatAPIMetaActionable(meta []APIMetaItem) string {
+	pairs := flattenAPIMetaPairs(meta)
+	if len(pairs) == 0 {
+		return "The platform flagged specific fields — see apiMeta for each field's failure reason."
+	}
+	if len(pairs) > maxAPIMetaInlineFields {
+		return fmt.Sprintf("The platform flagged %d fields — see apiMeta for each field's failure reason.", len(pairs))
+	}
+	parts := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		reason := strings.Join(p.reasons, "; ")
+		if reason == "" {
+			parts = append(parts, fmt.Sprintf("'%s'", p.field))
+		} else {
+			parts = append(parts, fmt.Sprintf("'%s' (%s)", p.field, reason))
+		}
+	}
+	if len(parts) == 1 {
+		return fmt.Sprintf("Field %s rejected. Fix in YAML and retry.", parts[0])
+	}
+	return fmt.Sprintf("Rejected fields: %s. Fix in YAML and retry.", strings.Join(parts, ", "))
+}
+
+// maxAPIMetaInlineFields caps how many rejected fields land inline in
+// the suggestion text. Above this, the suggestion summarizes the count
+// and points at apiMeta — keeps the suggestion readable while preserving
+// the full structured detail in the apiMeta field.
+const maxAPIMetaInlineFields = 5
+
+// apiMetaPair is one (field-path, reasons) tuple extracted from the
+// apiMeta tree. Internal to formatAPIMetaActionable.
+type apiMetaPair struct {
+	field   string
+	reasons []string
+}
+
+// flattenAPIMetaPairs walks apiMeta items and emits one pair per
+// metadata key with its reasons. Sorted iteration order for
+// deterministic output.
+func flattenAPIMetaPairs(meta []APIMetaItem) []apiMetaPair {
+	var out []apiMetaPair
+	for _, item := range meta {
+		keys := make([]string, 0, len(item.Metadata))
+		for k := range item.Metadata {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			values := item.Metadata[k]
+			if k == "parameter" {
+				// projectImportMissingParameter shape: the metadata
+				// value IS the missing field name, key "parameter" is
+				// the meta-property descriptor. Flip so the field path
+				// is reported with reason "missing".
+				for _, v := range values {
+					if v == "" {
+						continue
+					}
+					out = append(out, apiMetaPair{field: v, reasons: []string{"missing"}})
+				}
+				continue
+			}
+			out = append(out, apiMetaPair{field: k, reasons: values})
+		}
+	}
+	return out
 }
 
 // decodeAPIMetaJSON is the JSON-bytes entrypoint used by per-service error

@@ -1,6 +1,6 @@
 ---
 id: bootstrap/classic/provision-local
-atomIds: [bootstrap-provision-local, bootstrap-provision-rules, develop-api-error-meta, bootstrap-env-var-discovery, bootstrap-wait-active, bootstrap-provision-local-finalize]
+atomIds: [bootstrap-provision-local, bootstrap-provision-rules, bootstrap-env-var-discovery, bootstrap-wait-active, bootstrap-provision-local-finalize]
 description: "Classic route, provision step on a local-machine env (no Zerops container)."
 ---
 ### Local-mode provision
@@ -90,50 +90,6 @@ Preprocessor directives (e.g. `<@generateRandomString(<32>)>`)
 evaluate server-side; pass the literal string, not a pre-rendered
 value. After all project-level keys are set, submit `services:`
 verbatim to `zerops_import`.
-
----
-
-### Read `apiMeta` on every error response
-
-Any `zerops_*` tool surfacing a Zerops API 4xx may include `apiMeta`.
-Missing key = no server detail; present key = exact rejected fields.
-
-Shape:
-
-```json
-{
-  "code": "API_ERROR",
-  "apiCode": "projectImportInvalidParameter",
-  "error": "Invalid parameter provided.",
-  "suggestion": "Zerops flagged specific fields — see apiMeta for each field's failure reason.",
-  "apiMeta": [
-    {
-      "code": "projectImportInvalidParameter",
-      "error": "Invalid parameter provided.",
-      "metadata": {
-        "storage.mode": ["mode not supported"]
-      }
-    }
-  ]
-}
-```
-
-Each `apiMeta[].metadata` key is a **field path** (`<host>.mode`,
-`build.base`, `parameter`); values list reasons. Fix those YAML fields
-and retry — do not guess.
-
-Common `apiCode` shapes:
-
-| `apiCode` | `metadata` key | Meaning |
-|---|---|---|
-| `projectImportInvalidParameter` | `<host>.mode` | type/mode combination not allowed |
-| `projectImportMissingParameter` | `parameter` (value `<host>.mode`) | required field missing |
-| `serviceStackTypeNotFound` | `serviceStackTypeVersion` | version string not in platform catalog |
-| `zeropsYamlInvalidParameter` | `build.base` etc. | zerops.yaml validator caught the field pre-build |
-| `yamlValidationInvalidYaml` | `reason` (with `line N:`) | YAML syntax error |
-
-Per-service import failures use `serviceErrors[].meta` with the same
-shape, one entry per failing service-stack.
 
 ---
 
