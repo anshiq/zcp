@@ -145,8 +145,9 @@ sections are estimated from typical run shapes.
 ║  4a  CODEBASE-CONTENT                ║  ║  4b  CLAUDE.MD AUTHOR    ║
 ║                                      ║  ║                          ║
 ║  N × codebase-content sub-agents     ║  ║  N × claudemd-author     ║
-║  brief: ~45–55 KB  (cap 56 KB —      ║  ║  brief: ~3.5–4 KB        ║
-║   run-22 R1+R2 bumped 48→52→56)      ║  ║          (cap 8 KB)      ║
+║  brief: ~45–58 KB  (cap 64 KB —      ║  ║  brief: ~3.5–4 KB        ║
+║   run-22 48→52→56; F-18 56→60;       ║  ║          (cap 8 KB)      ║
+║   F-31 60→64)                        ║  ║                          ║
 ║                                      ║  ║                          ║
 ║  (parallel siblings — same N) ───────╫──╫──→  parallel sibling     ║
 ╠══════════════════════════════════════╣  ╠══════════════════════════╣
@@ -205,6 +206,11 @@ sections are estimated from typical run shapes.
 ║      porter_change +                 ║  ║                          ║
 ║      field_rationale +               ║  ║                          ║
 ║      platform-trap)                  ║  ║                          ║
+║   cross-codebase facts    ~0–3 KB    ║  ║                          ║
+║     (run-26 F-31 — sister            ║  ║                          ║
+║      codebases' facts that name a    ║  ║                          ║
+║      managed service THIS codebase   ║  ║                          ║
+║      consumes via ${<host>_*})       ║  ║                          ║
 ║   on-demand pointer block    ~0.5 KB ║  ║                          ║
 ║                                      ║  ║                          ║
 ║ GATES (run at complete-phase)        ║  ║                          ║
@@ -629,24 +635,33 @@ in [`runs/22/CODEX_VERIFICATION.md` Tables A + B](runs/22/CODEX_VERIFICATION.md#
 **Actor:** N × codebase-content sub-agents (one per codebase, dispatched
 in parallel with claudemd-author).
 **Brief composer:** `BuildCodebaseContentBrief` ([briefs_content_phase.go:28](../../internal/recipe/briefs_content_phase.go#L28)).
-**Cap:** 56 KB (run-22 R1+R2 bumped 48→52→56).
+**Cap:** 64 KB (run-22 R1+R2 48→52→56; run-23 F-18 56→60; run-26 F-31 60→64).
 
 ### Atoms — always loaded
 
 | Atom                                                 |   Size  |
 |------------------------------------------------------|--------:|
-| `phase_entry/codebase-content.md`                    | ~2.8 KB |
-| `briefs/codebase-content/synthesis_workflow.md`      | ~22 KB  |
-|   ↑ run-21 P0-3 (golden excerpts inlined to close goldens-hunting),  |
-|     R3-1 (disk-vs-fragment authority clarified — fragment is source  |
-|     of truth, engine stitches it to disk before gates run),          |
-|     cap-trim follow-up (excerpts trimmed to fit cap)                 |
+| `phase_entry/codebase-content.md` (run-23 F-18 + run-26 F-31) | ~3.5 KB |
+|   ↑ run-23 F-18 added "Common record-fragment rejections — pre-empt |
+|     these" section (top-3 patterns: KB stem author-claim shape,     |
+|     noun-phrase slug citations, intersection-on-IG misroute);       |
+|     run-26 F-31 added "Dispatch contract — pass response.prompt     |
+|     verbatim" section (inline vs self-fetch wrapper; hand-typed     |
+|     paraphrase wrappers out)                                        |
+| `briefs/codebase-content/synthesis_workflow.md` (run-26 F-30B) | ~24 KB  |
+|   ↑ run-21 P0-3 (golden excerpts inlined), R3-1 (disk-vs-fragment   |
+|     authority); run-26 F-30B added "Pre-record classification —     |
+|     the 3-check discriminator" section: walks each candidate KB     |
+|     bullet through (i) Zerops platform mechanic, (ii) THIS stack's  |
+|     specific wiring, (iii) surprising even after both docs read —   |
+|     DROP if any check fails. Moves framework-quirk filter UPSTREAM  |
+|     from refinement DISCOVER notice to cc-phase TEACH discriminator |
 | `briefs/scaffold/platform_principles.md` (cross-loaded; run-22 R1-RC-2) | ~5.6 KB |
 | `principles/zerops-knowledge-attestation.md`         |  ~3 KB  |
 | `principles/yaml-comment-style.md` (run-22 R1-RC-4)  | ~3.6 KB |
 |   ↑ run-22 R1-RC-4 added Unicode box-drawing forbid alongside        |
 |     ASCII variants in the anti-pattern list                          |
-| **Always-loaded subtotal**                           | **~37 KB** |
+| **Always-loaded subtotal**                           | **~40 KB** |
 
 ### Atoms — conditional
 
@@ -674,6 +689,21 @@ scaffold complete-phase only).
 - Filtered facts — `FilterByCodebase` then drop `EngineEmitted=true`;
   the kind mix is whatever the run recorded (porter_change,
   field_rationale, platform-trap). Variable: ~1–5 KB per codebase.
+- **Cross-codebase managed-service facts** (run-26 F-31) —
+  `CrossCodebaseManagedServiceFacts` returns sister-codebase facts
+  whose text references a managed service THIS codebase consumes via
+  `${<host>_*}` / `${<host>}` env-key shape. Predicate scans every
+  text field across all four `FactRecord` Kinds (platform-trap /
+  porter_change / field_rationale / tier_decision / contract);
+  scope-prefix dedup avoids double-emit with `FilterByCodebase`.
+  nil/empty `ConsumesServices` returns no facts (under-propagation
+  safer than over-propagation for an unanalyzed codebase). Closes the
+  run-26 apidev-NATS factuality drift where worker-scaffold's
+  `${broker_connectionString}` boot-crash finding never reached
+  apidev's brief — the apidev sub-agent fell back to atom-corpus
+  generic NATS guidance and shipped a contradicting KB endorsement.
+  Variable: ~0–3 KB per codebase (5 cross-propagated porter_change
+  facts × ~500 chars ≈ 2.5 KB worst case on a 3-codebase showcase).
 - On-demand pointer block (`zerops.yaml`, `src/**`, parent SourceRoot)
   (~0.5 KB)
 - `zerops_knowledge` consultation reminder (run-21 P0-2 — replaces the
@@ -791,15 +821,21 @@ codebase-content).
 | Atom                                              | Size    |
 |---------------------------------------------------|--------:|
 | `phase_entry/env-content.md`                      | ~1.2 KB |
-| `briefs/env-content/per_tier_authoring.md` (run-22 R2-RC-6) | ~9.8 KB |
+| `briefs/env-content/per_tier_authoring.md` (run-22 R2-RC-6 + run-26 F-30A) | ~10.8 KB |
 |   ↑ run-22 R2-RC-6 distinguished "canonical-set dedup" (strip the    |
 |     versioned service list from tiers 1-3) from "per-tier flavor"    |
 |     (keep 1-2 lines per service block AT EVERY tier even when no     |
-|     field changes from the previous tier). Closes the run-22 over-   |
-|     strip where tiers 1/2/3 had ~6 indented `#` lines vs golden ~25  |
+|     field changes from the previous tier). run-26 F-30A added        |
+|     "Friendly-authority phrasing — the adapt-path contract" section: |
+|     positive shape (porter-actionable phrasings tied to platform     |
+|     signal — "Bump … once …", "Switch … when …", "Disable … once …",|
+|     "Replace … with …") + ban on hedge phrasings ("you might want    |
+|     to consider", "perhaps", "in some cases"). Voice anchor matches  |
+|     laravel-jetstream golden register; run-26 tier yamls landed at   |
+|     ≥6 friendly-authority phrasings/tier with 0 hedges               |
 | `principles/zerops-knowledge-attestation.md`      |  ~3 KB  |
 | `principles/yaml-comment-style.md` (run-22 R1-RC-4) | ~3.6 KB |
-| **Always-loaded subtotal**                        | **~17.6 KB** |
+| **Always-loaded subtotal**                        | **~18.6 KB** |
 
 ### Atoms — conditional
 
@@ -932,15 +968,28 @@ shape for their tier.
 
 | Atom                                                 | Size    |
 |------------------------------------------------------|--------:|
-| `phase_entry/refinement.md`                          | ~3.7 KB |
-| `briefs/refinement/synthesis_workflow.md`            | ~6.5 KB |
-| `briefs/refinement/embedded_rubric.md` (run-22 R1-RC-7 + R3-C-1) | ~21 KB  |
+| `phase_entry/refinement.md` (run-23 F-27)            | ~3.9 KB |
+|   ↑ run-23 F-27 rewrote the threshold from "100%-sure / hesitate-   |
+|     to-argue" (drove default-HOLD on every notice) to "ACT when     |
+|     you can cite the violated rubric criterion, the exact fragment, |
+|     and the preserving edit; bias toward ACT — snapshot/restore     |
+|     reverts a wrong ACT automatically".                              |
+| `briefs/refinement/synthesis_workflow.md` (run-23 F-17/F-24/F-27 + run-26 F-29) | ~9 KB |
+|   ↑ run-23 F-17 added bare-codebase fragment-id worked example;     |
+|     F-24 reframed brief as failure-class catalog + suspect list;    |
+|     F-27 ACT-vs-HOLD threshold; run-26 F-29 added 3-check framework-|
+|     quirk drop authorization (Refinement Action 1 may DROP, not     |
+|     just MOVE) + natural-prose collapse template for KB stems       |
+|     authored as numbered lists                                       |
+| `briefs/refinement/embedded_rubric.md` (run-22 R1-RC-7 + R3-C-1 + run-26 F-29) | ~24 KB  |
 |   ↑ run-22 R1-RC-7 added "Tier-promotion narrative (forbidden per   |
-|     spec §108)" section with case-insensitive regex set —           |
-|     `\bpromote\b.*\btier\b`, `\boutgrow\w*`, etc. — so refinement   |
-|     has reason to flag run-22's tier-4-README "promote to tier 5"   |
-|     leak. R3-C-1 added subdomain "rotate" overclaim guard.          |
-| **Always-loaded subtotal**                           | **~31 KB** |
+|     spec §108)" section + R3-C-1 subdomain "rotate" overclaim       |
+|     guard. run-26 F-29 added NEW Criterion 6 (Cross-surface non-    |
+|     duplication) — anchors at 7.0 (one Zerops mechanism repeated    |
+|     on 3+ surfaces of one codebase), 8.5 (mechanism on 2 surfaces   |
+|     with cross-reference), 9.0 (one surface; siblings cite). Closes |
+|     5 uncaught dups from run-25                                      |
+| **Always-loaded subtotal**                           | **~37 KB** |
 
 ### Refinement reference atoms (discovery channel — fetched on demand)
 
@@ -997,12 +1046,12 @@ class.
 | 1 provision                 | n/a                | main only             | ~4 KB                    |
 | 2 scaffold                  | ~26–44 KB          | N codebases (1–3)     | ~26–132 KB               |
 | 3 feature                   | ~13–22 KB          | 1 (cross-codebase)    | ~13–22 KB                |
-| 4a codebase-content         | ~40–55 KB          | N codebases           | ~40–165 KB               |
+| 4a codebase-content         | ~45–58 KB          | N codebases           | ~45–174 KB               |
 | 4b claudemd-author          | ~3.5–4 KB          | N codebases           | ~3.5–12 KB               |
-| 5 env-content               | ~19–28 KB          | 1                     | ~19–28 KB                |
+| 5 env-content               | ~20–29 KB          | 1                     | ~20–29 KB                |
 | 6a finalize (sub-agent)     | ~10–13 KB          | 1                     | ~10–13 KB                |
 | 6b stitch (engine)          | 0 KB               | engine only           | 0 KB                     |
-| 7 refinement (optional)     | ~115–130 KB        | 1 (when triggered)    | ~115–130 KB              |
+| 7 refinement (engine-mandatory) | ~30–50 KB      | 1                     | ~30–50 KB                |
 
 A typical 3-codebase showcase run dispatches ~10 sub-agents and burns
 roughly 220–400 KB of brief context across the pipeline (excluding
@@ -1029,3 +1078,26 @@ R3-C-1 subdomain-rotate guard). Net cap bumps:
 CodebaseContentBriefCap + EnvContentBriefCap 48→52→56 KB; soft
 target on frontend scaffold 35→41 KB. ScaffoldBriefCap +
 FeatureBriefCap unchanged.
+
+Run-23 fix-pack net effect: codebase-content +1.2 KB (F-18 phase-entry
+top-3 rejection pre-warning) → CodebaseContentBriefCap 56→60 KB;
+feature +6 KB worst case (F-21 pass-discriminator splits the brief —
+backend pass loads contract atom ~3 KB, frontend pass loads design-
+system + Tailwind atoms + integration-validator teaching ~5–7 KB) →
+FeatureBriefCap 22→32 KB; refinement DROPPED ~70 KB (F-25 moved
+seven distillation reference atoms onto the discovery channel,
+fetched on demand via `zerops_knowledge mode=uri`); F-24 reframed
+brief as failure-class catalog + suspect list, shifting work from
+"read every fragment" to "investigate flagged suspects against
+rubric". Net refinement brief: ~115–130 KB → ~30–50 KB.
+
+Run-26 F-track net effect: codebase-content +0.7 KB (F-30B 3-check
+classification discriminator atom + F-31 Dispatch contract section)
++ variable cross-codebase facts block (~0–3 KB worst case) →
+CodebaseContentBriefCap 60→64 KB; env-content +1 KB (F-30A friendly-
+authority voice contract); refinement +3 KB (F-29 Criterion 6 +
+3-check + natural-prose collapse — embedded_rubric.md + synthesis_-
+workflow.md grow). Engine additions: `CrossCodebaseManagedServiceFacts`
+helper (run-26 F-31), `OpenOrCreate` SSHFS-mount-base refusal
+(run-26 F-28), `RefinementDispatched` flag + finalize-close gate
+(run-23 F-26), `gateFrontendIntegration` validator (run-23 F-23).

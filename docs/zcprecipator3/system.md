@@ -305,36 +305,50 @@ phases didn't capture.
 
 ## 4. The TEACH / DISCOVER line
 
-> **Decision marker.** As of 2026-05-03 the run-22 fix-pack has
-> shipped (commits `4987bacd` / `cf1bed23` / `29436b0a` on `main`).
-> Verdict table extended with 11 run-22 entries: R1-RC-2 (project-
-> level shadow extension), R1-RC-4 (Unicode separator anti-pattern),
-> R1-RC-7 (tier-promotion narrative DISCOVER notice via refinement),
-> R2-RC-1 (setup-name drift removal — drift correction, atom-vs-
-> engine convention), R2-RC-5 (edit-in-place during feature, mount-
-> vs-container extension), R2-RC-6 (cross-tier dedup canonical-set
-> vs flavor), R2-WK-1+2 (worker subscription gate — engine refuses
-> naked subscribe + drain-vs-unsubscribe), R3-RC-0 (parent-recipe
-> embedded fallback — closes the run-22 cascade root by exposing the
-> //go:embed corpus to the v3 chain resolver), R3-RC-3 (URL constants
-> tier-yaml emit — engine reshapes per-tier with single-slot URL
-> rewrite, brief teaches both `zerops_env action=set` AND
-> `update-plan projectEnvVars` channel-sync), R3-C-1 (subdomain
-> "rotate" overclaim refinement DISCOVER notice), R3-C-2/4/5
-> (decision_recording_slim TEACH extensions — topic vs kind, citation
-> guide example, topic uniqueness). Net engine additions: ONE new
-> validator gate (`gateWorkerSubscription` — regex source-scan with
-> NATS-context heuristic, refuses naked-subscribe blocking, warns
-> on unsubscribe-shutdown), ONE new helper (`embedded_recipes.go` —
-> 30 LOC accessor wrapping `knowledge.GetEmbeddedStore`), ONE
-> emit-time reshape (`rewriteURLsForSingleSlot` in `yaml_emitter.go`).
-> Full spec at
-> [`runs/22/FIX_SPEC.md`](runs/22/FIX_SPEC.md);
-> independent codex verification at
-> [`runs/22/CODEX_VERIFICATION.md`](runs/22/CODEX_VERIFICATION.md).
-> Pre-run-22 decision marker (run-14 readiness, 2026-04-26): preserved
-> below in spirit — cluster-level reasoning unchanged; run-22 added
-> behavioral fixes within the same TEACH-priority framework.
+> **Decision marker.** As of 2026-05-06 the F-track has shipped end-
+> to-end through run-26, released as `v9.66.0`. Commits on `main`:
+> `e9b17218` (run-23 F-17/18/21–27 — feature-pass split + refinement
+> overhaul), `560f4609` (F-28 — engine outputRoot collision refusal),
+> `819912f8` (sim CLI parity), `d62c7b60` (F-29 series — cross-surface
+> dedup criterion + 3-check framework-quirk drop + natural-prose
+> collapse), `c48276d3` (F-30 series — cc-content classification
+> 3-check + env-content friendly-authority voice), `fd4b11d3` (F-31
+> — cross-codebase managed-service fact propagation).
+>
+> Verdict table appended with the run-23 cluster (F-17 refinement
+> bare-codebase fragment-id worked example; F-18 cc-content brief
+> top-3 rejection pre-warning + cap 56→60 KB; F-21 feature brief
+> pass discriminator; F-22 backend/frontend feature-pass atoms;
+> F-23 frontend-pass cross-codebase edit authority + integration
+> validator; F-24 refinement engine-flagged suspect list; F-25
+> refinement reference atoms via discovery channel; F-26 refinement-
+> dispatch engine-mandatory; F-27 refinement ACT-vs-HOLD threshold)
+> and the post-run-23 closures: F-28 (engine refuses outputRoot at
+> or above SSHFS mount base — closes run-25's HIGH workspace-
+> pollution regression), F-29 series (rubric Criterion 6 + 3-check
+> + natural-prose collapse — closes 5 uncaught dups + 2 framework-
+> quirks from run-25), F-30A (env-content friendly-authority voice
+> contract + hedge-phrase ban), F-30B (codebase-content classification
+> 3-check at authoring — moves framework-quirk filter upstream from
+> refinement DISCOVER notice to cc-phase TEACH discriminator), F-31
+> (engine surfaces sister-codebase facts whose text references a
+> managed service this codebase consumes — closes the run-26 apidev-
+> NATS factuality drift; cap 60→64 KB).
+>
+> Net engine additions through this stretch: TWO new validator gates
+> (`gateWorkerSubscription` run-22 R2-WK; `gateFrontendIntegration`
+> run-23 F-23), ONE engine refusal (`OpenOrCreate` SSHFS-mount-base
+> rejection run-26 F-28), ONE engine propagation helper
+> (`CrossCodebaseManagedServiceFacts` run-26 F-31), ONE engine-
+> mandatory transition (finalize → refinement closure refuses without
+> dispatch evidence run-23 F-26), ONE emit-time reshape
+> (`rewriteURLsForSingleSlot` run-22 R3-RC-3).
+>
+> Run-26 ANALYSIS at [`runs/26/ANALYSIS.md`](runs/26/ANALYSIS.md) is
+> the F-track convergence verdict — above-bar on every quality axis
+> the F-track was meant to move. Pre-run-22 decision marker (run-14
+> readiness, 2026-04-26): preserved in spirit below; cluster-level
+> reasoning unchanged through every fix-pack.
 
 This is the load-bearing section. It draws the line between what the
 engine knows up-front (TEACH) and what each run is responsible for
@@ -495,6 +509,21 @@ through deploy iteration (when not).
 | Subdomain "rotate" overclaim refinement guard (run-22 R3-C-1) | DISCOVER | ✅ Notice — `briefs/refinement/embedded_rubric.md` extended with case-insensitive guard against claims that Zerops subdomains "rotate" / "rotates" / "domains rotate". Subdomains are stable per service identity; recreating the service mints a new hash, but they don't ROTATE. Run-22 evidence: appdev/README.md:166 shipped this overclaim. Refinement now has reason to flag. Pinned by `TestRefinementRubric_FlagsSubdomainRotateClaim` |
 | Decision recording slim atom extensions (run-22 R3-C-2 + R3-C-4 + R3-C-5) | TEACH | ✅ `briefs/scaffold/decision_recording_slim.md` extended with three additions: R3-C-2 topic-uniqueness clarification (run-22 had `worker_dev_server_started` reused 5× across 5 scopes describing 3 different processes), R3-C-5 explicit topic-vs-kind separation with worked example (topic = freeform identifier, kind = enum porter_change/field_rationale/tier_decision/contract — closes the 2/53 record-fact failures using a topic name as kind value), R3-C-4 `citationGuide` populated worked example (kept the field over deletion after grep showed ~7 test files pin it). Pinned by `TestScaffoldBrief_TeachesTopicVsKindSeparation`, `TestDecisionRecordingAtom_HasCitationGuideExample` |
 | Warn-on-record class×surface compatibility (run-22 R3-C-3) | TEACH | ✅ `handlers.go::recordFact` extended to emit a non-blocking `Notice` on the response when `candidateClass` × `candidateSurface` is incompatible per spec compatibility table. Reuses the existing `classificationCompatibleWithSurface` lookup (already used by fragment-time refusal). Faster feedback than waiting for fragment-time refusal; doesn't change blocking behavior. Skip when V-1 already populated `Notice` to avoid clobbering self-inflicted notice. Run-22 evidence: `meilisearch-version-pin` fact recorded with class=library-metadata + surface=knowledge-base — fragment-time validator caught it (didn't land as KB) but the agent only saw the failure at fragment record, not at fact record. Pinned by `TestRecordFact_WarnsOnIncompatibleClassSurface` |
+| Refinement bare-codebase fragment-id worked example (run-23 F-17) | TEACH | ✅ `briefs/refinement/synthesis_workflow.md` extended with worked example pinning `codebase/<host>/knowledge-base` as the canonical fragmentId (vs slot-named `codebase/<host>dev/...`). Run-23 features-2 attempted slot-named fragmentId 3× before reshaping. Pinned by `TestRefinementAtoms_DoNotReferenceLegacyFragmentIDs` |
+| Codebase-content brief top-3 rejection pre-warning (run-23 F-18) | TEACH | ✅ `phase_entry/codebase-content.md` extended with "Common record-fragment rejections — pre-empt these" section naming KB stem author-claim shape (RIGHT vs WRONG example), noun-phrase slug citations (`the env-var-model guide` vs the backticked noun), and intersection-on-IG misroute. Targets the same-context recovery cost — run-23 cc-api iterated 17/20 record-fragments rejected (85%). Cap bumped 56→60 KB. Pinned by `TestBuildCodebaseContentBrief_PreWarnsTopRejectionPatterns` |
+| Feature brief pass discriminator (run-23 F-21) | TEACH | ✅ `BuildFeatureBrief(plan, FeaturePass)` accepts `backend|frontend` discriminator. Backend pass loads contract/queue/worker-subscription atoms; frontend pass loads design-system + Tailwind + integration validator. `RecipeInput.FeaturePass` field added; brief composer + handler thread it through. FeatureBriefCap bumped 22→32 KB. Pinned by `TestBuildFeatureBrief_BackendPass_ExcludesDesignSystem`, `TestBuildFeatureBrief_FrontendPass_IncludesDesignSystem`, `TestBuildFeatureBrief_BackendPass_LoadsWorkerSubscription` |
+| Backend + frontend feature-pass atoms (run-23 F-22) | TEACH | ✅ Two new atoms: `briefs/feature/contract_authoring.md` (backend pass — `Contract` fact-kind worked example, queue/subject naming convention) + `briefs/feature/tailwind_design_system.md` (frontend pass — design tokens + cards primitive set). Loaded conditionally per `FeaturePass`. Pinned by `TestBuildFeatureBrief_BackendPass_LoadsContractAtom` + sibling pass tests |
+| Frontend feature-pass integration validator (run-23 F-23) | TEACH | ✅ `gateFrontendIntegration` runs at feature complete-phase against frontend-pass scope; checks every backend route declared in the fact stream has a matching frontend `[data-test=*]` selector and a fetch call resolving via `${VITE_API_URL}` / project-scope URL constant. Cross-codebase edit authority granted within the frontend pass (frontend agent may edit api source for header exposure / route wiring). Closes run-22 NEW failure mode where frontend shipped without backend routes wired |
+| Refinement engine-flagged suspect list (run-23 F-24) | TEACH | ✅ `BuildRefinementBrief` pre-scans stitched output for failure-class signals (cross-surface duplication notices from `validators_dedup.go`, KB/IG cap overflows, voice-leak phrasings, tier-promotion narrative regex from R1-RC-7) and emits a "Engine-flagged suspects" section at brief top — agent investigates each entry against the rubric. Replaces the previous "read every fragment under runDir" instruction. Brief shrinks from ~115 KB to ~30-50 KB at this phase. Pinned by `TestCollectRefinementSuspects_FromCrossSurfaceDuplicationNotices`, `TestBuildRefinementBrief_AssemblesCoreAtoms`, `TestBuildRefinementBrief_BodyUnderShrinkTarget` |
+| Refinement reference atoms via discovery channel (run-23 F-25) | TEACH | ✅ Seven distillation atoms (`kb_shapes`, `ig_one_mechanism`, `voice_patterns`, `yaml_comments`, `citations`, `trade_offs`, `refinement_thresholds`) retired from inline brief embed; refinement agent fetches the relevant one on demand via `zerops_knowledge mode=uri uri=zerops://themes/refinement-references/<name>` when investigating a flagged fragment. Brief carries the catalog with one-line descriptions; agent picks by suspect class. Net brief drop ~70 KB at refinement. Pinned by `TestBuildRefinementBrief_OmitsReferenceDistillationAtoms` |
+| Refinement dispatch engine-mandatory (run-23 F-26) | TEACH | ✅ `complete-phase phase=finalize` refuses closure until `Session.RefinementDispatched` flag is set (flipped by `build-subagent-prompt briefKind=refinement`). Closes run-22's failure mode where the agent saw the "optional" refinement, declined, and shipped an unaudited deliverable. Run-18's auto-advance enforcement extended from "engine auto-calls EnterPhase(refinement)" to "engine refuses finalize closure without dispatch evidence". Pinned by `TestCompletePhaseFinalize_RefusesWithoutRefinementDispatch`, `TestBuildSubagentPrompt_RefinementBrief_FlipsDispatchedFlag`, `TestCompletePhaseFinalize_OkWhenRefinementDispatched`, `TestCompletePhaseRefinement_FlipsClosedFlagAndWritesMarker` |
+| Refinement ACT-vs-HOLD threshold (run-23 F-27) | TEACH | ✅ `briefs/refinement/synthesis_workflow.md` + `phase_entry/refinement.md` rewrote the threshold from "100%-sure / hesitate-to-argue" (drove default-HOLD on every notice) to "ACT when you can cite the violated rubric criterion, the exact fragment, and the preserving edit; HOLD when any of the three is fuzzy. Bias toward ACT — snapshot/restore reverts a wrong ACT automatically; default-HOLD ships unaudited cross-surface duplication". Closes run-22's 4 cross-surface-duplication HOLDs. Pinned by `TestRefinementRubric_ThresholdSaysCiteCriterionFragmentEdit`, `TestPhaseEntryRefinement_NewThresholdLanguage` |
+| Engine outputRoot collision refusal (run-26 F-28) | TEACH | ✅ `internal/recipe/handlers.go::OpenOrCreate` + `mount.go` refuse `outputRoot` paths AT or ABOVE the SSHFS mount base (`/var/www`, `/var/www/`). Error message names the slug + canonical path hint (`/var/www/zcprecipator/<slug>/`). Closes run-25's HIGH-severity workspace-pollution regression where stitch wrote outputs alongside `apidev/`/`appdev/`/`workerdev/` SSHFS mounts. `phase_entry/research.md` updated to teach the canonical path; run-26 agent picked it on first try (refusal path not stress-tested in dogfood). Pinned by `TestOpenOrCreate_RefusesMountBaseAndAncestors`, `TestOpenOrCreate_AcceptsMountBaseDescendant`, `TestOpenOrCreate_AcceptsCanonicalDescendantUnderMountBase`, `TestDispatch_StartRefusesMountBase` |
+| Refinement rubric Criterion 6 cross-surface non-duplication (run-26 F-29) | TEACH | ✅ `briefs/refinement/embedded_rubric.md` extended with NEW Criterion 6 (Cross-surface non-duplication) — anchors at 7.0 (one Zerops mechanism repeated on 3+ surfaces of one codebase), 8.5 (mechanism on 2 surfaces with cross-reference), 9.0 (mechanism on one surface; sibling surfaces cite). Closes 5 uncaught dups from run-25 (NATS-credentials × 5 surfaces, forcePathStyle × 4, same-key shadow × 5, execOnce × 3, build-time bake × 2). Spec §410 "each fact lives on one surface" had no corresponding rubric anchor pre-F-29 |
+| Refinement 3-check framework-quirk drop + natural-prose collapse (run-26 F-29) | TEACH | ✅ `briefs/refinement/synthesis_workflow.md` extended with two atoms: pre-record 3-check (Zerops mechanic × this stack's wiring × surprising even after both docs read) authorizes Refinement Action 1 to DROP framework-quirk gotchas (not just MOVE them); natural-prose collapse template for KB stems that read like a numbered list (numbered-list-style → natural-prose-style). Closes 2 framework-quirk gotchas that shipped in run-25 to KB despite spec §337-345 routing them to DISCARD |
+| Codebase-content classification 3-check at authoring (run-26 F-30B) | TEACH | ✅ `briefs/codebase-content/synthesis_workflow.md` extended with "Pre-record classification — the 3-check discriminator" section. Author walks each candidate KB bullet through (i) Zerops platform mechanic, (ii) involves THIS stack's specific wiring, (iii) surprising even after Zerops + framework docs read — DROP if any check fails. Moves framework-quirk filter UPSTREAM from refinement DISCOVER notice to cc-phase TEACH-time discriminator. Run-26 shipped 0 framework-quirks vs run-25's 2. Refinement F-29 3-check stays as safety net |
+| Env-content friendly-authority voice contract (run-26 F-30A) | TEACH | ✅ `briefs/env-content/per_tier_authoring.md` extended with "Friendly-authority phrasing — the adapt-path contract" section: positive shape (porter-actionable phrasings tied to the platform signal that drives them — "Bump … once …", "Switch … when …", "Disable … once …", "Replace … with …") + ban on hedge phrasings ("you might want to consider", "perhaps", "in some cases"). Voice anchor matches the laravel-jetstream golden register. Run-26 tier yamls landed at ≥6 friendly-authority phrasings/tier with 0 hedges |
+| Cross-codebase managed-service fact propagation (run-26 F-31) | TEACH | ✅ `internal/recipe/consumes_services.go::CrossCodebaseManagedServiceFacts` extends `FilterByCodebase` with env-key intersection: sister-codebase facts whose text references a managed service THIS codebase consumes via `${<host>_*}` / `${<host>}` propagate into the codebase-content brief (`appendCrossCodebaseFactsBlock`). Predicate scans every text field across all four `FactRecord` Kinds (platform-trap / porter_change / field_rationale / tier_decision / contract); scope-prefix dedup avoids double-emit with `FilterByCodebase`. nil/empty `ConsumesServices` returns no facts (under-propagation safer than over-propagation for an unanalyzed codebase). Closes the run-26 apidev-NATS factuality drift where worker-scaffold's `${broker_connectionString}` boot-crash finding never reached apidev's brief, leading the apidev sub-agent to fall back to atom-corpus generic NATS guidance and ship a contradicting KB endorsement. `CodebaseContentBriefCap` bumped 60→64 KB. Pinned by `TestCrossCodebaseManagedServiceFacts_PropagatesByEnvKey`, `TestCrossCodebaseManagedServiceFacts_NilConsumesServices`, `TestCrossCodebaseManagedServiceFacts_EmptyConsumesServices`, `TestCrossCodebaseManagedServiceFacts_TierDecisionAndContractKinds`, `TestBuildCodebaseContentBrief_PropagatesCrossCodebaseFacts`, `TestBuildCodebaseContentBrief_CrossCodebaseFactsCap` |
 
 ### What "wrong side" means concretely
 

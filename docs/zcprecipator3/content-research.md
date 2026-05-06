@@ -13,9 +13,13 @@ The two reference recipes:
 - [`/Users/fxck/www/recipes/laravel-jetstream/`](../../../../recipes/laravel-jetstream/) + [`/Users/fxck/www/laravel-jetstream-app/`](../../../../laravel-jetstream-app/) — **human-authored**, the readability + voice floor.
 - [`/Users/fxck/www/recipes/laravel-showcase/`](../../../../recipes/laravel-showcase/) + [`/Users/fxck/www/laravel-showcase-app/`](../../../../laravel-showcase-app/) — **early recipe-flow output**, the mechanism-density floor.
 
-The run-14 deliverable being measured against:
+The current dogfood baseline being measured against:
 
-- [`docs/zcprecipator3/runs/14/`](runs/14/) — `nestjs-showcase` recipe, 2026-04-27.
+- [`docs/zcprecipator3/runs/26/`](runs/26/) — `nestjs-showcase` recipe, 2026-05-06 (most recent successfully-completed run; the F-track convergence verdict at [`runs/26/ANALYSIS.md`](runs/26/ANALYSIS.md) confirms above-bar quality on every axis the F-track was meant to move).
+
+The run-14 baseline numbers preserved in §1.1 below are kept as the
+historical "before" column showing the over-cap shape the F-track
+closed. Run-26 numbers in the same table show the current "after".
 
 ---
 
@@ -23,17 +27,36 @@ The run-14 deliverable being measured against:
 
 ### 1.1 Length budgets per surface, observed
 
-| Surface | laravel-jetstream (human) | laravel-showcase (early-flow) | run-14 nestjs-showcase | What the data says |
-|---|---|---|---|---|
-| Root README | 28 lines | 27 lines | 25 lines | Universal: ~25–30 lines |
-| **Tier README** | **7–8 lines, 1 sentence in extract** | **7–8 lines, 1–2 sentences in extract** | **41–42 lines, full ladder in extract** | **Universal: extract = 1–2 sentences. Body ≈ extract.** |
-| Tier `import.yaml` | 50–80 lines yaml + 30–40 indented comment lines | 75–95 lines yaml + 30–50 indented comment lines | 150–180 lines yaml + 75–83 indented comment lines | Reference: 3–5 lines comment per service block. Run-14 ships 8–10 lines per block — **2–3× over** |
-| Apps-repo README | 290 lines, 4 IG items | 360 lines, 5 IG items | 200–344 lines, 8–10 IG items | Reference: 4–5 IG items + 5–8 KB bullets. Run-14: 8–10 IG items + 7–12 KB bullets — **2× over on item count** |
-| Apps-repo IG #1 yaml | 180 lines yaml verbatim with comments | 285 lines yaml verbatim with comments | 130–230 lines | Universal: full yaml verbatim is the bulk of IG #1 |
-| Apps-repo CLAUDE.md | 32 lines, 3 fixed sections | 33 lines, 3 fixed sections | 46–55 lines, 3+ sections | Reference: ~33 lines, **clearly templated** |
-| Apps-repo `zerops.yaml` | 184 lines, 3 setups | 283 lines, 3 setups | 130–230 lines | Comment style varies; density is consistent |
+| Surface | laravel-jetstream (human) | laravel-showcase (early-flow) | run-14 (before F-track) | run-26 (after F-track) | What the data says |
+|---|---|---|---|---|---|
+| Root README | 28 lines | 27 lines | 25 lines | 25 lines | Universal: ~25–30 lines |
+| **Tier README** | **7–8 lines, 1 sentence in extract** | **7–8 lines, 1–2 sentences in extract** | **41–42 lines, full ladder in extract** | **6–8 lines, 1 sentence in extract** | **Universal: extract = 1–2 sentences. Run-15 §F.4 `tier-readme-extract-too-long` validator (350-char cap) closed the run-14 ladder leak.** |
+| Tier `import.yaml` | 50–80 lines yaml + 30–40 indented comment lines | 75–95 lines yaml + 30–50 indented comment lines | 150–180 lines yaml + 75–83 indented comment lines | 90–140 lines yaml + 30–50 indented comment lines | Reference: 3–5 lines comment per service block. Run-26: 3–5 lines per block — **back at-bar after run-22 R2-RC-6 canonical-set-vs-flavor distinction.** |
+| Apps-repo README | 290 lines, 4 IG items | 360 lines, 5 IG items | 200–344 lines, 8–10 IG items | 220–340 lines, 4–5 IG items + 3–7 KB bullets | Reference: 4–5 IG items + 5–8 KB bullets. Run-26: at-bar after run-15 §F.5 item-cap validators (`codebase-ig-too-many-items` ≤5, `codebase-kb-too-many-bullets` ≤8). |
+| Apps-repo IG #1 yaml | 180 lines yaml verbatim with comments | 285 lines yaml verbatim with comments | 130–230 lines | 230–250 lines | Universal: full yaml verbatim is the bulk of IG #1. |
+| Apps-repo CLAUDE.md | 32 lines, 3 fixed sections | 33 lines, 3 fixed sections | 46–55 lines, 3+ sections | 35–80 lines, 3 sections | Reference: ~33 lines, clearly templated. Run-26 above the 50-line cap on the api codebase (richer service-fan-out → more architecture bullets); within cap on app + worker. |
+| Apps-repo `zerops.yaml` | 184 lines, 3 setups | 283 lines, 3 setups | 130–230 lines | 130–280 lines | Comment style varies; density is consistent. |
 
-**The single sharpest signal:** tier README extract markers wrap **one sentence** in both references. Run-14 wraps a 35-line ladder. This isn't a soft preference — both human and early-flow agree, and the recipe-page UI is rendering the marker contents as a card description.
+**The single sharpest signal (closed):** tier README extract markers
+wrap **one sentence** in both references. Run-14 wrapped a 35-line
+ladder; run-15 §F.4 added the `tier-readme-extract-too-long` validator
+(350-char cap from `SurfaceContract.IntroExtractCharCap`); run-26
+extracts settle at 1 sentence. This was the loudest cap drift run-14
+surfaced and the first the engine closed at validator-time.
+
+**Item-cap drifts (closed):** run-14 shipped 8–10 IG items + 7–12 KB
+bullets per codebase; run-15 §F.5 added item-cap validators; run-26
+ships within the 4–5 IG / 5–8 KB targets matching the reference
+recipes. Run-26's appdev KB at 3 bullets is below the 5-floor — calibration
+finding (SPA codebase has fewer Zerops-mechanic-x-this-stack failure
+modes than api/worker), not drift.
+
+**Tier yaml comment drift (closed):** run-14 shipped 8–10 indented
+comment lines per service block (2–3× over reference). Run-22 R2-RC-6
+distinguished "canonical-set dedup" from "per-tier flavor"; run-26
+tier yamls land at 3–5 lines per service block matching the early-flow
+reference, with run-26 F-30A's friendly-authority voice contract
+adding adapt-path phrasings on top.
 
 ### 1.2 The two references aren't equal — they're complementary
 
@@ -50,12 +73,12 @@ The run-14 deliverable being measured against:
 - **Cross-tier consistency.** Tier comments narrate "what changes from the previous tier" implicitly through service-block comments; the human jetstream doesn't.
 - **KB bullets in the canonical "**Topic** — explanation" shape.** Run-14 follows this shape; jetstream uses inline narrative + headings instead. The early-flow shape is the right one for KB.
 
-**The combined ideal:**
-- **Voice:** human jetstream's friendly authority + early-flow's mechanism-density.
-- **IG:** 4–5 items max (jetstream count) + early-flow's "**Topic** — diff + reason" structure per item.
-- **KB:** 5–8 bullets in the early-flow's "**Topic** — explanation" shape, but with jetstream's inline doc links where applicable.
-- **Tier comments:** early-flow's mechanism-density, but capped at 3–5 lines per service block (current run-14 is 8–10).
-- **CLAUDE.md:** keep the 33-line / 3-section template — both references converge on it.
+**The combined ideal (run-26 status in parentheses):**
+- **Voice:** human jetstream's friendly authority + early-flow's mechanism-density. *(Run-26: F-30A landed friendly-authority phrasings on tier yamls; run-26 codex review confirmed voice at-bar with goldens on 4 quality axes.)*
+- **IG:** 4–5 items max (jetstream count) + early-flow's "**Topic** — diff + reason" structure per item. *(Run-26: 4–5 items per codebase, framework-equivalent footers extending each — above-bar relative to goldens on this axis.)*
+- **KB:** 5–8 bullets in the early-flow's "**Topic** — explanation" shape, but with jetstream's inline doc links where applicable. *(Run-26: 3–7 bullets per codebase; appdev at 3 = calibration not drift.)*
+- **Tier comments:** early-flow's mechanism-density, but capped at 3–5 lines per service block (run-14 was 8–10). *(Run-26: 3–5 lines per block + adapt-path phrasing per F-30A.)*
+- **CLAUDE.md:** keep the 33-line / 3-section template — both references converge on it. *(Run-26: 35–80 lines depending on codebase architecture richness; api over the 50-line cap because of the 5-managed-service fan-out — judgment call rather than a regression.)*
 
 ### 1.3 The patterns both references share (universals)
 
@@ -65,7 +88,7 @@ These appear identically across both human + early-flow recipes — the **non-ne
 2. **Tier README is a card description**, not a teaching page. Title + 1-sentence extract. Always ~7 lines.
 3. **Tier `import.yaml` is annotated**. `project:` block + `services:` block. Each service block carries 2–4 lines of comment explaining presence and choices. Project block carries 2–3 lines explaining tier-level choices (HA, corePackage, secret minting).
 4. **Apps-repo README structure is fixed:** Title → 1-2 sentence intro extract → Deploy button → Cover image → `## Integration Guide` (numbered items, IG #1 always = "Adding zerops.yaml" with full yaml verbatim) → `## Tips`/`## Gotchas` (KB bullets in "**Topic** — explanation" form).
-5. **CLAUDE.md is 3-section templated:** Title + intro → `## Zerops service facts` (terse bullets with hostname/port/siblings/runtime base) → `## Zerops dev (hybrid)` (the dev-loop story) → `## Notes` (3–5 dense bullets).
+5. **CLAUDE.md is Zerops-FREE per run-21 R2-5** — the run-13 architecture pivot retired the engine-injected `## Zerops dev loop` block; run-21 R2-5 retired the engine-side Zerops-content guards (word blacklisting was wrong-side per system.md §4 — banning common English tokens like `db`/`cache`/`search`). Brief at `briefs/claudemd-author/zerops_free_prohibition.md` is the authoring contract; validators do structural shape only (line cap ≤80, H2 count 2–4, min size ≥200 bytes). Canonical 3-section shape: Title + 1-2 sentence intro → `## Build & run` (npm/composer scripts verbatim with one-line labels) → `## Architecture` (one bullet per source dir / entrypoint, framework-canonical layout). Authored by a sibling `claudemd-author` sub-agent dispatched in parallel with `codebase-content` so Zerops bleed-through is structurally impossible (no platform principles atom, no `zerops.yaml` pointer, no managed-service hints in the brief).
 6. **Apps-repo `zerops.yaml` carries causal comments per directive group** — never narrating what the field does, always explaining a non-obvious choice.
 7. **Cross-service env vars use the `${hostname_*}` pattern** with own-key aliases. Both references treat this as standard Zerops vocabulary.
 8. **Secrets are project-level, generated via `<@generateRandomString(<32>)>`**. APP_KEY in both Laravel recipes; APP_SECRET in nestjs-showcase. Same pattern.
@@ -100,10 +123,12 @@ PUBLISHED RECIPE
    │     └─ {5-8 bullets in "**Topic** — 2-4 sentence explanation" shape}
    │
    ├─ CLAUDE.md                            ← reader: AI agent or human OPERATING this exact repo
-   │  ├─ {title, 1-line intro}
-   │  ├─ ## Zerops service facts           ← machine-extractable bullets
-   │  ├─ ## Zerops dev (hybrid)            ← the dev-loop story for this codebase
-   │  └─ ## Notes                          ← 3-5 dense porter-relevant operational bullets
+   │  │  (Zerops-free by construction — run-21 R2-5; sibling sub-agent
+   │  │   authors this in parallel with codebase-content so platform
+   │  │   bleed-through is structurally impossible)
+   │  ├─ {title, 1-2 sentence intro extracted from package.json/source}
+   │  ├─ ## Build & run                    ← framework-canonical commands (npm/composer scripts) verbatim
+   │  └─ ## Architecture                   ← one bullet per source dir / entrypoint
    │
    └─ zerops.yaml                          ← reader: editing the deploy config to suit their app
       └─ {comments above directive groups OR per field — author's choice; never narrating the field}
@@ -263,17 +288,30 @@ Walking facts from a typical run through the router. Each row demonstrates one c
 
 ## Part 7 — Engine implications (overview)
 
-How the engine reads from the spec at compose-time + record-time + commit-time:
+How the engine reads from the spec at compose-time + record-time + commit-time. The base mechanisms landed in run-15; subsequent runs extended each stage with cb-precision filtering, fact propagation, and engine-mandatory transitions. See system.md §4 verdict table for per-extension TEACH/DISCOVER classification.
 
 | Stage | Mechanism | Where |
 |---|---|---|
 | Compose-time (brief preface) | Brief atoms read spec section names + tests; compose into dispatched prompt | `internal/recipe/content/briefs/<phase>/*.md` |
 | Compose-time (templates) | Engine pre-renders root README / env README / codebase README / CLAUDE.md skeletons with the right marker positions | `internal/recipe/content/templates/*.tmpl` |
+| Compose-time (engine-built dispatch prompt) | `build-subagent-prompt` composes FULL dispatch prompt (recipe-level context wrapper + brief body + close criteria) from Plan + Research.Description; eliminates hand-typed wrappers | `internal/recipe/briefs_subagent_prompt.go::buildSubagentPromptForPhase` (run-13 §B2) |
+| Compose-time (per-codebase atom selection) | `cb.ConsumesServices` (parsed from each codebase's `run.envVariables` at scaffold complete-phase) drives atom filtering — SPA that consumes nothing managed drops `nats-shapes.md` + `cross-service-urls.md`; codebase-content brief's Managed services block filtered the same way | `internal/recipe/consumes_services.go` (run-21 R2-2/R2-3) |
+| Compose-time (cross-codebase fact propagation) | `CrossCodebaseManagedServiceFacts` extends `FilterByCodebase` with env-key intersection: sister-codebase facts referencing a service THIS codebase consumes via `${<host>_*}` propagate into the brief — closes the run-26 apidev-NATS factuality drift | `internal/recipe/consumes_services.go::CrossCodebaseManagedServiceFacts` (run-26 F-31) |
+| Compose-time (engine-emitted facts) | Engine seeds shells (Class B universal-for-role, Class C umbrella, per-managed-service connect shells) into `FactsLog` so the codebase-content sub-agent fills empty slots via `fill-fact-slot` | `internal/recipe/handlers.go::seedEngineEmittedFacts` (run-16 §6.4 / §7.1) |
+| Compose-time (parent recipe baseline) | Embedded fallback path: when filesystem mount empty AND `parentSlugFor(slug)!=""` AND `internal/knowledge/recipes/<parent>.md` exists in the `//go:embed` corpus, scaffold brief carries the parent .md verbatim | `internal/recipe/embedded_recipes.go` (run-22 R3-RC-0) |
 | Record-time (per fragment) | `record-fragment` response payload carries the per-fragment-id `SurfaceContract` (Reader / Test / LineCap / ItemCap from spec) so agent reads the surface test verbatim at authoring decision moment | `internal/recipe/handlers.go` (run-15 §F.2) |
 | Record-time (refusal) | `record-fragment` accepts `classification`; engine refuses incompatible (classification × fragmentId) pairs per spec compatibility table | `internal/recipe/handlers.go` + `classify.go` (run-15 §F.3) |
+| Record-time (warn-on-record) | `recordFact` emits non-blocking `Notice` when `candidateClass × candidateSurface` is incompatible — same lookup the fragment-time refusal uses, faster feedback | `internal/recipe/handlers.go::recordFact` (run-22 R3-C-3) |
+| Record-time (snapshot/restore) | `record-fragment mode=replace` at refinement phase wraps each call in snapshot/restore: reverts the fragment if the post-replace validator surfaces a NEW violation | `internal/recipe/handlers.go` (run-17 §9 T4) |
+| Record-time (read-then-replace baseline) | `record-fragment mode=replace` returns `priorBody` so refinement merges against verbatim instead of grep+reconstructing | `internal/recipe/handlers.go` (run-14 §B.1) |
+| Boundary-time (engine refusals) | `OpenOrCreate` refuses `outputRoot` paths AT or ABOVE SSHFS mount roots; closes run-25's HIGH-severity workspace-pollution regression | `internal/recipe/handlers.go::OpenOrCreate` + `mount.go` (run-26 F-28) |
+| Boundary-time (engine-mandatory phase transition) | `complete-phase phase=finalize` refuses closure until `Session.RefinementDispatched` flag is set (flipped by `build-subagent-prompt briefKind=refinement`); auto-advance finalize → refinement is the ONE engine-driven phase transition | `internal/recipe/handlers.go` (run-18 + run-23 F-26) |
 | Commit-time (validators) | Per-surface `ValidateFn` registered to each `Surface`; checks structural caps from spec line-budget table; runs at `complete-phase` gate | `internal/recipe/validators_*.go` |
+| Commit-time (worker subscription gate) | `gateWorkerSubscription` regex-scans showcase-tier worker codebases; refuses naked `nc.subscribe()` (no queue option) and warns on `unsubscribe()` shutdown | `internal/recipe/validators_worker_subscription.go` (run-22 R2-WK-1+2) |
+| Commit-time (frontend integration validator) | `gateFrontendIntegration` checks every backend route in fact stream has matching `[data-test=*]` selector + fetch via `${VITE_API_URL}` | `internal/recipe/validators_*.go` (run-23 F-23) |
+| Emit-time (single-slot URL rewrite) | `writeProject` extends with `rewriteURLsForSingleSlot` for tiers 2-5: drops DEV_*-prefixed keys, collapses slot-named hostnames, preserves `${zeropsSubdomainHost}` literal | `internal/recipe/yaml_emitter.go` (run-22 R3-RC-3) |
 
-The full implementation plan is in [docs/zcprecipator3/plans/run-15-readiness.md](plans/run-15-readiness.md). The spec is the single source of truth that all five stages read from.
+The full implementation plan is in [docs/zcprecipator3/plans/run-15-readiness.md](plans/run-15-readiness.md) (base architecture); subsequent run-N readiness plans archive the incremental extensions. The spec ([docs/spec-content-surfaces.md](../spec-content-surfaces.md)) is the single source of truth that every stage reads from.
 
 ---
 
