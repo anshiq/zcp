@@ -28,6 +28,8 @@ func runEvalBehavioral(args []string) {
 		runBehavioralList(args[1:])
 	case "run":
 		runBehavioralRun(args[1:])
+	case "run-local":
+		runBehavioralRunLocal(args[1:])
 	case "all":
 		runBehavioralAll(args[1:])
 	default:
@@ -41,13 +43,20 @@ func printBehavioralUsage() {
 	fmt.Fprintln(os.Stderr, `Usage: zcp eval behavioral <command>
 
 Commands:
-  list  --scenarios-dir <dir>             List behavioral scenarios in dir
-  run   --scenarios-dir <dir> --id <id>   Run one scenario by id
-  run   --file <scenario.md>              Run one scenario by absolute path
-  all   --scenarios-dir <dir>             Run every scenario in dir sequentially
+  list       --scenarios-dir <dir>             List behavioral scenarios in dir
+  run        --scenarios-dir <dir> --id <id>   Run one scenario by id (container mode)
+  run        --file <scenario.md>              Run one scenario by absolute path
+  all        --scenarios-dir <dir>             Run every scenario in dir sequentially
+  run-local  --id <id> [--scenarios-dir <dir>] [--cleanup-workdir]
+                                               Run one scenario in LOCAL mode on this Mac
+                                               (isolated workdir + claude HOME under /tmp).
 
-The scenarios dir is anchored on the runner host (zcp container in normal use,
-local FS for dev). Outputs land under $ZCP_EVAL_RESULTS_DIR/<suiteId>/<scenarioId>/.`)
+The 'run' family runs the agent inside a Zerops container (existing flow-eval).
+'run-local' runs the agent directly on this machine: requires ZCP_API_KEY env
+and 'zcp' on PATH (via 'make install'); workdir/results live under
+/tmp/zcp-flow-eval-local/<suite>/<id>/ with results mirrored back to
+eval/behavioral/runs-local/<suite>/<id>/. Outputs from container-mode runs land
+under $ZCP_EVAL_RESULTS_DIR/<suiteId>/<scenarioId>/.`)
 }
 
 func runBehavioralList(args []string) {

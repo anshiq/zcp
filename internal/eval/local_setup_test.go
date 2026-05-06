@@ -117,6 +117,87 @@ func TestRunner_ClaudeEnv_NilWhenClaudeHomeUnset(t *testing.T) {
 	}
 }
 
+// TestComputeLocalRunPaths_ShapeAndSeparation pins the directory layout:
+// workdir under /tmp (so rm-rf cannot reach the repo), results inside
+// the repo (so the local Claude session can read them).
+func TestComputeLocalRunPaths_ShapeAndSeparation(t *testing.T) {
+	t.Parallel()
+	p := ComputeLocalRunPaths("20260506-130000", "scenario-x", "/Users/op/repo")
+
+	if !strings.HasPrefix(p.WorkDir, "/tmp/zcp-flow-eval-local/") {
+		t.Errorf("WorkDir %q must live under /tmp/zcp-flow-eval-local/", p.WorkDir)
+	}
+	if !strings.Contains(p.WorkDir, "20260506-130000/scenario-x") {
+		t.Errorf("WorkDir %q must include suiteID + scenarioID", p.WorkDir)
+	}
+	if strings.HasPrefix(p.WorkDir, "/Users/op/repo") {
+		t.Errorf("WorkDir %q must NOT live under the source repo", p.WorkDir)
+	}
+	if !strings.HasPrefix(p.ResultsDir, "/Users/op/repo/eval/behavioral/runs-local") {
+		t.Errorf("ResultsDir %q must be repo/eval/behavioral/runs-local for inspection", p.ResultsDir)
+	}
+	if !strings.HasSuffix(p.Sentinel, "/.zcp-eval-workdir") {
+		t.Errorf("Sentinel %q must end in /.zcp-eval-workdir", p.Sentinel)
+	}
+	if !strings.HasPrefix(p.Sentinel, p.WorkDir) {
+		t.Errorf("Sentinel %q must live inside WorkDir %q", p.Sentinel, p.WorkDir)
+	}
+}
+
+// TestPrepareLocalRunDirs_CreatesAllPathsAndSentinel pins the
+// dir-creation sequence: workdir + claude-home + results all mkdir -p,
+// sentinel touched.
+func TestPrepareLocalRunDirs_CreatesAllPathsAndSentinel(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	p := LocalRunPaths{
+		WorkDir:    filepath.Join(tmp, "wd"),
+		ClaudeHome: filepath.Join(tmp, "ch"),
+		ResultsDir: filepath.Join(tmp, "results"),
+		Sentinel:   filepath.Join(tmp, "wd", ".zcp-eval-workdir"),
+	}
+	if err := PrepareLocalRunDirs(p); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	for _, dir := range []string{p.WorkDir, p.ClaudeHome, p.ResultsDir} {
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			t.Errorf("dir %q missing or not a dir: %v", dir, err)
+		}
+	}
+	if _, err := os.Stat(p.Sentinel); err != nil {
+		t.Errorf("sentinel missing at %q: %v", p.Sentinel, err)
+	}
+}
+
+// TestAssertLocalRunPrereqs_MissingTokenFailsLoud pins the most common
+// operator setup miss.
+func TestAssertLocalRunPrereqs_MissingTokenFailsLoud(t *testing.T) {
+	t.Setenv("ZCP_API_KEY", "")
+	err := AssertLocalRunPrereqs()
+	if err == nil {
+		t.Fatal("missing ZCP_API_KEY must error")
+	}
+	if !strings.Contains(err.Error(), "ZCP_API_KEY") {
+		t.Errorf("error must mention ZCP_API_KEY; got: %v", err)
+	}
+}
+
+// TestAssertLocalRunPrereqs_TokenSetButZcpMissing pins the post-token,
+// pre-install case: token is exported, zcp not in PATH yet.
+func TestAssertLocalRunPrereqs_TokenSetButZcpMissing(t *testing.T) {
+	t.Setenv("ZCP_API_KEY", "fake-token")
+	t.Setenv("PATH", t.TempDir()) // PATH with no zcp
+
+	err := AssertLocalRunPrereqs()
+	if err == nil {
+		t.Fatal("missing zcp in PATH must error")
+	}
+	if !strings.Contains(err.Error(), "zcp") || !strings.Contains(err.Error(), "make install") {
+		t.Errorf("error must mention zcp + make install; got: %v", err)
+	}
+}
+
 // TestRunner_ClaudeEnv_OverridesHomeWhenClaudeHomeSet pins local-mode
 // isolation: cmd.Env contains the parent env PLUS HOME=<sandbox> so
 // claude resolves ~/.claude/ inside the sandbox, while inheriting
