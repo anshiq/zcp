@@ -88,19 +88,20 @@ func LocalAutoAdopt(ctx context.Context, client platform.Client, projectID, stat
 
 	switch len(runtimes) {
 	case 0:
-		// Local-only: no Zerops runtime to link. CloseDeployMode defaults to
-		// manual — auto is incoherent without a Zerops runtime to push to,
-		// and git-push is a valid opt-in the user can switch to via
-		// action=close-mode + action=git-push-setup once a remote is wired.
+		// Local-only, zero runtimes: same shape as multi-runtime — close-
+		// mode stays unset until the develop-strategy-review atom fires
+		// post-deploy and the agent picks (git-push for an external
+		// remote, manual for nothing-automated). Pre-Phase-9 the branch
+		// pre-picked `manual` + `Confirmed=true`, hiding git-push from
+		// the review path.
 		meta := &ServiceMeta{
-			Hostname:                 project.Name,
-			Mode:                     topology.PlanModeLocalOnly,
-			CloseDeployMode:          topology.CloseModeManual,
-			CloseDeployModeConfirmed: true,
-			GitPushState:             topology.GitPushUnconfigured,
-			BuildIntegration:         topology.BuildIntegrationNone,
-			BootstrapSession:         "", // adopted, not a fresh bootstrap
-			BootstrappedAt:           now,
+			Hostname:         project.Name,
+			Mode:             topology.PlanModeLocalOnly,
+			CloseDeployMode:  topology.CloseModeUnset,
+			GitPushState:     topology.GitPushUnconfigured,
+			BuildIntegration: topology.BuildIntegrationNone,
+			BootstrapSession: "", // adopted, not a fresh bootstrap
+			BootstrappedAt:   now,
 		}
 		if err := WriteServiceMeta(stateDir, meta); err != nil {
 			return nil, fmt.Errorf("local auto-adopt: write local-only meta: %w", err)
@@ -119,6 +120,7 @@ func LocalAutoAdopt(ctx context.Context, client platform.Client, projectID, stat
 			Hostname:         project.Name,
 			StageHostname:    rt.Name,
 			Mode:             topology.PlanModeLocalStage,
+			CloseDeployMode:  topology.CloseModeUnset,
 			BootstrapSession: "",
 			BootstrappedAt:   now,
 		}
@@ -139,6 +141,7 @@ func LocalAutoAdopt(ctx context.Context, client platform.Client, projectID, stat
 		meta := &ServiceMeta{
 			Hostname:         project.Name,
 			Mode:             topology.PlanModeLocalOnly,
+			CloseDeployMode:  topology.CloseModeUnset,
 			BootstrapSession: "",
 			BootstrappedAt:   now,
 		}

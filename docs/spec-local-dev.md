@@ -119,10 +119,16 @@ ServiceMeta:
   "hostname":         "<project-name>",
   "stageHostname":    "",
   "mode":             "local-only",
-  "closeDeployMode":  "manual",   // forced on local-only (no push target)
+  "closeDeployMode":  "unset",    // resolved post-deploy via develop-strategy-review
   "bootstrapSession": ""
 }
 ```
+
+Close-mode stays unset until the agent picks via `develop-strategy-review`
+(symmetric with container bootstrap). Valid choices for a local-only
+project are `git-push` (push to an external remote, ZCP doesn't track
+downstream) and `manual` (nothing automated); `auto` requires linking a
+Zerops runtime as stage first via `adopt-local`.
 
 Managed services (databases, caches, storage) are NOT given their own
 ServiceMeta; their state stays API-authoritative. The local-only meta

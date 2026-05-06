@@ -111,10 +111,9 @@ func handleAdoptLocal(ctx context.Context, client platform.Client, projectID, st
 	// Upgrade meta: local-only → local-stage, link target.
 	local.Mode = topology.PlanModeLocalStage
 	local.StageHostname = target.Name
-	// Fresh stage link clears the forced-manual close-mode from local-only
-	// adoption — once a Zerops runtime is linked, auto / git-push become
-	// valid choices, so reset to unset and let the develop-strategy-review
-	// atom prompt the agent on the next status round-trip.
+	// Newly-linked stage means develop-strategy-review will prompt the
+	// agent post-deploy. Already unset coming in (per Phase-9 parity)
+	// but write defensively in case an upgrade path leaves it stale.
 	local.CloseDeployMode = topology.CloseModeUnset
 	local.CloseDeployModeConfirmed = false
 	if target.Status == workflow.StatusActive && local.FirstDeployedAt == "" {

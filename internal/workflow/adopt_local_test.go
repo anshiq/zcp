@@ -61,8 +61,17 @@ func TestLocalAutoAdopt_NoRuntimes_LocalOnly(t *testing.T) {
 	if result.Meta.StageHostname != "" {
 		t.Errorf("StageHostname = %q, want empty (no runtime)", result.Meta.StageHostname)
 	}
-	if result.Meta.CloseDeployMode != topology.CloseModeManual {
-		t.Errorf("CloseDeployMode = %q, want manual (local-only default)", result.Meta.CloseDeployMode)
+	// Phase 9 parity: zero-runtime adoption no longer pre-picks manual.
+	// Container bootstrap leaves CloseDeployMode=unset until strategy-
+	// review fires; local should match — `git-push` is a valid choice
+	// for a never-deployed local-only project (push to an external
+	// remote), and pre-confirming `manual` hid that option from the
+	// post-deploy review path.
+	if result.Meta.CloseDeployMode != topology.CloseModeUnset {
+		t.Errorf("CloseDeployMode = %q, want unset (let strategy-review prompt)", result.Meta.CloseDeployMode)
+	}
+	if result.Meta.CloseDeployModeConfirmed {
+		t.Errorf("CloseDeployModeConfirmed = true, want false (unset is unconfirmed by definition)")
 	}
 	if result.StageAutoLinked {
 		t.Error("StageAutoLinked = true, want false (no runtime)")
@@ -182,6 +191,15 @@ func TestLocalAutoAdopt_MultipleRuntimes_LocalOnlyWithEnumeration(t *testing.T) 
 	}
 	if len(want) > 0 {
 		t.Errorf("missing runtimes in enumeration: %v", want)
+	}
+	// Phase 9 parity regression: multi-runtime adoption already left
+	// CloseDeployMode=unset; pin it explicitly so a future "fix" doesn't
+	// re-introduce the asymmetry between zero- and multi-runtime branches.
+	if result.Meta.CloseDeployMode != topology.CloseModeUnset {
+		t.Errorf("CloseDeployMode = %q, want unset (review prompts post-link)", result.Meta.CloseDeployMode)
+	}
+	if result.Meta.CloseDeployModeConfirmed {
+		t.Errorf("CloseDeployModeConfirmed = true, want false")
 	}
 }
 
