@@ -4,11 +4,12 @@ import (
 	"fmt"
 
 	"github.com/zeropsio/zcp/internal/ops"
+	"github.com/zeropsio/zcp/internal/topology"
 )
 
 // NextActions constants provide actionable follow-up instructions for LLMs.
 const (
-	nextActionDeploySuccess         = "Check logs: zerops_logs severity=ERROR since=5m."
+	nextActionDeploySuccess         = "Run zerops_verify for runtime state."
 	nextActionDeployBuildFail       = "Build failed — check buildLogs in response for build output. Fix and redeploy."
 	nextActionDeployBuildFailNoLogs = "Build failed and no logs were captured (sub-10s container exit, common for early-failing buildCommands). Re-check zerops.yaml buildCommands syntax + dependency manifests; if recurring, simplify to bisect the failing step."
 	nextActionImportSuccess         = "Verify services: zerops_discover. Continue workflow: mount dev, discover env vars, write code, then deploy."
@@ -26,15 +27,28 @@ const (
 	nextActionSubdomainEnable  = "Subdomain active. Verify: zerops_verify."
 )
 
-// deploySuccessNextActions returns the unified post-deploy next-action
-// (invariant DS-01, plans/dev-server-canonical-primitive.md).
-// Runtime-class-specific guidance (dev server start via zerops_dev_server
-// in container env, via harness background task primitive in local env)
-// is owned by atoms, not by this function. zerops_verify is the honest
-// runtime-state authority; zerops_logs surfaces recent errors. This
-// function surfaces only the next tool to call — no runtime-liveness
-// claims the code did not actually check.
-func deploySuccessNextActions(_ *ops.DeployResult) string {
+// deploySuccessNextActions returns the post-deploy next-tool pointer.
+// The pointer is route-aware (which next call), NOT state-claiming
+// (does NOT assert process liveness, does NOT embed SSH commands).
+//
+// Invariant DS-01 (plans/archive/dev-server-canonical-primitive.md):
+// post-deploy messaging never branches on the deprecated runtime-class
+// liveness heuristics that produced dishonest "server NOT running" /
+// "auto-start" claims. The canonical post-DS-01 predicate is
+// `topology.IsDeferredStart` (dev/standard mode + dynamic runtime) —
+// same predicate used by `deploy_subdomain.go::maybeAutoEnableSubdomain`
+// to skip the L7 HTTP-readiness probe. It names the next tool to call,
+// not what the runtime is doing right now.
+//
+// Falls back to the generic `zerops_verify` pointer when meta is
+// unavailable (mode=="" / class=="") — recipe-authoring scaffolds and
+// freshly-imported services without a bootstrap session reach this
+// path. Verify is correct in every shape (web/worker/managed) so the
+// fallback is never wrong, only sometimes less specific.
+func deploySuccessNextActions(_ *ops.DeployResult, mode topology.Mode, class topology.RuntimeClass) string {
+	if mode != "" && class != "" && topology.IsDeferredStart(mode, class) {
+		return "Dev-mode dynamic runtime is idle (zsc noop). Start the dev server: zerops_dev_server action=start. Then run zerops_verify."
+	}
 	return nextActionDeploySuccess
 }
 

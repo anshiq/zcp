@@ -166,7 +166,7 @@ func RegisterDeployLocal(
 		}
 
 		onProgress := buildProgressCallback(ctx, req)
-		pollDeployBuild(ctx, client, projectID, result, onProgress, logFetcher, nil)
+		pollDeployBuild(ctx, client, projectID, result, onProgress, logFetcher, nil, stateDir)
 
 		if result != nil && result.Status == statusDeployed {
 			attempt.SucceededAt = time.Now().UTC().Format(time.RFC3339)

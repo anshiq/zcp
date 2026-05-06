@@ -7,12 +7,19 @@ import (
 
 	"github.com/zeropsio/zcp/internal/ops"
 	"github.com/zeropsio/zcp/internal/platform"
+	"github.com/zeropsio/zcp/internal/topology"
+	"github.com/zeropsio/zcp/internal/workflow"
 )
 
 const buildContainerSource = "build_container"
 
 // pollDeployBuild polls build status after deploy trigger and updates result in-place.
 // sshDeployer can be nil (local mode) — WaitSSHReady is skipped when nil.
+// stateDir is used to resolve ServiceMeta for the target so the post-success
+// next-action pointer can branch on (mode, runtimeClass) — empty stateDir
+// is acceptable (recipe-authoring scaffolds, freshly-imported services
+// without a bootstrap session); next_actions falls back to generic
+// `zerops_verify` guidance in that path.
 func pollDeployBuild(
 	ctx context.Context,
 	client platform.Client,
@@ -21,6 +28,7 @@ func pollDeployBuild(
 	onProgress ops.ProgressCallback,
 	logFetcher platform.LogFetcher,
 	sshDeployer ops.SSHDeployer,
+	stateDir string,
 ) {
 	if result.TargetServiceID == "" {
 		return
@@ -53,7 +61,8 @@ func pollDeployBuild(
 			// from before the deploy need to reconnect.
 			result.Message += " New container replaced old — prior SSH sessions are gone."
 		}
-		result.NextActions = deploySuccessNextActions(result)
+		mode, class := resolveDeployTargetTopology(stateDir, result.TargetService, result.TargetServiceType)
+		result.NextActions = deploySuccessNextActions(result, mode, class)
 		// Fetch build warnings/errors even on success (best-effort).
 		// Surfaces issues like silent build failures, missing deployFiles output.
 		if logFetcher != nil {
@@ -188,4 +197,25 @@ func calcBuildDuration(event *platform.AppVersionEvent) string {
 		return ""
 	}
 	return end.Sub(start).Truncate(time.Second).String()
+}
+
+// resolveDeployTargetTopology returns (mode, runtimeClass) for the
+// deploy target by reading ServiceMeta from stateDir + classifying the
+// platform service type. Empty values when meta is absent (recipe
+// authoring, fresh imports without a bootstrap session) — callers
+// branch on these so the empty-meta path falls through to a generic
+// next-action pointer rather than asserting incorrect topology.
+//
+// Same shape used by `deploy_subdomain.go::maybeAutoEnableSubdomain` to
+// gate the L7 HTTP-readiness probe on `topology.IsDeferredStart`.
+func resolveDeployTargetTopology(stateDir, target, typeVersion string) (topology.Mode, topology.RuntimeClass) {
+	if stateDir == "" || target == "" {
+		return "", ""
+	}
+	meta, _ := workflow.FindServiceMeta(stateDir, target)
+	if meta == nil {
+		return "", ""
+	}
+	class := topology.RuntimeClassFor(typeVersion)
+	return meta.Mode, class
 }

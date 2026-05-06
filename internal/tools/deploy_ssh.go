@@ -236,7 +236,7 @@ func RegisterDeploySSH(
 		}
 
 		onProgress := buildProgressCallback(ctx, req)
-		pollDeployBuild(ctx, client, projectID, result, onProgress, logFetcher, sshDeployer)
+		pollDeployBuild(ctx, client, projectID, result, onProgress, logFetcher, sshDeployer, stateDir)
 
 		if result != nil && result.Status == statusDeployed {
 			attempt.SucceededAt = time.Now().UTC().Format(time.RFC3339)

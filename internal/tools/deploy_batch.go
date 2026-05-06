@@ -115,7 +115,7 @@ func RegisterDeployBatch(
 
 		onProgress := buildProgressCallback(ctx, req)
 		pollFn := func(c context.Context, r *ops.DeployResult, cb ops.ProgressCallback, lf platform.LogFetcher, d ops.SSHDeployer) {
-			pollDeployBuild(c, client, projectID, r, cb, lf, d)
+			pollDeployBuild(c, client, projectID, r, cb, lf, d, stateDir)
 		}
 
 		authVal := auth.Info{}
