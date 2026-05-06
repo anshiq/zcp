@@ -106,17 +106,29 @@ Then re-run.`)
 // PrepareIsolatedClaudeHome creates an isolated HOME for the agent's
 // `claude` process so the eval doesn't read or pollute the operator's
 // real ~/.claude/ (auto-memory, sessions, settings, plugins, slash
-// commands). It builds an empty .claude/ inside claudeHome and — if
-// the operator has an OAuth credentials file at ~/.claude/.credentials.json —
-// symlinks it through so the eval can authenticate Anthropic without
-// forcing the operator to set ANTHROPIC_API_KEY (which `--bare` would
-// require).
+// commands).
 //
-// Why symlink instead of copy: token refresh writes by claude propagate
-// to the real file rather than diverging.
+// Two pieces:
+//  1. Empty <claudeHome>/.claude/ — claude's auto-memory/projects/
+//     settings/skills/plugins all resolve here against this fresh dir,
+//     so nothing is read from operator state and writes accumulate in
+//     the sandbox.
+//  2. Snapshot of ~/.claude.json (HOME root, NOT inside .claude/) —
+//     copied into the sandbox at run start. This file holds the
+//     operator's OAuth auth state plus per-project caches; copying
+//     gives the eval valid Anthropic auth without forcing
+//     ANTHROPIC_API_KEY (which `--bare` would require) AND without
+//     letting the eval's writes pollute the operator's real file.
 //
-// Idempotent: re-running on an existing claudeHome is safe (existing
-// symlink target is left alone via os.Symlink's EEXIST behavior).
+// Token-refresh corner case: if claude refreshes mid-eval, the new
+// token writes to the sandbox copy only. Operator's real
+// ~/.claude.json keeps the pre-eval token; the next operator session
+// uses a still-valid refresh_token to obtain a fresh access_token.
+// No-op if the operator file is missing (eval would then need
+// ANTHROPIC_API_KEY in env to auth).
+//
+// Idempotent: re-running on an existing claudeHome leaves files alone
+// (sandbox already has the snapshot from the previous prepare call).
 func PrepareIsolatedClaudeHome(claudeHome string) error {
 	if claudeHome == "" {
 		return fmt.Errorf("claudeHome is required")
@@ -127,23 +139,22 @@ func PrepareIsolatedClaudeHome(claudeHome string) error {
 	}
 	realHome, err := os.UserHomeDir()
 	if err != nil {
-		// No operator home — skip credential symlink (eval will need
-		// ANTHROPIC_API_KEY in env to auth).
 		return nil
 	}
-	realCreds := filepath.Join(realHome, ".claude", ".credentials.json")
-	if _, err := os.Stat(realCreds); err != nil {
-		// Operator has no OAuth file (e.g. uses ANTHROPIC_API_KEY directly).
-		// Eval will need that env var; nothing to symlink.
+	realConfigPath := filepath.Join(realHome, ".claude.json")
+	sandboxConfigPath := filepath.Join(claudeHome, ".claude.json")
+	if _, err := os.Stat(sandboxConfigPath); err == nil {
+		// Already prepared (idempotent re-run).
 		return nil
 	}
-	sandboxCreds := filepath.Join(sandboxClaude, ".credentials.json")
-	if _, err := os.Lstat(sandboxCreds); err == nil {
-		// Already exists (idempotent re-run) — leave alone.
+	data, err := os.ReadFile(realConfigPath)
+	if err != nil {
+		// Operator has no ~/.claude.json (e.g. uses ANTHROPIC_API_KEY
+		// directly). Eval will need that env var; nothing to copy.
 		return nil
 	}
-	if err := os.Symlink(realCreds, sandboxCreds); err != nil {
-		return fmt.Errorf("symlink credentials: %w", err)
+	if err := os.WriteFile(sandboxConfigPath, data, 0o600); err != nil {
+		return fmt.Errorf("write sandbox claude config: %w", err)
 	}
 	return nil
 }

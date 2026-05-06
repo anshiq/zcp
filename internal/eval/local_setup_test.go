@@ -27,19 +27,18 @@ func TestPrepareIsolatedClaudeHome_CreatesSandboxDir(t *testing.T) {
 	}
 }
 
-// TestPrepareIsolatedClaudeHome_SymlinksCredentialsWhenPresent pins the
-// OAuth-passthrough behavior: real ~/.claude/.credentials.json is exposed
-// inside the sandbox via symlink so token refresh writes propagate.
-func TestPrepareIsolatedClaudeHome_SymlinksCredentialsWhenPresent(t *testing.T) {
+// TestPrepareIsolatedClaudeHome_CopiesClaudeConfigWhenPresent pins the
+// OAuth-passthrough behavior: real ~/.claude.json is COPIED (not
+// symlinked) into the sandbox so the eval gets valid auth at run start
+// without write-back contamination of the operator's real file.
+func TestPrepareIsolatedClaudeHome_CopiesClaudeConfigWhenPresent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	realCreds := filepath.Join(home, ".claude", ".credentials.json")
-	if err := os.MkdirAll(filepath.Dir(realCreds), 0o700); err != nil {
-		t.Fatalf("seed real .claude: %v", err)
-	}
-	if err := os.WriteFile(realCreds, []byte(`{"token":"x"}`), 0o600); err != nil {
-		t.Fatalf("seed credentials: %v", err)
+	realConfig := filepath.Join(home, ".claude.json")
+	original := []byte(`{"oauth":"operator-token","scratch":"a"}`)
+	if err := os.WriteFile(realConfig, original, 0o600); err != nil {
+		t.Fatalf("seed real .claude.json: %v", err)
 	}
 
 	sandbox := t.TempDir()
@@ -47,44 +46,61 @@ func TestPrepareIsolatedClaudeHome_SymlinksCredentialsWhenPresent(t *testing.T) 
 		t.Fatalf("prepare: %v", err)
 	}
 
-	sandboxCreds := filepath.Join(sandbox, ".claude", ".credentials.json")
-	target, err := os.Readlink(sandboxCreds)
+	sandboxConfig := filepath.Join(sandbox, ".claude.json")
+	got, err := os.ReadFile(sandboxConfig)
 	if err != nil {
-		t.Fatalf("expected symlink at %s: %v", sandboxCreds, err)
+		t.Fatalf("read sandbox config: %v", err)
 	}
-	if target != realCreds {
-		t.Errorf("symlink target = %q, want %q", target, realCreds)
+	if string(got) != string(original) {
+		t.Errorf("sandbox config != operator config (snapshot copy expected)")
+	}
+	// Must NOT be a symlink (otherwise eval writes pollute operator file).
+	info, err := os.Lstat(sandboxConfig)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Error("sandbox config must be a copy, not a symlink — symlink would let eval writes pollute operator's real ~/.claude.json")
+	}
+
+	// Verify isolation: writing to sandbox does NOT change operator file.
+	if err := os.WriteFile(sandboxConfig, []byte(`{"new":"sandbox-only"}`), 0o600); err != nil {
+		t.Fatalf("write sandbox: %v", err)
+	}
+	stillOriginal, err := os.ReadFile(realConfig)
+	if err != nil {
+		t.Fatalf("re-read real: %v", err)
+	}
+	if string(stillOriginal) != string(original) {
+		t.Errorf("operator's real ~/.claude.json was modified by sandbox write — isolation broken")
 	}
 }
 
 // TestPrepareIsolatedClaudeHome_NoCredentialsNoOp pins the no-OAuth case:
 // if the operator authenticates via ANTHROPIC_API_KEY rather than OAuth,
-// there's no credentials file to symlink — should succeed cleanly.
+// there's no ~/.claude.json to copy — should succeed cleanly.
 func TestPrepareIsolatedClaudeHome_NoCredentialsNoOp(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	// No .credentials.json seeded under home.
+	// No ~/.claude.json seeded.
 
 	sandbox := t.TempDir()
 	if err := PrepareIsolatedClaudeHome(sandbox); err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if _, err := os.Lstat(filepath.Join(sandbox, ".claude", ".credentials.json")); !os.IsNotExist(err) {
-		t.Fatalf("no credentials file should be created when source absent; lstat err: %v", err)
+	if _, err := os.Lstat(filepath.Join(sandbox, ".claude.json")); !os.IsNotExist(err) {
+		t.Fatalf("no config copy should be created when source absent; lstat err: %v", err)
 	}
 }
 
 // TestPrepareIsolatedClaudeHome_IdempotentReRun pins that calling twice
-// on the same sandbox doesn't error or duplicate. Real eval flow may
-// re-prepare across scenarios that share a claude-home.
+// on the same sandbox doesn't error and doesn't re-copy (preserves any
+// sandbox-local writes since the first prepare).
 func TestPrepareIsolatedClaudeHome_IdempotentReRun(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	realCreds := filepath.Join(home, ".claude", ".credentials.json")
-	if err := os.MkdirAll(filepath.Dir(realCreds), 0o700); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if err := os.WriteFile(realCreds, []byte(`{}`), 0o600); err != nil {
+	realConfig := filepath.Join(home, ".claude.json")
+	if err := os.WriteFile(realConfig, []byte(`{"v":1}`), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -92,8 +108,17 @@ func TestPrepareIsolatedClaudeHome_IdempotentReRun(t *testing.T) {
 	if err := PrepareIsolatedClaudeHome(sandbox); err != nil {
 		t.Fatalf("first prepare: %v", err)
 	}
+	// Sandbox-local edit (simulates claude session writes during run).
+	sandboxConfig := filepath.Join(sandbox, ".claude.json")
+	if err := os.WriteFile(sandboxConfig, []byte(`{"sandbox-modified":true}`), 0o600); err != nil {
+		t.Fatalf("sandbox edit: %v", err)
+	}
 	if err := PrepareIsolatedClaudeHome(sandbox); err != nil {
 		t.Fatalf("second prepare (idempotent): %v", err)
+	}
+	got, _ := os.ReadFile(sandboxConfig)
+	if string(got) != `{"sandbox-modified":true}` {
+		t.Errorf("idempotent prepare must NOT clobber sandbox writes; got: %s", got)
 	}
 }
 
