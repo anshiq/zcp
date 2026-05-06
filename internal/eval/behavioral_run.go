@@ -111,7 +111,7 @@ func (r *Runner) RunBehavioralScenario(ctx context.Context, scenarioPath, suiteI
 		return nil, fmt.Errorf("write retrospective prompt: %w", err)
 	}
 
-	if err := cleanClaudeMemory(); err != nil {
+	if err := cleanClaudeMemory(r.config.ClaudeHome); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: clean memory: %v\n", err)
 	}
 

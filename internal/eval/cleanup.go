@@ -401,12 +401,22 @@ func isPlatformErrorCode(err error, code string) bool {
 // cleanClaudeMemory removes Claude auto-memory files so the next eval run
 // starts with a blank slate. This prevents cross-contamination between
 // sequential recipe evaluations.
-func cleanClaudeMemory() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("user home dir: %w", err)
+//
+// claudeHome overrides the agent's `.claude/` config dir (which contains
+// `projects/<slug>/memory/`). Empty falls back to `<user-home>/.claude` —
+// safe on the zcp container where the agent has its own ephemeral home,
+// destructive on a developer's Mac where it would wipe every Claude
+// project's auto-memory across the whole machine. The local-mode eval
+// wrapper points this at a scenario-scoped temp dir.
+func cleanClaudeMemory(claudeHome string) error {
+	if claudeHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("user home dir: %w", err)
+		}
+		claudeHome = filepath.Join(home, ".claude")
 	}
-	return cleanClaudeMemoryDir(filepath.Join(home, ".claude", "projects"))
+	return cleanClaudeMemoryDir(filepath.Join(claudeHome, "projects"))
 }
 
 // cleanClaudeMemoryDir removes all files inside */memory/ directories under base.

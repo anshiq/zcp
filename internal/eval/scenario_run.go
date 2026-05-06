@@ -82,7 +82,7 @@ func (r *Runner) RunScenario(ctx context.Context, scenarioPath, suiteID string) 
 		return nil, fmt.Errorf("write prompt: %w", err)
 	}
 
-	if err := cleanClaudeMemory(); err != nil {
+	if err := cleanClaudeMemory(r.config.ClaudeHome); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: clean memory: %v\n", err)
 	}
 

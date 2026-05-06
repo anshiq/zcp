@@ -15,6 +15,7 @@ import (
 	"github.com/zeropsio/zcp/internal/eval"
 	"github.com/zeropsio/zcp/internal/knowledge"
 	"github.com/zeropsio/zcp/internal/platform"
+	"github.com/zeropsio/zcp/internal/runtime"
 )
 
 const (
@@ -557,10 +558,38 @@ func evalResultsDir() string {
 }
 
 func evalWorkDir() string {
-	if dir := os.Getenv("ZCP_EVAL_WORK_DIR"); dir != "" {
-		return dir
+	dir, ok, msg := resolveEvalWorkDir(os.Getenv("ZCP_EVAL_WORK_DIR"), runtime.Detect().InContainer)
+	if !ok {
+		fmt.Fprintln(os.Stderr, "error: "+msg)
+		os.Exit(1)
 	}
-	return "/var/www"
+	return dir
+}
+
+// resolveEvalWorkDir is the testable policy split out of evalWorkDir.
+// CleanupProject runs `rm -rf` on workDir between scenarios; an implicit
+// /var/www default outside the zcp container fails confusingly when the
+// path is missing and is destructive when an unrelated /var/www exists.
+// Outside the container, the operator must set ZCP_EVAL_WORK_DIR to a
+// disposable scenario directory (the local-mode runner sets it under
+// /tmp/zcp-flow-eval-local/...).
+func resolveEvalWorkDir(envValue string, inContainer bool) (dir string, ok bool, msg string) {
+	if envValue != "" {
+		return envValue, true, ""
+	}
+	if !inContainer {
+		return "", false, "ZCP_EVAL_WORK_DIR is required outside the zcp container — the eval runner does rm -rf on workDir between scenarios. Set it to a disposable directory, e.g. /tmp/zcp-eval-workdir."
+	}
+	return "/var/www", true, ""
+}
+
+// evalClaudeHome returns the override for the agent's `.claude/` config dir
+// containing `projects/<slug>/memory/`. Empty falls back to ~/.claude inside
+// the runner — safe on the zcp container, destructive on a developer's Mac
+// where it would wipe every Claude project's memory across the whole
+// machine. flow-eval-local.sh sets this to a scenario-scoped temp dir.
+func evalClaudeHome() string {
+	return os.Getenv("ZCP_EVAL_CLAUDE_HOME")
 }
 
 func evalMCPConfig() string {
@@ -623,6 +652,7 @@ func initEvalRunner() (*eval.Runner, *knowledge.Store, context.Context) {
 		MCPConfig:  evalMCPConfig(),
 		ResultsDir: evalResultsDir(),
 		WorkDir:    evalWorkDir(),
+		ClaudeHome: evalClaudeHome(),
 	}
 
 	runner := eval.NewRunner(config, store, client, projectID)

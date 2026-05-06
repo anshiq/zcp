@@ -279,6 +279,59 @@ func TestRemoveClaudeMD_AbsentFileNoOp(t *testing.T) {
 	}
 }
 
+// TestCleanClaudeMemory_RespectsClaudeHomeOverride pins that local-mode
+// eval can isolate Claude memory cleanup to a scenario-scoped directory.
+// Without this override, a developer running flow-eval-local on their Mac
+// would have ALL real ~/.claude/projects/*/memory/ wiped between scenarios.
+func TestCleanClaudeMemory_RespectsClaudeHomeOverride(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	projDir := filepath.Join(dir, "projects", "test-project", "memory")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatalf("seed project memory dir: %v", err)
+	}
+	memFile := filepath.Join(projDir, "user_role.md")
+	if err := os.WriteFile(memFile, []byte("test"), 0o644); err != nil {
+		t.Fatalf("seed memory file: %v", err)
+	}
+
+	if err := cleanClaudeMemory(dir); err != nil {
+		t.Fatalf("cleanClaudeMemory(%q): %v", dir, err)
+	}
+
+	if _, err := os.Stat(memFile); !os.IsNotExist(err) {
+		t.Fatalf("memory file should be gone after cleanup; stat err: %v", err)
+	}
+	if _, err := os.Stat(projDir); err != nil {
+		t.Fatalf("memory dir itself should remain: %v", err)
+	}
+}
+
+// TestCleanClaudeMemory_EmptyClaudeHomeDefaultsToUserHome pins that the
+// empty-arg path preserves container-mode behavior — ~/.claude/projects.
+// Uses HOME override (no t.Parallel — t.Setenv mutates process env).
+func TestCleanClaudeMemory_EmptyClaudeHomeDefaultsToUserHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projDir := filepath.Join(home, ".claude", "projects", "p1", "memory")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	memFile := filepath.Join(projDir, "x.md")
+	if err := os.WriteFile(memFile, []byte("v"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if err := cleanClaudeMemory(""); err != nil {
+		t.Fatalf("cleanClaudeMemory(\"\"): %v", err)
+	}
+	if _, err := os.Stat(memFile); !os.IsNotExist(err) {
+		t.Fatalf("memory file under HOME/.claude/projects should be cleaned; stat err: %v", err)
+	}
+}
+
 // TestCleanupProject_RemovesClaudeMD_EndToEnd pins that the full
 // CleanupProject sequence ends with no CLAUDE.md in workDir. Uses a clean
 // platform mock so only the workdir-cleanup half is exercised; the

@@ -22,6 +22,7 @@ type RunnerConfig struct {
 	MCPConfig  string        // Path to MCP config file (e.g., ~/.mcp.json)
 	ResultsDir string        // Base directory for results output
 	WorkDir    string        // Working directory on zcp (default: /var/www)
+	ClaudeHome string        // Override for the agent's .claude config dir; empty = ~/.claude. Local-mode eval sets a scenario-scoped temp dir so it doesn't wipe the operator's real Claude memory between scenarios.
 	Model      string        // Claude model to use (default: "sonnet")
 	MaxTurns   int           // Max turns per eval (default: 100)
 	Timeout    time.Duration // Timeout per recipe (default: 15 min)
@@ -130,7 +131,7 @@ func (r *Runner) Run(ctx context.Context, recipeName, suiteID string) (*RunResul
 	}
 
 	// 6. Clean Claude auto-memory to prevent cross-contamination
-	if err := cleanClaudeMemory(); err != nil {
+	if err := cleanClaudeMemory(r.config.ClaudeHome); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: clean memory: %v\n", err)
 	}
 
