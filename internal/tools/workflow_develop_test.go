@@ -785,3 +785,133 @@ func TestHandleDevelopBriefing_SameIntent_Idempotent(t *testing.T) {
 		t.Errorf("idempotent restart must preserve deploy history, got: %+v", ws.Deploys)
 	}
 }
+
+// Phase 2 of the local-mode prune fix: PruneServiceMetas now keeps the
+// local-only project meta (commit e9c2be9c). The next layer is develop
+// scope: local-only meta is project-keyed (Hostname=project.Name) and
+// not a deployable runtime. validateDevelopScope used to list the
+// project name as "available runtime services", which sent the agent
+// chasing a hostname that isn't a service. The fix is to surface a
+// specific adopt-local recovery when the only metas are local-only.
+//
+// Reproducer (live): eval/behavioral/runs-local/20260506-144837 self-review §1.
+func TestHandleDevelopBriefing_LocalOnly_GuidesAdoptLocal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	engine := workflow.NewEngine(dir, workflow.EnvLocal, nil)
+
+	if err := workflow.WriteServiceMeta(dir, &workflow.ServiceMeta{
+		Hostname:       "eval-zcp", // project name (LocalAutoAdopt convention)
+		Mode:           topology.PlanModeLocalOnly,
+		BootstrappedAt: "2026-05-06",
+	}); err != nil {
+		t.Fatalf("WriteServiceMeta: %v", err)
+	}
+
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-app", Name: "app", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+		{ID: "svc-zcp", Name: "zcp", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "zcp@1"}},
+	})
+
+	result, _, err := handleDevelopBriefing(context.Background(), engine, mock, "proj1",
+		WorkflowInput{Intent: "deploy notes API", Scope: []string{"app"}}, runtime.Info{InContainer: false})
+	if err != nil {
+		t.Fatalf("handleDevelopBriefing: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected adopt-local guidance, got success:\n%s", extractText(result))
+	}
+	text := extractText(result)
+	for _, needle := range []string{
+		`"recovery"`,
+		`"action":"adopt-local"`,
+		"local-only",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Errorf("expected adopt-local guidance with %q. Got:\n%s", needle, text)
+		}
+	}
+	if strings.Contains(text, "eval-zcp") && strings.Contains(text, "available runtime services") {
+		t.Errorf("must not list project name as 'available runtime services'. Got:\n%s", text)
+	}
+}
+
+// Local-stage's project-name key (m.Hostname=projectName) MUST NOT appear
+// in the "available runtime services" list emitted by validateDevelopScope.
+// Only the linked stage-hostname is a deployable scope target.
+func TestHandleDevelopBriefing_LocalStage_ProjectNameNotInAvailable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	engine := workflow.NewEngine(dir, workflow.EnvLocal, nil)
+
+	if err := workflow.WriteServiceMeta(dir, &workflow.ServiceMeta{
+		Hostname:       "eval-zcp",
+		StageHostname:  "app",
+		Mode:           topology.PlanModeLocalStage,
+		BootstrappedAt: "2026-05-06",
+	}); err != nil {
+		t.Fatalf("WriteServiceMeta: %v", err)
+	}
+
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-app", Name: "app", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+	})
+
+	result, _, err := handleDevelopBriefing(context.Background(), engine, mock, "proj1",
+		WorkflowInput{Intent: "wrong scope", Scope: []string{"wrongHost"}}, runtime.Info{InContainer: false})
+	if err != nil {
+		t.Fatalf("handleDevelopBriefing: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected error, got:\n%s", extractText(result))
+	}
+	text := extractText(result)
+	if !strings.Contains(text, "app") {
+		t.Errorf("expected 'app' (stage hostname) listed as available; got:\n%s", text)
+	}
+	if strings.Contains(text, "eval-zcp") {
+		t.Errorf("must not list project name 'eval-zcp' as scopable; got:\n%s", text)
+	}
+}
+
+// Local-stage with scope=[stageHostname] is the happy path — work
+// session created, scope normalized to the stage hostname.
+func TestHandleDevelopBriefing_LocalStage_StageHostInScope_Accepted(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	engine := workflow.NewEngine(dir, workflow.EnvLocal, nil)
+
+	if err := workflow.WriteServiceMeta(dir, &workflow.ServiceMeta{
+		Hostname:        "eval-zcp",
+		StageHostname:   "app",
+		Mode:            topology.PlanModeLocalStage,
+		BootstrappedAt:  "2026-05-06",
+		CloseDeployMode: topology.CloseModeAuto,
+	}); err != nil {
+		t.Fatalf("WriteServiceMeta: %v", err)
+	}
+	t.Cleanup(func() { _ = workflow.DeleteWorkSession(dir, os.Getpid()) })
+
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-app", Name: "app", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+	})
+
+	result, _, err := handleDevelopBriefing(context.Background(), engine, mock, "proj1",
+		WorkflowInput{Intent: "deploy notes API", Scope: []string{"app"}}, runtime.Info{InContainer: false})
+	if err != nil {
+		t.Fatalf("handleDevelopBriefing: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error:\n%s", extractText(result))
+	}
+	ws, _ := workflow.CurrentWorkSession(dir)
+	if ws == nil {
+		t.Fatalf("expected work session created")
+	}
+	if len(ws.Services) != 1 || ws.Services[0] != "app" {
+		t.Errorf("expected scope=[app], got %v", ws.Services)
+	}
+}

@@ -127,9 +127,27 @@ func handleDevelopBriefing(ctx context.Context, engine *workflow.Engine, client 
 	// container+standard pair resolve to the single meta file. Without this,
 	// scope=[devhost, stagehost] was silently rejecting stage despite the
 	// atom telling the agent to include it.
+	//
+	// Local-mode metas are project-keyed (m.Hostname = project.Name set by
+	// LocalAutoAdopt), not service-keyed. Two consequences for runtimeMetas:
+	//   - PlanModeLocalOnly metas have no deployable runtime — surfacing
+	//     them as scope candidates sent agents chasing the project name as
+	//     if it were a service.
+	//   - PlanModeLocalStage metas index under both project name (m.Hostname)
+	//     and stage hostname (m.StageHostname) via ManagedRuntimeIndex; only
+	//     the stage hostname is a deployable scope target. The project-name
+	//     key must be filtered out.
 	allRuntimes := workflow.ManagedRuntimeIndex(metas)
 	runtimeMetas := make(map[string]*workflow.ServiceMeta, len(allRuntimes))
+	hasLocalOnly := false
 	for h, m := range allRuntimes {
+		if m.Mode == topology.PlanModeLocalOnly {
+			hasLocalOnly = true
+			continue
+		}
+		if m.Mode == topology.PlanModeLocalStage && h == m.Hostname {
+			continue // skip the project-name key; the stage-hostname key remains
+		}
 		if !m.IsComplete() {
 			continue
 		}
@@ -139,6 +157,21 @@ func handleDevelopBriefing(ctx context.Context, engine *workflow.Engine, client 
 		runtimeMetas[h] = m
 	}
 	if len(runtimeMetas) == 0 {
+		if hasLocalOnly {
+			// Local-only project: services may exist on Zerops but none is
+			// linked as the local stage. The recovery is adopt-local
+			// (subaction transitions local-only → local-stage by linking
+			// one runtime), NOT bootstrap+adopt (which is for unmanaged
+			// services or new projects).
+			return convertError(platform.NewPlatformError(
+				platform.ErrPrerequisiteMissing,
+				"Project is adopted as local-only — link a Zerops runtime as the local stage before develop",
+				"Run: zerops_workflow action=\"adopt-local\" targetService=\"<runtime-hostname>\". Pick the runtime you want this local checkout to deploy to."),
+				WithRecovery(&RecoveryHint{
+					Tool:   "zerops_workflow",
+					Action: "adopt-local",
+				})), nil, nil
+		}
 		return convertError(platform.NewPlatformError(
 			platform.ErrPrerequisiteMissing,
 			"No deployable runtime services found",
