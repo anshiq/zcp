@@ -246,10 +246,18 @@ func TestBrief_Scaffold_UnderCap_WithDevLoop(t *testing.T) {
 // (~1.6 KB) plus decision_recording_slim.md's R3-C-2/4/5 worked
 // examples (~2.5 KB). Both additions are spec-required content —
 // the brief still has 7 KB headroom under the hard cap.
+//
+// Run-28 fix #1 + #5 bumped the target 41 → 43 KB. Fix #1 added the
+// "Env-token references in fact text" section to
+// decision_recording_slim.md (~1 KB) so cross-codebase fact
+// propagation matches; fix #5 added env-roll-timing + env-wrapper-ban
+// sections to preship_contract.md (~1.7 KB) to close the run-27
+// `start-dev.sh` invention trap. Both atoms always load at scaffold;
+// scope is global teaching, not per-role.
 func TestBrief_Scaffold_FrontendSPA_UnderTargetSize(t *testing.T) {
 	t.Parallel()
 
-	const targetCap = 41 * 1024
+	const targetCap = 43 * 1024
 	plan := syntheticShowcasePlan()
 	// app is the RoleFrontend codebase (largest scaffold brief shape —
 	// adds tier-fact table + build-tool-host-allowlist + spa-static).
