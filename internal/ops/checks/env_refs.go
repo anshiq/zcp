@@ -36,10 +36,10 @@ import (
 // predicate itself sticks to Name / Status / Detail so the same shape
 // works from the CLI shim.
 func CheckEnvRefs(_ context.Context, hostname string, entry *ops.ZeropsYmlEntry, discoveredEnvVars map[string][]string, liveHostnames []string) []workflow.StepCheck {
-	if entry == nil || len(entry.EnvVariables) == 0 {
+	if entry == nil || len(entry.Run.EnvVariables) == 0 {
 		return nil
 	}
-	envErrs := ops.ValidateEnvReferences(entry.EnvVariables, discoveredEnvVars, liveHostnames)
+	envErrs := ops.ValidateEnvReferences(entry.Run.EnvVariables, discoveredEnvVars, liveHostnames)
 	if len(envErrs) == 0 {
 		return []workflow.StepCheck{{
 			Name:   hostname + "_env_refs",

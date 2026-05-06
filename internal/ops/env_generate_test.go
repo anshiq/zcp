@@ -28,9 +28,10 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			name: "cross-service references resolved",
 			zeropsYml: `zerops:
   - setup: app
-    envVariables:
-      DB_HOST: ${db_hostname}
-      DB_PORT: ${db_port}
+    run:
+      envVariables:
+        DB_HOST: ${db_hostname}
+        DB_PORT: ${db_port}
 `,
 			hostname: "app",
 			serviceEnvs: map[string][]platform.EnvVar{
@@ -47,8 +48,9 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			name: "project-level env vars appended",
 			zeropsYml: `zerops:
   - setup: app
-    envVariables:
-      DB_HOST: ${db_hostname}
+    run:
+      envVariables:
+        DB_HOST: ${db_hostname}
 `,
 			hostname: "app",
 			serviceEnvs: map[string][]platform.EnvVar{
@@ -67,9 +69,10 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			name: "static value passthrough",
 			zeropsYml: `zerops:
   - setup: app
-    envVariables:
-      NODE_ENV: production
-      DB_HOST: ${db_hostname}
+    run:
+      envVariables:
+        NODE_ENV: production
+        DB_HOST: ${db_hostname}
 `,
 			hostname: "app",
 			serviceEnvs: map[string][]platform.EnvVar{
@@ -85,8 +88,9 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			name: "zerops.yaml envVariable takes precedence over project env",
 			zeropsYml: `zerops:
   - setup: app
-    envVariables:
-      SHARED_KEY: custom_value
+    run:
+      envVariables:
+        SHARED_KEY: custom_value
 `,
 			hostname: "app",
 			projectEnvs: []platform.EnvVar{
@@ -100,8 +104,9 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			name: "missing service hostname",
 			zeropsYml: `zerops:
   - setup: app
-    envVariables:
-      DB_HOST: ${db_hostname}
+    run:
+      envVariables:
+        DB_HOST: ${db_hostname}
 `,
 			hostname: "",
 			wantErr:  "serviceHostname is required",
@@ -110,8 +115,9 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			name: "no setup entry for hostname",
 			zeropsYml: `zerops:
   - setup: other
-    envVariables:
-      FOO: bar
+    run:
+      envVariables:
+        FOO: bar
 `,
 			hostname: "app",
 			wantErr:  "no setup entry",
@@ -124,14 +130,25 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
       base: nodejs@22
 `,
 			hostname: "app",
-			wantErr:  "no envVariables",
+			wantErr:  "no run.envVariables",
+		},
+		{
+			name: "top-level envVariables ignored (schema requires run.envVariables)",
+			zeropsYml: `zerops:
+  - setup: app
+    envVariables:
+      DB_HOST: ${db_hostname}
+`,
+			hostname: "app",
+			wantErr:  "no run.envVariables",
 		},
 		{
 			name: "unresolved reference",
 			zeropsYml: `zerops:
   - setup: app
-    envVariables:
-      DB_HOST: ${db_hostname}
+    run:
+      envVariables:
+        DB_HOST: ${db_hostname}
 `,
 			hostname: "app",
 			serviceEnvs: map[string][]platform.EnvVar{

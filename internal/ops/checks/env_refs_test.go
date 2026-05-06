@@ -44,19 +44,23 @@ func TestCheckEnvRefs_Table(t *testing.T) {
 		},
 		{
 			name: "entry with no envVariables returns nil",
-			entry: &ops.ZeropsYmlEntry{
-				EnvVariables: map[string]string{},
-			},
+			entry: func() *ops.ZeropsYmlEntry {
+				e := &ops.ZeropsYmlEntry{}
+				e.Run.EnvVariables = map[string]string{}
+				return e
+			}(),
 			wantStatus: "",
 		},
 		{
 			name: "all refs resolve passes",
-			entry: &ops.ZeropsYmlEntry{
-				EnvVariables: map[string]string{
+			entry: func() *ops.ZeropsYmlEntry {
+				e := &ops.ZeropsYmlEntry{}
+				e.Run.EnvVariables = map[string]string{
 					"DB_HOST":     "${db_hostname}",
 					"DB_PASSWORD": "${db_password}",
-				},
-			},
+				}
+				return e
+			}(),
 			// ValidateEnvReferences strips the `<hostname>_` prefix from
 			// the raw reference; discoveredEnvVars keys the stripped var
 			// name. `${db_hostname}` → lookup discoveredEnvVars["db"] for
@@ -69,11 +73,13 @@ func TestCheckEnvRefs_Table(t *testing.T) {
 		},
 		{
 			name: "unresolved hostname fails",
-			entry: &ops.ZeropsYmlEntry{
-				EnvVariables: map[string]string{
+			entry: func() *ops.ZeropsYmlEntry {
+				e := &ops.ZeropsYmlEntry{}
+				e.Run.EnvVariables = map[string]string{
 					"DB_HOST": "${missing_hostname}",
-				},
-			},
+				}
+				return e
+			}(),
 			discoveredEnvVars: map[string][]string{},
 			liveHostnames:     []string{"apidev"},
 			wantStatus:        "fail",
@@ -81,11 +87,13 @@ func TestCheckEnvRefs_Table(t *testing.T) {
 		},
 		{
 			name: "unresolved env var fails",
-			entry: &ops.ZeropsYmlEntry{
-				EnvVariables: map[string]string{
+			entry: func() *ops.ZeropsYmlEntry {
+				e := &ops.ZeropsYmlEntry{}
+				e.Run.EnvVariables = map[string]string{
 					"DB_HOST": "${db_nonexistent}",
-				},
-			},
+				}
+				return e
+			}(),
 			discoveredEnvVars: map[string][]string{
 				"db": {"hostname", "password"},
 			},

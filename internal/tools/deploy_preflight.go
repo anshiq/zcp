@@ -119,7 +119,7 @@ func deployPreFlight(ctx context.Context, client platform.Client, projectID, sta
 	// here is setup resolution + schema + env-ref validation.
 
 	// Validate env var references.
-	if len(entry.EnvVariables) > 0 && client != nil {
+	if len(entry.Run.EnvVariables) > 0 && client != nil {
 		checks = append(checks, preflightEnvRefs(ctx, client, projectID, targetHostname, entry)...)
 	}
 
@@ -178,7 +178,7 @@ func preflightEnvRefs(ctx context.Context, client platform.Client, projectID, ho
 		discoveredEnvVars[svc.Name] = names
 	}
 
-	envErrs := ops.ValidateEnvReferences(entry.EnvVariables, discoveredEnvVars, liveHostnames)
+	envErrs := ops.ValidateEnvReferences(entry.Run.EnvVariables, discoveredEnvVars, liveHostnames)
 	if len(envErrs) > 0 {
 		details := make([]string, len(envErrs))
 		for i, e := range envErrs {

@@ -22,9 +22,6 @@ func writeFixture(t *testing.T) string {
 	files := map[string]string{
 		"apidev/zerops.yaml": `zerops:
   - setup: dev
-    envVariables:
-      APP_PORT: "3000"
-      LOG_LEVEL: info
     build:
       base: nodejs@22
       buildCommands:
@@ -37,6 +34,9 @@ func writeFixture(t *testing.T) string {
         - port: 3000
           httpSupport: true
       start: node server.js
+      envVariables:
+        APP_PORT: "3000"
+        LOG_LEVEL: info
 `,
 		"apidev/README.md": `# apidev
 

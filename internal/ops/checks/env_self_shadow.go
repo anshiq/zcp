@@ -9,13 +9,10 @@ import (
 	"github.com/zeropsio/zcp/internal/workflow"
 )
 
-// CheckEnvSelfShadow detects `key: ${key}` shape (self-shadow) in both
-// top-level `envVariables` (deprecated schema location) and
-// `run.envVariables` (canonical). Self-shadows resolve to the literal
-// string `${key}` inside the container, breaking the cross-service auto-
-// inject contract. v8.85 lineage; deliberately enumerates both locations
-// because v28 evidence showed self-shadows leaking in through both
-// surfaces when only one was audited.
+// CheckEnvSelfShadow detects `key: ${key}` shape (self-shadow) in
+// `run.envVariables` (the canonical schema location). Self-shadows
+// resolve to the literal string `${key}` inside the container, breaking
+// the cross-service auto-inject contract.
 //
 // Returns exactly one StepCheck per invocation — pass or fail. Nil entry
 // is a pass (defensive; upstream `_zerops_yml_exists` reports a missing
@@ -27,11 +24,7 @@ func CheckEnvSelfShadow(_ context.Context, hostname string, entry *ops.ZeropsYml
 			Status: StatusPass,
 		}}
 	}
-	topLevel := ops.DetectSelfShadows(entry.EnvVariables)
-	runLevel := ops.DetectSelfShadows(entry.Run.EnvVariables)
-	shadows := make([]string, 0, len(topLevel)+len(runLevel))
-	shadows = append(shadows, topLevel...)
-	shadows = append(shadows, runLevel...)
+	shadows := ops.DetectSelfShadows(entry.Run.EnvVariables)
 	if len(shadows) == 0 {
 		return []workflow.StepCheck{{
 			Name:   hostname + "_env_self_shadow",

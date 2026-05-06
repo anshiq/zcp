@@ -30,9 +30,11 @@ type EnvDotenvResult struct {
 // In Zerops, ${...} is ONLY for cross-service refs — project-level env vars are auto-injected.
 var refPattern = regexp.MustCompile(`^\$\{([a-zA-Z][a-zA-Z0-9]*_[a-zA-Z_][a-zA-Z0-9_]*)\}$`)
 
-// EnvGenerateDotenv reads zerops.yaml envVariables for a service, resolves ${hostname_varName}
+// EnvGenerateDotenv reads zerops.yaml `run.envVariables` for a service, resolves ${hostname_varName}
 // cross-service references by fetching actual values from managed services, appends project-level
 // env vars, and writes a .env file. The LLM never sees secret values — ZCP resolves internally.
+// `run.envVariables` is the canonical schema location; the JSON schema rejects envVariables at the
+// setup-entry top level (only build.envVariables / run.envVariables are valid).
 func EnvGenerateDotenv(
 	ctx context.Context,
 	client platform.Client,
@@ -62,18 +64,18 @@ func EnvGenerateDotenv(
 			"Check that zerops.yaml has a setup: entry matching the service hostname")
 	}
 
-	if len(entry.EnvVariables) == 0 {
+	if len(entry.Run.EnvVariables) == 0 {
 		return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
-			fmt.Sprintf("setup %q has no envVariables in zerops.yaml", hostname),
-			"Add envVariables to zerops.yaml first")
+			fmt.Sprintf("setup %q has no run.envVariables in zerops.yaml", hostname),
+			"Add run.envVariables to zerops.yaml first")
 	}
 
-	// Resolve zerops.yaml envVariables — cross-service refs only.
+	// Resolve run.envVariables — cross-service refs only.
 	serviceEnvCache := make(map[string][]platform.EnvVar)
-	resolved := make(map[string]string, len(entry.EnvVariables))
+	resolved := make(map[string]string, len(entry.Run.EnvVariables))
 	var unresolvedKeys []string
 
-	for envName, rawValue := range entry.EnvVariables {
+	for envName, rawValue := range entry.Run.EnvVariables {
 		match := refPattern.FindStringSubmatch(rawValue)
 		if match == nil {
 			// Static value (not a cross-service reference) — use as-is.

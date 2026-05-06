@@ -22,21 +22,9 @@ func TestCheckEnvSelfShadow_Table(t *testing.T) {
 			wantStatus: "pass",
 		},
 		{
-			name: "no envVars passes",
-			entry: &ops.ZeropsYmlEntry{
-				EnvVariables: nil,
-			},
+			name:       "no envVars passes",
+			entry:      &ops.ZeropsYmlEntry{},
 			wantStatus: "pass",
-		},
-		{
-			name: "top-level self-shadow fails",
-			entry: &ops.ZeropsYmlEntry{
-				EnvVariables: map[string]string{
-					"DB_HOST": "${DB_HOST}",
-				},
-			},
-			wantStatus: "fail",
-			wantDetail: []string{"DB_HOST"},
 		},
 		{
 			name: "run-level self-shadow fails",
@@ -64,19 +52,17 @@ func TestCheckEnvSelfShadow_Table(t *testing.T) {
 			wantStatus: "pass",
 		},
 		{
-			name: "both levels reported together",
+			name: "multiple run-level shadows reported together",
 			entry: func() *ops.ZeropsYmlEntry {
 				e := &ops.ZeropsYmlEntry{}
-				e.EnvVariables = map[string]string{
-					"TOP_ONE": "${TOP_ONE}",
-				}
 				e.Run.EnvVariables = map[string]string{
-					"RUN_ONE": "${RUN_ONE}",
+					"FIRST":  "${FIRST}",
+					"SECOND": "${SECOND}",
 				}
 				return e
 			}(),
 			wantStatus: "fail",
-			wantDetail: []string{"TOP_ONE", "RUN_ONE"},
+			wantDetail: []string{"FIRST", "SECOND"},
 		},
 	}
 	for _, tt := range tests {

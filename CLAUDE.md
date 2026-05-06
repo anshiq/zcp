@@ -193,6 +193,20 @@ Spec: `docs/spec-architecture.md` — per-package mapping + examples.
 - **Check-before-mutate for non-idempotent platform APIs** — read state via
   REST-authoritative endpoint, short-circuit when desired state holds.
   Canonical: `ops.Subdomain`. Spec: `spec-workflows.md §8 O3`.
+- **`run.envVariables` is the canonical setup-entry env-var location** —
+  the live JSON schema rejects `envVariables` at the setup-entry top
+  level (`additionalProperties: false`); the only valid locations are
+  `build.envVariables` and `run.envVariables`. `EnvGenerateDotenv` and
+  every env-ref pre-flight (`preflightEnvRefs`, `CheckEnvRefs`,
+  `CheckEnvSelfShadow`) read `entry.Run.EnvVariables` exclusively. The
+  earlier top-level `ZeropsYmlEntry.EnvVariables` field was dead code
+  that silently absorbed schema-violating yaml — its presence let four
+  parallel readers no-op on every conforming yaml (the canonical
+  `run.envVariables` was invisible to them). Atom guidance
+  (`develop-first-deploy-scaffold-yaml.md`) places the block under
+  `run:`. Pinned by `TestEnvGenerateDotenv_ResolvesRefs/top-level
+  envVariables ignored*` and `TestCheckEnvRefs_Table` /
+  `TestCheckEnvSelfShadow_Table` (every fixture uses `e.Run.EnvVariables`).
 - **Local-mode preflight respects `workingDir`** — in local mode (no SSH
   deployer; user's dev machine), `workingDir` is the source of truth for
   `zerops.yaml` location; `deployPreFlight` honors it end-to-end, falling

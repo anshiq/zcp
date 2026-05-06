@@ -300,7 +300,7 @@ func handleGitPush(
 			// already validated above; a parse miss here is a content
 			// mismatch we don't want to escalate to a deploy-blocker).
 			if doc, parseErr := ops.ParseZeropsYmlContent([]byte(yamlContent), "zerops.yaml"); parseErr == nil {
-				if entry := doc.FindEntry(setupName); entry != nil && len(entry.EnvVariables) > 0 {
+				if entry := doc.FindEntry(setupName); entry != nil && len(entry.Run.EnvVariables) > 0 {
 					for _, c := range preflightEnvRefs(ctx, client, projectID, hostname, entry) {
 						if c.Status == statusFail {
 							recordAttempt(fmt.Sprintf("env-var pre-flight failed: %s", c.Detail), topology.FailureClassConfig)

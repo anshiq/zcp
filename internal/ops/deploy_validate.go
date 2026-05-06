@@ -134,11 +134,10 @@ type ZeropsYmlDoc struct {
 
 // ZeropsYmlEntry represents a single setup entry in zerops.yaml.
 type ZeropsYmlEntry struct {
-	Setup        string            `yaml:"setup"`
-	Build        zeropsYmlBuild    `yaml:"build"`
-	Deploy       zeropsYmlDeploy   `yaml:"deploy"`
-	Run          zeropsYmlRun      `yaml:"run"`
-	EnvVariables map[string]string `yaml:"envVariables"`
+	Setup  string          `yaml:"setup"`
+	Build  zeropsYmlBuild  `yaml:"build"`
+	Deploy zeropsYmlDeploy `yaml:"deploy"`
+	Run    zeropsYmlRun    `yaml:"run"`
 }
 
 // HasPorts returns true if the entry has at least one run.ports entry.
