@@ -8,6 +8,7 @@ import (
 	"github.com/zeropsio/zcp/internal/auth"
 	"github.com/zeropsio/zcp/internal/ops"
 	"github.com/zeropsio/zcp/internal/platform"
+	"github.com/zeropsio/zcp/internal/runtime"
 	"github.com/zeropsio/zcp/internal/workflow"
 )
 
@@ -68,8 +69,12 @@ func RegisterDeployBatch(
 		// Gate: each target (and its source, when set) must be adopted by
 		// ZCP. Recipe-authoring sessions whose Plan owns the host bypass
 		// adoption — see requireAdoption for the exemption rationale.
+		// Batch deploy is container-only (registered when sshDeployer != nil),
+		// so requireAdoption is called with InContainer=true to surface the
+		// bootstrap recovery hint.
+		containerRT := runtime.Info{InContainer: true}
 		for _, t := range input.Targets {
-			if blocked := requireAdoption(stateDir, recipeProbe, t.TargetService, t.SourceService); blocked != nil {
+			if blocked := requireAdoption(stateDir, containerRT, recipeProbe, t.TargetService, t.SourceService); blocked != nil {
 				return blocked, nil, nil
 			}
 		}

@@ -1000,7 +1000,9 @@ func TestDeployTool_AdoptionGate_BlocksUnadoptedService(t *testing.T) {
 	authInfo := &auth.Info{Token: "t", APIHost: "api.app-prg1.zerops.io", Region: "prg1"}
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.1"}, nil)
-	RegisterDeploySSH(srv, mock, okHTTP, "proj-1", ssh, authInfo, nil, runtime.Info{}, stateDir, testDeployEngine(t), nil)
+	// SSH handler is container-only; pass InContainer=true so the
+	// recovery suggestion picks the bootstrap path (not adopt-local).
+	RegisterDeploySSH(srv, mock, okHTTP, "proj-1", ssh, authInfo, nil, runtime.Info{InContainer: true, ServiceName: "zcp"}, stateDir, testDeployEngine(t), nil)
 
 	result := callTool(t, srv, "zerops_deploy", map[string]any{
 		"targetService": "docs",

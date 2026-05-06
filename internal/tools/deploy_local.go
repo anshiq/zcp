@@ -11,6 +11,7 @@ import (
 	"github.com/zeropsio/zcp/internal/auth"
 	"github.com/zeropsio/zcp/internal/ops"
 	"github.com/zeropsio/zcp/internal/platform"
+	"github.com/zeropsio/zcp/internal/runtime"
 	"github.com/zeropsio/zcp/internal/topology"
 	"github.com/zeropsio/zcp/internal/workflow"
 )
@@ -88,7 +89,9 @@ func RegisterDeployLocal(
 		// Gate: target must be adopted by ZCP. Recipe-authoring sessions
 		// whose Plan owns the host bypass adoption — see requireAdoption
 		// for the exemption rationale.
-		if blocked := requireAdoption(stateDir, recipeProbe, input.TargetService); blocked != nil {
+		// deploy_local always runs in local env — pass a zero-value
+		// runtime.Info to surface the adopt-local recovery hint.
+		if blocked := requireAdoption(stateDir, runtime.Info{}, recipeProbe, input.TargetService); blocked != nil {
 			return blocked, nil, nil
 		}
 

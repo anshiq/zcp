@@ -150,7 +150,7 @@ func RegisterDeploySSH(
 		// Gate: target (and source) must be adopted by ZCP. Recipe-
 		// authoring sessions whose Plan owns the host bypass adoption —
 		// see requireAdoption for the exemption rationale.
-		if blocked := requireAdoption(stateDir, recipeProbe, input.TargetService, input.SourceService); blocked != nil {
+		if blocked := requireAdoption(stateDir, rtInfo, recipeProbe, input.TargetService, input.SourceService); blocked != nil {
 			return blocked, nil, nil
 		}
 

@@ -229,6 +229,16 @@ func (m *ServiceMeta) PushSourceCheckFor(hostname string) topology.PushSourceRes
 	if m == nil || hostname == "" {
 		return topology.PushSourceUnknownHost
 	}
+	// Local-stage carve-out: the dev half is the user's CWD (m.Hostname is
+	// the project name, not a Zerops service). The Zerops-side stage
+	// runtime named in m.StageHostname IS a legitimate deploy target —
+	// treating it as "stage half, push from dev half" misleads the agent
+	// into pushing from a non-existent Zerops service. The container
+	// standard pair stays IsStageHalf for stage-hostname matches because
+	// its dev half is a real Zerops service the agent can target.
+	if m.Mode == topology.PlanModeLocalStage && hostname == m.StageHostname {
+		return topology.PushSourceOK
+	}
 	if m.StageHostname != "" && hostname == m.StageHostname {
 		return topology.PushSourceIsStageHalf
 	}

@@ -2,9 +2,11 @@
 package tools
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/zeropsio/zcp/internal/runtime"
 	"github.com/zeropsio/zcp/internal/workflow"
 )
 
@@ -70,6 +72,73 @@ func TestRequireWorkflowContext_EmptyStateDir_Blocks(t *testing.T) {
 	}
 }
 
+// TestRequireAdoption_LocalEnv_RecoveryPointsAtAdoptLocal — local env
+// recovery hint must name `adopt-local`, not `bootstrap`. Pre-Phase-12
+// the message hard-coded bootstrap, sending agents on a wrong-recovery
+// loop on local-only projects (the right action is adopt-local +
+// targetService).
+func TestRequireAdoption_LocalEnv_RecoveryPointsAtAdoptLocal(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	meta := &workflow.ServiceMeta{Hostname: "other", BootstrappedAt: "2026-01-01"}
+	if err := workflow.WriteServiceMeta(stateDir, meta); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	result := requireAdoption(stateDir, runtime.Info{}, nil, "app")
+	if result == nil {
+		t.Fatal("expected block")
+	}
+	text := getTextContent(t, result)
+	if !strings.Contains(text, "adopt-local") {
+		t.Errorf("local-env recovery should mention adopt-local; got: %s", text)
+	}
+	if strings.Contains(text, "bootstrap") {
+		t.Errorf("local-env recovery should NOT mention bootstrap; got: %s", text)
+	}
+	// Structured Recovery hint pinned: tool=zerops_workflow,
+	// action=adopt-local, args carry the unadopted hostname so the
+	// agent can re-run the call directly.
+	var wire ErrorWire
+	if err := json.Unmarshal([]byte(text), &wire); err != nil {
+		t.Fatalf("parse wire: %v", err)
+	}
+	if wire.Recovery == nil {
+		t.Fatalf("Recovery hint missing")
+	}
+	if wire.Recovery.Tool != "zerops_workflow" {
+		t.Errorf("Recovery.Tool = %q, want zerops_workflow", wire.Recovery.Tool)
+	}
+	if wire.Recovery.Action != "adopt-local" {
+		t.Errorf("Recovery.Action = %q, want adopt-local", wire.Recovery.Action)
+	}
+	if got := wire.Recovery.Args["targetService"]; got != "app" {
+		t.Errorf("Recovery.Args[targetService] = %q, want app", got)
+	}
+}
+
+// TestRequireAdoption_ContainerEnv_StillPointsAtBootstrap — regression.
+// Container env keeps the bootstrap recovery message and no adopt-local
+// suggestion (adopt-local is local-only).
+func TestRequireAdoption_ContainerEnv_StillPointsAtBootstrap(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	meta := &workflow.ServiceMeta{Hostname: "other", BootstrappedAt: "2026-01-01"}
+	if err := workflow.WriteServiceMeta(stateDir, meta); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	result := requireAdoption(stateDir, runtime.Info{InContainer: true, ServiceName: "zcp"}, nil, "app")
+	if result == nil {
+		t.Fatal("expected block")
+	}
+	text := getTextContent(t, result)
+	if !strings.Contains(text, "bootstrap") {
+		t.Errorf("container-env recovery should mention bootstrap; got: %s", text)
+	}
+	if strings.Contains(text, "adopt-local") {
+		t.Errorf("container-env recovery should NOT mention adopt-local; got: %s", text)
+	}
+}
+
 func TestRequireAdoption_KnownService_Passes(t *testing.T) {
 	t.Parallel()
 	stateDir := t.TempDir()
@@ -77,7 +146,7 @@ func TestRequireAdoption_KnownService_Passes(t *testing.T) {
 	if err := workflow.WriteServiceMeta(stateDir, meta); err != nil {
 		t.Fatalf("write meta: %v", err)
 	}
-	result := requireAdoption(stateDir, nil, "app")
+	result := requireAdoption(stateDir, runtime.Info{}, nil, "app")
 	if result != nil {
 		t.Errorf("known service should pass, got error")
 	}
@@ -90,7 +159,7 @@ func TestRequireAdoption_UnknownService_Blocks(t *testing.T) {
 	if err := workflow.WriteServiceMeta(stateDir, meta); err != nil {
 		t.Fatalf("write meta: %v", err)
 	}
-	result := requireAdoption(stateDir, nil, "app")
+	result := requireAdoption(stateDir, runtime.Info{}, nil, "app")
 	if result == nil {
 		t.Fatal("unknown service should be blocked")
 	}
@@ -125,7 +194,7 @@ func TestRequireAdoption_NoProbe_NonAdopted_Blocked(t *testing.T) {
 	if err := workflow.WriteServiceMeta(stateDir, meta); err != nil {
 		t.Fatalf("write meta: %v", err)
 	}
-	result := requireAdoption(stateDir, nil, "apistage")
+	result := requireAdoption(stateDir, runtime.Info{}, nil, "apistage")
 	if result == nil {
 		t.Fatal("unknown service with nil probe must block")
 	}
@@ -152,10 +221,10 @@ func TestRequireAdoption_RecipeCoversHost_Passes(t *testing.T) {
 		},
 		hasSession: true,
 	}
-	if result := requireAdoption(stateDir, probe, "apistage"); result != nil {
+	if result := requireAdoption(stateDir, runtime.Info{}, probe, "apistage"); result != nil {
 		t.Errorf("apistage covered by recipe; expected pass, got: %s", getTextContent(t, result))
 	}
-	if result := requireAdoption(stateDir, probe, "apidev"); result != nil {
+	if result := requireAdoption(stateDir, runtime.Info{}, probe, "apidev"); result != nil {
 		t.Errorf("apidev covered by recipe; expected pass, got: %s", getTextContent(t, result))
 	}
 }
@@ -173,7 +242,7 @@ func TestRequireAdoption_RecipeCoversManagedService_Passes(t *testing.T) {
 		covered:    map[string]bool{"db": true},
 		hasSession: true,
 	}
-	if result := requireAdoption(stateDir, probe, "db"); result != nil {
+	if result := requireAdoption(stateDir, runtime.Info{}, probe, "db"); result != nil {
 		t.Errorf("db covered by recipe service; expected pass, got: %s", getTextContent(t, result))
 	}
 }
@@ -191,7 +260,7 @@ func TestRequireAdoption_RecipeDoesNotCoverUnrelated_Blocked(t *testing.T) {
 		covered:    map[string]bool{"apistage": true},
 		hasSession: true,
 	}
-	result := requireAdoption(stateDir, probe, "unrelated-host")
+	result := requireAdoption(stateDir, runtime.Info{}, probe, "unrelated-host")
 	if result == nil {
 		t.Fatal("unrelated-host not in recipe; expected SERVICE_NOT_FOUND")
 	}
@@ -215,7 +284,7 @@ func TestRequireAdoption_MultipleSessionsOneCovers_Passes(t *testing.T) {
 		covered:    map[string]bool{"appstage": true},
 		hasSession: true,
 	}
-	if result := requireAdoption(stateDir, probe, "appstage"); result != nil {
+	if result := requireAdoption(stateDir, runtime.Info{}, probe, "appstage"); result != nil {
 		t.Errorf("appstage covered; expected pass, got: %s", getTextContent(t, result))
 	}
 }
@@ -226,7 +295,7 @@ func TestRequireAdoption_EmptyHostList_NoOp(t *testing.T) {
 	t.Parallel()
 	stateDir := t.TempDir()
 	probe := &fakeRecipeProbe{}
-	if result := requireAdoption(stateDir, probe); result != nil {
+	if result := requireAdoption(stateDir, runtime.Info{}, probe); result != nil {
 		t.Errorf("empty host list must no-op, got: %s", getTextContent(t, result))
 	}
 }

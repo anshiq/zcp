@@ -656,4 +656,72 @@ func TestHandleGitPushSetup_StageHalfRedirectsToDevHalf(t *testing.T) {
 	}
 }
 
+// TestHandleGitPushSetup_LocalStage_StageHostnameTarget_Proceeds pins the
+// Phase-12 carve-out: when meta.Mode is local-stage and the agent passes
+// the stage hostname as service, the handler must NOT reject as
+// PushSourceIsStageHalf — local-stage's dev half is the user's CWD
+// (m.Hostname), not a Zerops service that can receive a push, so
+// `targetService=apistage` is the legitimate call. Passes through to the
+// walkthrough synthesis (no remoteUrl supplied → walkthrough mode).
+func TestHandleGitPushSetup_LocalStage_StageHostnameTarget_Proceeds(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	if err := workflow.WriteServiceMeta(stateDir, &workflow.ServiceMeta{
+		Hostname:                 "myproject",
+		StageHostname:            "apistage",
+		Mode:                     topology.PlanModeLocalStage,
+		CloseDeployMode:          topology.CloseModeUnset,
+		CloseDeployModeConfirmed: false,
+		BootstrapSession:         "test",
+		BootstrappedAt:           "2026-04-29",
+	}); err != nil {
+		t.Fatalf("WriteServiceMeta: %v", err)
+	}
+
+	result, _, err := handleGitPushSetup(WorkflowInput{Service: "apistage"}, stateDir, runtime.Info{})
+	if err != nil {
+		t.Fatalf("handleGitPushSetup: %v", err)
+	}
+	if result.IsError {
+		body := getTextContent(t, result)
+		t.Fatalf("local-stage stage-hostname target should proceed past PushSourceCheckFor; got error: %s", body)
+	}
+	body := getTextContent(t, result)
+	if strings.Contains(body, "stage half") {
+		t.Errorf("response must not carry stage-half rejection wording for local-stage; got: %s", body)
+	}
+	if !strings.Contains(body, "walkthrough") {
+		t.Errorf("expected walkthrough response for local-stage stage-hostname target; got: %s", body)
+	}
+}
+
+// TestHandleGitPushSetup_ContainerStandard_StageHalfStillRejects — regression:
+// container standard pair keeps the IsStageHalf rejection so existing
+// behavior for `targetService=appstage` stays unchanged.
+func TestHandleGitPushSetup_ContainerStandard_StageHalfStillRejects(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	if err := workflow.WriteServiceMeta(stateDir, &workflow.ServiceMeta{
+		Hostname:         "appdev",
+		StageHostname:    "appstage",
+		Mode:             topology.PlanModeStandard,
+		BootstrapSession: "test",
+		BootstrappedAt:   "2026-04-29",
+	}); err != nil {
+		t.Fatalf("WriteServiceMeta: %v", err)
+	}
+
+	result, _, err := handleGitPushSetup(WorkflowInput{Service: "appstage"}, stateDir, runtime.Info{InContainer: true, ServiceName: "zcp"})
+	if err != nil {
+		t.Fatalf("handleGitPushSetup: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("standard pair stage-half target must still reject")
+	}
+	body := getTextContent(t, result)
+	if !strings.Contains(body, "stage half") {
+		t.Errorf("standard pair must keep stage-half wording; got: %s", body)
+	}
+}
+
 var _ = context.Background // keep import alive for future test additions

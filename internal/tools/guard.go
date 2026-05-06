@@ -7,6 +7,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/zeropsio/zcp/internal/platform"
+	"github.com/zeropsio/zcp/internal/runtime"
+	"github.com/zeropsio/zcp/internal/topology"
 	"github.com/zeropsio/zcp/internal/workflow"
 )
 
@@ -71,7 +73,13 @@ func requireWorkflowContext(engine *workflow.Engine, stateDir string, recipeProb
 //     before any bootstrap workflow exists. recipeProbe may be nil; the
 //     exemption is opt-in and narrow to this gate (requireWorkflowContext
 //     uses the same probe but for a different purpose).
-func requireAdoption(stateDir string, recipeProbe RecipeSessionProbe, hostnames ...string) *mcp.CallToolResult {
+//
+// rt drives env-aware recovery: in local env the rejection points the
+// agent at zerops_workflow action="adopt-local" (the local recovery
+// primitive); in container env it keeps the bootstrap suggestion. Pre-
+// Phase-12 the message hard-coded bootstrap, sending local-mode agents
+// down the wrong recovery branch.
+func requireAdoption(stateDir string, rt runtime.Info, recipeProbe RecipeSessionProbe, hostnames ...string) *mcp.CallToolResult {
 	if stateDir == "" {
 		return nil
 	}
@@ -95,11 +103,29 @@ func requireAdoption(stateDir string, recipeProbe RecipeSessionProbe, hostnames 
 		if recipeProbe != nil && recipeProbe.CoversHost(h) {
 			continue
 		}
+		var (
+			suggestion string
+			recovery   *RecoveryHint
+		)
+		if rt.InContainer {
+			suggestion = fmt.Sprintf("Adopt it first: zerops_workflow action=\"start\" workflow=\"bootstrap\" (with isExisting=true for %s)", h)
+		} else {
+			suggestion = fmt.Sprintf("Local projects link a Zerops runtime via zerops_workflow action=\"adopt-local\" targetService=%q.", h)
+			recovery = &topology.Recovery{
+				Tool:   "zerops_workflow",
+				Action: "adopt-local",
+				Args:   map[string]string{"targetService": h},
+			}
+		}
+		opts := []ErrorOption{}
+		if recovery != nil {
+			opts = append(opts, WithRecovery(recovery))
+		}
 		return convertError(platform.NewPlatformError(
 			platform.ErrServiceNotFound,
 			fmt.Sprintf("Service %q is not adopted by ZCP — deploy blocked", h),
-			fmt.Sprintf("Adopt it first: zerops_workflow action=\"start\" workflow=\"bootstrap\" (with isExisting=true for %s)", h),
-		))
+			suggestion,
+		), opts...)
 	}
 	return nil
 }

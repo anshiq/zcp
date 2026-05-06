@@ -1099,6 +1099,18 @@ func TestPushSourceCheckFor(t *testing.T) {
 			want:     topology.PushSourceOK,
 		},
 		{
+			// Phase 12 carve-out: local-stage's StageHostname IS a valid
+			// deploy target. Pre-fix the meta returned IsStageHalf for
+			// any stage-hostname match, suggesting the user "push from
+			// the dev half" — but for local-stage the dev half is the
+			// user's CWD (m.Hostname), not a Zerops service that can
+			// receive a deploy. Returning OK lets the deploy proceed.
+			name:     "ModeLocalStage stage hostname is OK (local-stage carve-out)",
+			meta:     &ServiceMeta{Hostname: "myproject", StageHostname: "apistage", Mode: topology.ModeLocalStage},
+			hostname: "apistage",
+			want:     topology.PushSourceOK,
+		},
+		{
 			name:     "ModeLocalOnly is OK",
 			meta:     &ServiceMeta{Hostname: "app", Mode: topology.ModeLocalOnly},
 			hostname: "app",
