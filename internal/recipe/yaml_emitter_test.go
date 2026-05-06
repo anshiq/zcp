@@ -444,10 +444,10 @@ func TestEmitDeliverableYAML_DeclaresURLConstantsInProjectEnvVars(t *testing.T) 
 	plan := syntheticShowcasePlan()
 	plan.ProjectEnvVars = map[string]map[string]string{
 		"0": {
-			"STAGE_API_URL":      "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
-			"DEV_API_URL":        "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"DEV_FRONTEND_URL":   "https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app",
+			"API_URL":          "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL":     "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+			"DEV_API_URL":      "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app",
 		},
 	}
 	got, err := EmitDeliverableYAML(plan, 0)
@@ -455,8 +455,8 @@ func TestEmitDeliverableYAML_DeclaresURLConstantsInProjectEnvVars(t *testing.T) 
 		t.Fatalf("EmitDeliverableYAML: %v", err)
 	}
 	for _, want := range []string{
-		"STAGE_API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-		"STAGE_FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+		"API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+		"FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
 		"DEV_API_URL: https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
 		"DEV_FRONTEND_URL: https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app",
 	} {
@@ -474,10 +474,10 @@ func TestEmitDeliverableYAML_RewritesURLsForSingleSlotTiers(t *testing.T) {
 	plan := syntheticShowcasePlan()
 	plan.ProjectEnvVars = map[string]map[string]string{
 		"4": {
-			"STAGE_API_URL":      "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
-			"DEV_API_URL":        "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"DEV_FRONTEND_URL":   "https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app",
+			"API_URL":          "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL":     "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+			"DEV_API_URL":      "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app",
 		},
 	}
 	got, err := EmitDeliverableYAML(plan, 4)
@@ -485,8 +485,8 @@ func TestEmitDeliverableYAML_RewritesURLsForSingleSlotTiers(t *testing.T) {
 		t.Fatalf("EmitDeliverableYAML: %v", err)
 	}
 	// Single-slot tier rewrites apistage- → api-, appstage- → app-.
-	mustContain(t, got, "STAGE_API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app")
-	mustContain(t, got, "STAGE_FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app")
+	mustContain(t, got, "API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app")
+	mustContain(t, got, "FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app")
 	// Slot-named hostnames must NOT survive on tier 4.
 	mustNotContain(t, got, "apistage-")
 	mustNotContain(t, got, "appstage-")
@@ -507,7 +507,7 @@ func TestEmitDeliverableYAML_PreservesAppSecretAlongsideURLConstants(t *testing.
 	plan := syntheticShowcasePlan()
 	plan.ProjectEnvVars = map[string]map[string]string{
 		"4": {
-			"STAGE_API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
 		},
 	}
 	got, err := EmitDeliverableYAML(plan, 4)
@@ -515,7 +515,7 @@ func TestEmitDeliverableYAML_PreservesAppSecretAlongsideURLConstants(t *testing.
 		t.Fatalf("EmitDeliverableYAML: %v", err)
 	}
 	mustContain(t, got, "APP_SECRET: <@generateRandomString(<32>)>")
-	mustContain(t, got, "STAGE_API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app")
+	mustContain(t, got, "API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app")
 }
 
 // TestEmitDeliverableYAML_KeepsDevPairURLsForTiers0And1 — run-22 R3-RC-3
@@ -527,8 +527,8 @@ func TestEmitDeliverableYAML_KeepsDevPairURLsForTiers0And1(t *testing.T) {
 	plan := syntheticShowcasePlan()
 	plan.ProjectEnvVars = map[string]map[string]string{
 		"1": {
-			"DEV_API_URL":   "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_API_URL": "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"API_URL":     "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
 		},
 	}
 	got, err := EmitDeliverableYAML(plan, 1)
@@ -536,5 +536,5 @@ func TestEmitDeliverableYAML_KeepsDevPairURLsForTiers0And1(t *testing.T) {
 		t.Fatalf("EmitDeliverableYAML: %v", err)
 	}
 	mustContain(t, got, "DEV_API_URL: https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app")
-	mustContain(t, got, "STAGE_API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app")
+	mustContain(t, got, "API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app")
 }

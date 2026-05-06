@@ -65,8 +65,8 @@ framework's start command on its own port (3000 NestJS / 8000 Django
 
 ```bash
 zerops_env project=true action=set \
-  STAGE_API_URL="https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
-  STAGE_FRONTEND_URL="https://appstage-${zeropsSubdomainHost}.prg1.zerops.app" \
+  API_URL="https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
+  FRONTEND_URL="https://appstage-${zeropsSubdomainHost}.prg1.zerops.app" \
   DEV_API_URL="https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
   DEV_FRONTEND_URL="https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app"
 ```
@@ -90,12 +90,12 @@ build-time-bake trap on the missing channel.
 zerops_recipe action=update-plan slug=<slug> plan='{
   "projectEnvVars": {
     "0": {
-      "STAGE_API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-      "STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+      "API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+      "FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
       "DEV_API_URL": "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
       "DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app"
     },
-    "1": { "STAGE_API_URL": "...", "STAGE_FRONTEND_URL": "...", "DEV_API_URL": "...", "DEV_FRONTEND_URL": "..." }
+    "1": { "API_URL": "...", "FRONTEND_URL": "...", "DEV_API_URL": "...", "DEV_FRONTEND_URL": "..." }
   }
 }'
 ```
@@ -109,15 +109,15 @@ re-author the per-tier shape — set env 0/1 once, the engine handles
 2-5.
 
 `DEV_FRONTEND_URL` carries `-5173` because appdev runs Vite on 5173;
-`STAGE_FRONTEND_URL` does not because appstage serves a built bundle
+`FRONTEND_URL` does not because appstage serves a built bundle
 on `base: static`. Match this to whatever ports / runtimes the
 recipe's dev/stage pair actually uses (port-suffix follows the
 runtime, not the env tier).
 
-The frontend SPA reads `${STAGE_API_URL}` in `build.envVariables` —
+The frontend SPA reads `${API_URL}` in `build.envVariables` —
 build-time bake works because the constant resolved at provision
 time, not at peer-service first-deploy time. The api reads
-`${STAGE_FRONTEND_URL}` in `run.envVariables` for CORS allow-list at
+`${FRONTEND_URL}` in `run.envVariables` for CORS allow-list at
 runtime.
 
 ```yaml
@@ -126,7 +126,7 @@ zerops:
   - setup: prod
     build:
       envVariables:
-        VITE_API_URL: ${STAGE_API_URL}     # bakes a real URL into the bundle
+        VITE_API_URL: ${API_URL}     # bakes a real URL into the bundle
     run:
       base: static                          # see SPA static runtime atom
 ```
@@ -137,7 +137,7 @@ zerops:
   - setup: prod
     run:
       envVariables:
-        CORS_ORIGINS: ${DEV_FRONTEND_URL},${STAGE_FRONTEND_URL}
+        CORS_ORIGINS: ${DEV_FRONTEND_URL},${FRONTEND_URL}
 ```
 
 The `setup:` name MUST be the generic role-contract value (`dev` /
@@ -151,9 +151,10 @@ A slot-named setup in the codebase yaml leaves every tier yaml's
 
 **Naming convention** for the project-env constants:
 
-- `STAGE_{ROLE}_URL` — present in **every env** (0-5). Resolves to
-  `{role}stage` in env 0-1 (dev-pair envs) and the bare `{role}` in
-  envs 2-5.
+- `{ROLE}_URL` — present in **every env** (0-5). At dev-pair envs
+  (0-1) the value carries `{role}stage` (the production-setup side);
+  at single-slot envs (2-5) the value is the bare `{role}` (the only
+  api/frontend at single-slot).
 - `DEV_{ROLE}_URL` — only in env 0-1 (dev-pair envs). Resolves to
   `{role}dev`.
 - Roles: `API`, `FRONTEND`. Add `WORKER` only if the worker has a
@@ -162,9 +163,9 @@ A slot-named setup in the codebase yaml leaves every tier yaml's
 ## The pair is BIDIRECTIONAL
 
 Cross-service URL pairs come in two halves:
-- The SPA reads `${STAGE_API_URL}` at **build time** to bake the API
+- The SPA reads `${API_URL}` at **build time** to bake the API
   origin into the bundle.
-- The api reads `${STAGE_FRONTEND_URL}` at **runtime** for the CORS
+- The api reads `${FRONTEND_URL}` at **runtime** for the CORS
   allow-list (`enableCors({ origin: [...] })`).
 
 Both halves consume the SAME project envs. Setting one without the
@@ -178,12 +179,12 @@ the post-active alias that hasn't resolved.
 # appstage/zerops.yaml — frontend SPA (build-time bake)
 build:
   envVariables:
-    VITE_API_URL: ${STAGE_API_URL}      # ← project env, resolved at provision time
+    VITE_API_URL: ${API_URL}      # ← project env, resolved at provision time
 
 # apistage/zerops.yaml — backend API (runtime CORS)
 run:
   envVariables:
-    CORS_ORIGINS: ${DEV_FRONTEND_URL},${STAGE_FRONTEND_URL}   # ← project envs
+    CORS_ORIGINS: ${DEV_FRONTEND_URL},${FRONTEND_URL}   # ← project envs
 ```
 
 ### BAD — one side fixed, the other still using post-active aliases
@@ -192,7 +193,7 @@ run:
 # appstage/zerops.yaml — uses project envs ✓
 build:
   envVariables:
-    VITE_API_URL: ${STAGE_API_URL}
+    VITE_API_URL: ${API_URL}
 
 # apistage/zerops.yaml — STILL uses post-active alias ✗
 run:
@@ -211,21 +212,21 @@ If your recipe has a frontend + api pair, the provision phase sets
 **four** project envs (envs 0-1) or **two** (envs 2-5):
 
 ```bash
-# Envs 0-1 (dev-pair): both DEV_* and STAGE_*
+# Envs 0-1 (dev-pair): both DEV_* and the bare {ROLE}_URL keys
 # DEV_FRONTEND_URL carries -5173 because appdev runs Vite on 5173 (dynamic).
-# STAGE_FRONTEND_URL has no port suffix because appstage runs base: static.
+# FRONTEND_URL has no port suffix because appstage runs base: static.
 zerops_env project=true action=set \
-  STAGE_API_URL="https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
-  STAGE_FRONTEND_URL="https://appstage-${zeropsSubdomainHost}.prg1.zerops.app" \
+  API_URL="https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
+  FRONTEND_URL="https://appstage-${zeropsSubdomainHost}.prg1.zerops.app" \
   DEV_API_URL="https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
   DEV_FRONTEND_URL="https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app"
 
-# Envs 2-5 (single-slot): only STAGE_* (single-slot hostnames are
-# `api` / `app`, not `apistage` / `appstage`). `app` is base: static
-# in stage/prod tiers — no port suffix.
+# Envs 2-5 (single-slot): only the bare {ROLE}_URL keys (single-slot
+# hostnames are `api` / `app`, not `apistage` / `appstage`). `app` is
+# base: static in stage/prod tiers — no port suffix.
 zerops_env project=true action=set \
-  STAGE_API_URL="https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
-  STAGE_FRONTEND_URL="https://app-${zeropsSubdomainHost}.prg1.zerops.app"
+  API_URL="https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app" \
+  FRONTEND_URL="https://app-${zeropsSubdomainHost}.prg1.zerops.app"
 ```
 
 ## When the fallback applies
@@ -240,7 +241,7 @@ solution; the fallback is a last resort.
 ## Deliverable tier yaml — the literal-stays-literal rule
 
 For the engine-emitted deliverable yamls (`<env>/import.yaml` per
-tier), `${zeropsSubdomainHost}` and the `STAGE_*_URL` constants stay
+tier), `${zeropsSubdomainHost}` and the `{ROLE}_URL` constants stay
 LITERAL in the published file. The end-user's click-deploy mints
 fresh values. The engine handles this at finalize — finalize-phase
 authoring rules forbid resolving these variables to literal URLs.

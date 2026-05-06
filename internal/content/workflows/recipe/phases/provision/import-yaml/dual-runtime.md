@@ -17,14 +17,14 @@ The port comes from the target's `run.ports[0].port` in zerops.yaml. You are wri
 
 ## What to set at provision
 
-The workspace pair is dev + stage for the roles the plan declares (typical roles: `API`, `FRONTEND`; add `WORKER` only when the worker exposes a public surface, which is rare). For each role, set both `DEV_{ROLE}_URL` and `STAGE_{ROLE}_URL` with the correct port suffix.
+The workspace pair is dev + stage for the roles the plan declares (typical roles: `API`, `FRONTEND`; add `WORKER` only when the worker exposes a public surface, which is rare). For each role, set both `DEV_{ROLE}_URL` and the bare `{ROLE}_URL` with the correct port suffix.
 
 ```
 zerops_env project=true action=set variables=[
   "DEV_API_URL=https://apidev-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app",
   "DEV_FRONTEND_URL=https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-  "STAGE_API_URL=https://apistage-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app",
-  "STAGE_FRONTEND_URL=https://appstage-${zeropsSubdomainHost}.prg1.zerops.app"
+  "API_URL=https://apistage-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app",
+  "FRONTEND_URL=https://appstage-${zeropsSubdomainHost}.prg1.zerops.app"
 ]
 ```
 
@@ -32,8 +32,8 @@ The generate step will reference these through `run.envVariables` so the applica
 
 ## Batch all project-level env vars into one call
 
-Each `zerops_env set` invocation restarts every container that reads project-level vars. Multiple calls in sequence trigger multiple cascading restarts, each killing any SSH-launched processes. Set `JWT_SECRET` and every framework secret alongside the `DEV_*` and `STAGE_*` URL constants in a single invocation — one call, one restart wave, one stable state.
+Each `zerops_env set` invocation restarts every container that reads project-level vars. Multiple calls in sequence trigger multiple cascading restarts, each killing any SSH-launched processes. Set `JWT_SECRET` and every framework secret alongside the `DEV_*` and bare `{ROLE}_URL` constants in a single invocation — one call, one restart wave, one stable state.
 
 ## Handoff to finalize
 
-The URL constants set here are the dev+stage pair only — envs 0 and 1 of the six-env recipe deliverable. The full six-env breakdown (STAGE-only values in envs 2–5) is produced at finalize and baked into the deliverable imports there. At provision the job is the workspace pair, computed with the correct port suffixes, set in one batched call.
+The URL constants set here are the dev+stage pair only — envs 0 and 1 of the six-env recipe deliverable. The full six-env breakdown (bare `{ROLE}_URL` only in envs 2–5; engine drops `DEV_*` for single-slot tiers) is produced at finalize and baked into the deliverable imports there. At provision the job is the workspace pair, computed with the correct port suffixes, set in one batched call.

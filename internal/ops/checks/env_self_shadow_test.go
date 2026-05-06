@@ -55,9 +55,9 @@ func TestCheckEnvSelfShadow_Table(t *testing.T) {
 			entry: func() *ops.ZeropsYmlEntry {
 				e := &ops.ZeropsYmlEntry{}
 				e.Run.EnvVariables = map[string]string{
-					"DB_HOST": "${db_hostname}",
-					"APP_ENV": "production",
-					"API_URL": "${STAGE_API_URL}",
+					"DB_HOST":      "${db_hostname}",
+					"APP_ENV":      "production",
+					"VITE_API_URL": "${API_URL}",
 				}
 				return e
 			}(),

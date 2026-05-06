@@ -425,10 +425,10 @@ func TestGenerateEnvImportYAML_ThreeRepoSeparateWorker(t *testing.T) {
 // regression must be under test, not just convention.
 //
 // The invariants locked here:
-//   - Dev-pair envs (0, 1) carry DEV_* + STAGE_* with dev/stage hostnames
-//     (apidev, appdev, apistage, appstage).
-//   - Single-slot envs (2, 3, 4, 5) carry STAGE_* only, with plain
-//     hostnames (api, app).
+//   - Dev-pair envs (0, 1) carry DEV_* + bare {ROLE}_URL with
+//     dev/stage hostnames (apidev, appdev, apistage, appstage).
+//   - Single-slot envs (2, 3, 4, 5) carry the bare {ROLE}_URL keys
+//     only (no DEV_*), with plain hostnames (api, app).
 //   - A worker declared as a separate codebase does NOT appear in URL
 //     env vars — workers have no HTTP surface. This guards against the
 //     "accidentally exposed worker URL" class of mistakes.
@@ -446,44 +446,44 @@ func TestGenerateEnvImportYAML_ThreeRepoProjectEnvVariables(t *testing.T) {
 	// Supply the canonical dual-runtime projectEnvVariables shape.
 	plan.ProjectEnvVariables = map[string]map[string]string{
 		"0": {
-			"DEV_API_URL":        "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"DEV_FRONTEND_URL":   "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-			"STAGE_API_URL":      "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+			"DEV_API_URL":      "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":          "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL":     "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 		"1": {
-			"DEV_API_URL":        "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"DEV_FRONTEND_URL":   "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-			"STAGE_API_URL":      "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+			"DEV_API_URL":      "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":          "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL":     "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 		"2": {
-			"STAGE_API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 		"3": {
-			"STAGE_API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 		"4": {
-			"STAGE_API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 		"5": {
-			"STAGE_API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 	}
 
 	devPairWants := []string{
 		"DEV_API_URL: https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
 		"DEV_FRONTEND_URL: https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-		"STAGE_API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-		"STAGE_FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+		"API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+		"FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
 	}
 	singleSlotWants := []string{
-		"STAGE_API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-		"STAGE_FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app",
+		"API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+		"FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app",
 	}
 
 	for _, envIndex := range []int{0, 1} {

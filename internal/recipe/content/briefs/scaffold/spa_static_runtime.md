@@ -73,17 +73,17 @@ Correct pattern uses the workspace project envs taught in
 ```yaml
 build:
   envVariables:
-    VITE_API_URL: ${STAGE_API_URL}      # resolves at provision time
+    VITE_API_URL: ${API_URL}      # resolves at provision time
 ```
 
-Where `STAGE_API_URL` was set on the project at provision via:
+Where `API_URL` was set on the project at provision via:
 
 ```bash
 zerops_env project=true action=set \
-  STAGE_API_URL="https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app"
+  API_URL="https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app"
 ```
 
-The build container reads `STAGE_API_URL` (a real URL by then),
+The build container reads `API_URL` (a real URL by then),
 substitutes into the bundle, ships compiled JS that fetches the
 right origin. No ordering dance, no deferred deploy.
 

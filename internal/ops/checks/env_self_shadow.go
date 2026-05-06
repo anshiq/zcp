@@ -42,7 +42,7 @@ func CheckEnvSelfShadow(_ context.Context, hostname string, entry *ops.ZeropsYml
 		Name:   hostname + "_env_self_shadow",
 		Status: StatusFail,
 		Detail: fmt.Sprintf(
-			"self-shadowed envVariables: %s — each entry has the shape `key: ${key}`, which resolves to the literal string `${key}` inside the container. Cross-service vars (`${db_hostname}`, `${queue_user}`, ...) and project-level vars (`${STAGE_API_URL}`, ...) already auto-inject as OS env vars project-wide; DELETE these lines — they are redundant and actively break the runtime env. Only declare a var in run.envVariables if you are renaming (`DB_HOST: ${db_hostname}` with keys that DIFFER) or setting a literal mode flag (`NODE_ENV: production`). See zerops_guidance topic=\"env-var-model\" for the full rule set.",
+			"self-shadowed envVariables: %s — each entry has the shape `key: ${key}`, which resolves to the literal string `${key}` inside the container. Cross-service vars (`${db_hostname}`, `${queue_user}`, ...) and project-level vars (`${API_URL}`, ...) already auto-inject as OS env vars project-wide; DELETE these lines — they are redundant and actively break the runtime env. Only declare a var in run.envVariables if you are renaming (`DB_HOST: ${db_hostname}` with keys that DIFFER) or setting a literal mode flag (`NODE_ENV: production`). See zerops_guidance topic=\"env-var-model\" for the full rule set.",
 			strings.Join(shadows, ", "),
 		),
 	}}

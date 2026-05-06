@@ -44,17 +44,17 @@ func TestDetectSelfShadows(t *testing.T) {
 		{
 			name: "project-level self-shadow",
 			env: map[string]string{
-				"STAGE_API_URL": "${STAGE_API_URL}",
-				"APP_SECRET":    "${APP_SECRET}",
+				"API_URL":    "${API_URL}",
+				"APP_SECRET": "${APP_SECRET}",
 			},
-			expect: []string{"STAGE_API_URL", "APP_SECRET"},
+			expect: []string{"API_URL", "APP_SECRET"},
 		},
 		{
 			name: "framework-convention rename — safe (keys differ)",
 			env: map[string]string{
-				"DB_HOST":      "${db_hostname}",
-				"DATABASE_URL": "${db_connectionString}",
-				"FRONTEND_URL": "${STAGE_FRONTEND_URL}",
+				"DB_HOST":           "${db_hostname}",
+				"DATABASE_URL":      "${db_connectionString}",
+				"VITE_FRONTEND_URL": "${FRONTEND_URL}",
 			},
 			expect: nil,
 		},
@@ -70,13 +70,13 @@ func TestDetectSelfShadows(t *testing.T) {
 		{
 			name: "mixed safe + unsafe",
 			env: map[string]string{
-				"NODE_ENV":      "production",            // mode flag
-				"DB_HOST":       "${db_hostname}",        // rename
-				"db_password":   "${db_password}",        // SELF-SHADOW
-				"FRONTEND_URL":  "${STAGE_FRONTEND_URL}", // rename
-				"STAGE_API_URL": "${STAGE_API_URL}",      // SELF-SHADOW
+				"NODE_ENV":          "production",      // mode flag
+				"DB_HOST":           "${db_hostname}",  // rename
+				"db_password":       "${db_password}",  // SELF-SHADOW
+				"VITE_FRONTEND_URL": "${FRONTEND_URL}", // rename
+				"API_URL":           "${API_URL}",      // SELF-SHADOW
 			},
-			expect: []string{"db_password", "STAGE_API_URL"},
+			expect: []string{"db_password", "API_URL"},
 		},
 		{
 			name: "whitespace in template does not bypass",

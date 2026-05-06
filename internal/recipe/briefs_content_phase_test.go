@@ -311,7 +311,7 @@ func TestBuildEnvContentBrief_SizeUnderCap(t *testing.T) {
 // TestEnvContentBrief_LoadsCrossServiceURLsAtom — run-22 followup F-4.
 // The env-content sub-agent authors per-tier import-comments fragments
 // that routinely discuss URL constants (`${zeropsSubdomainHost}`,
-// `STAGE_API_URL`, etc). Without principles/cross-service-urls.md the
+// `API_URL`, etc). Without principles/cross-service-urls.md the
 // agent lacks the literal-stays-literal rule for the deliverable yaml
 // AND the projectEnvVars channel-sync teaching that explains why those
 // constants exist. Loaded unconditionally — the env-content brief has

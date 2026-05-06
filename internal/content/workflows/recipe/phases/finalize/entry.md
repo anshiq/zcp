@@ -37,7 +37,7 @@ projectEnvVariables = {
 }
 ```
 
-- Dual-runtime recipes declare cross-service URL constants here (`DEV_API_URL`, `STAGE_API_URL`, `DEV_FRONTEND_URL`, `STAGE_FRONTEND_URL`). Envs 0-1 carry both `DEV_*` + `STAGE_*`; envs 2-5 carry `STAGE_*` only with single-slot hostnames.
+- Dual-runtime recipes declare cross-service URL constants here (`DEV_API_URL`, `API_URL`, `DEV_FRONTEND_URL`, `FRONTEND_URL`). Envs 0-1 carry both `DEV_*` + the bare `{ROLE}_URL` keys; envs 2-5 carry the bare `{ROLE}_URL` keys only with single-slot hostnames.
 - Values emit verbatim — `${zeropsSubdomainHost}` and other interpolation markers are preserved for the platform to resolve at end-user project-import time.
 - Single-runtime recipes without cross-service URL constants omit `projectEnvVariables` entirely — the template renders the shared secret on its own.
 

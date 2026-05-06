@@ -1,6 +1,6 @@
 # Substep: feature-sweep-stage
 
-This substep completes when every api-surface feature in `plan.Features` returns 2xx with `application/json` on its declared health-check path against the stage endpoints. It is the second and final content-type gate — the stage bundle is built from the dev source (via cross-deploy), and the SPA-fallback class manifests specifically at stage because the `build.envVariables: VITE_API_URL: ${STAGE_API_URL}` bake is stage-specific. A dev-green sweep with a broken source-code half flips to `text/html` on stage.
+This substep completes when every api-surface feature in `plan.Features` returns 2xx with `application/json` on its declared health-check path against the stage endpoints. It is the second and final content-type gate — the stage bundle is built from the dev source (via cross-deploy), and the SPA-fallback class manifests specifically at stage because the `build.envVariables: VITE_API_URL: ${API_URL}` bake is stage-specific. A dev-green sweep with a broken source-code half flips to `text/html` on stage.
 
 ## Sweep shape against stage URLs
 

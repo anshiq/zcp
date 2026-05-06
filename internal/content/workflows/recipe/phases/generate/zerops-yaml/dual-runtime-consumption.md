@@ -13,12 +13,12 @@ https://{hostname}-${zeropsSubdomainHost}.prg1.zerops.app          # static (Ngi
 
 Dual-runtime recipes use two env-var name families:
 
-- `STAGE_{ROLE}_URL` is present in every env (0 through 5) — resolves to `{role}stage` in envs 0-1 and the bare `{role}` in envs 2-5.
+- `{ROLE}_URL` is present in every env (0 through 5) — at envs 0-1 the value carries `{role}stage` (the production-setup side); at envs 2-5 it is the bare `{role}` (the only api/frontend at single-slot).
 - `DEV_{ROLE}_URL` exists only in envs 0-1 (dev-pair envs) — resolves to `{role}dev`.
 
 Typical roles are `API` and `FRONTEND`. Add `WORKER` only when the worker has a public surface (usually it does not).
 
-### Envs 0-1 (dev-pair — `STAGE_*` + `DEV_*`)
+### Envs 0-1 (dev-pair — bare `{ROLE}_URL` + `DEV_*`)
 
 ```yaml
 # import.yaml for env 0 and env 1
@@ -26,18 +26,18 @@ project:
   envVariables:
     DEV_API_URL: https://apidev-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
     DEV_FRONTEND_URL: https://appdev-${zeropsSubdomainHost}.prg1.zerops.app
-    STAGE_API_URL: https://apistage-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
-    STAGE_FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app
+    API_URL: https://apistage-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
+    FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app
 ```
 
-### Envs 2-5 (single-slot — `STAGE_*` only)
+### Envs 2-5 (single-slot — bare `{ROLE}_URL` only)
 
 ```yaml
 # import.yaml for envs 2, 3, 4, 5
 project:
   envVariables:
-    STAGE_API_URL: https://api-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
-    STAGE_FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app
+    API_URL: https://api-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
+    FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app
 ```
 
 Substitute `{apiPort}` with the API's actual HTTP port (`run.ports[0].port` in the API's zerops.yaml). Static frontends have no port segment.
@@ -64,12 +64,12 @@ zerops:
       envVariables:
         # Client-side vars in build.envVariables get baked into the bundle.
         # This is the prod pattern: `npm run build` substitutes at build time.
-        VITE_API_URL: ${STAGE_API_URL}
+        VITE_API_URL: ${API_URL}
     run:
       base: static
 ```
 
-`setup: dev` reads `DEV_*`; `setup: prod` reads `STAGE_*`. The same zerops.yaml works in every env because envs 2-5 never invoke `setup: dev` (there is no `appdev` there); the `DEV_*` reference is dormant and safe.
+`setup: dev` reads `DEV_*`; `setup: prod` reads the bare `{ROLE}_URL` keys. The same zerops.yaml works in every env because envs 2-5 never invoke `setup: dev` (there is no `appdev` there); the `DEV_*` reference is dormant and safe.
 
 ## Half 2 — source-code half (a single API helper reads the baked value)
 
@@ -106,9 +106,9 @@ Nginx's `try_files ... /index.html` SPA fallback returns HTTP 200 with `text/htm
 
 ## Consumption model
 
-Project-level env vars auto-inject into both runtime and build containers. Reference them directly by name in zerops.yaml — `build.envVariables: VITE_API_URL: ${STAGE_API_URL}` bakes the stage URL into the cross-deployed bundle; `run.envVariables: FRONTEND_URL: ${STAGE_FRONTEND_URL}` forwards the value under a framework-conventional name (useful for CORS).
+Project-level env vars auto-inject into both runtime and build containers. Reference them directly by name in zerops.yaml — `build.envVariables: VITE_API_URL: ${API_URL}` bakes the stage URL into the cross-deployed bundle; `run.envVariables: CORS_ALLOWED_ORIGIN: ${FRONTEND_URL}` forwards the value under a framework-conventional name (useful for CORS).
 
-Destination and source names differ whenever the forward-under-different-name pattern applies — `FRONTEND_URL: ${STAGE_FRONTEND_URL}` is a forward; `FRONTEND_URL: ${FRONTEND_URL}` is a self-shadow and belongs to the env-var-model atom's grep check.
+Destination and source names differ whenever the forward-under-different-name pattern applies — `CORS_ALLOWED_ORIGIN: ${FRONTEND_URL}` is a forward; `FRONTEND_URL: ${FRONTEND_URL}` is a self-shadow and belongs to the env-var-model atom's grep check.
 
 ## Setup names — only `dev` and `prod`
 
@@ -116,7 +116,7 @@ Stage deploys use `setup: prod`. There is no `setup: stage`. For URL building, r
 
 ## Project-level workspace setup
 
-The workspace-level `DEV_*` and `STAGE_*` variables land during the provision step via `zerops_env project=true action=set`. By the time this substep runs, they resolve cleanly. Single-runtime recipes skip this entirely — they do not cross services for URL baking.
+The workspace-level `DEV_*` and bare `{ROLE}_URL` variables land during the provision step via `zerops_env project=true action=set`. By the time this substep runs, they resolve cleanly. Single-runtime recipes skip this entirely — they do not cross services for URL baking.
 
 ## What the deploy step enforces
 

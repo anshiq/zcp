@@ -61,7 +61,7 @@ The rule applies identically to:
   `db_hostname: ${db_hostname}` (or any
   `<peer-host>_<key>: ${<peer-host>_<key>}`) self-shadows.
 - **Project-level envs** — declaring `APP_SECRET: ${APP_SECRET}` (or
-  `STAGE_API_URL: ${STAGE_API_URL}`, or any project-level secret /
+  `API_URL: ${API_URL}`, or any project-level secret /
   URL constant under its own name) self-shadows the same way.
 
 Project-level envs and cross-service envs both auto-propagate to

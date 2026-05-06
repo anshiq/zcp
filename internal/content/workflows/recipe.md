@@ -260,7 +260,7 @@ For correlated secrets, encoded variants, or key pairs, call `zerops_preprocess`
 
 <block name="import-yaml-dual-runtime">
 
-**Dual-runtime URL constants** (API-first recipes only — skip for single-runtime): after services reach RUNNING, set project-level `DEV_*` + `STAGE_*` URL constants with `zerops_env project=true action=set` so the generate step can reference them in zerops.yaml. The full format, consumption pattern, and the `projectEnvVariables` handoff to finalize are documented in the generate step under "Dual-runtime URL env-var pattern" — set the same values now as will be passed there.
+**Dual-runtime URL constants** (API-first recipes only — skip for single-runtime): after services reach RUNNING, set project-level `DEV_*` + bare `{ROLE}_URL` constants with `zerops_env project=true action=set` so the generate step can reference them in zerops.yaml. The full format, consumption pattern, and the `projectEnvVariables` handoff to finalize are documented in the generate step under "Dual-runtime URL env-var pattern" — set the same values now as will be passed there.
 
 **URL shape — port suffix rule.** Dynamic runtime services (nodejs, php-nginx, go, etc.)
 include the port in their subdomain URL: `https://{hostname}-${zeropsSubdomainHost}-{port}.prg1.zerops.app`.
@@ -274,13 +274,13 @@ processes). Static frontends in dev mode (Vite on port 5173) use the dev server 
 not port 80 — the dev setup overrides the static base with a toolchain runtime.
 
 The generate step's "Dual-runtime URL env-var pattern" section has the full 6-env
-breakdown (DEV_* + STAGE_* for envs 0-1, STAGE_* only for envs 2-5). At provision
-you only need the workspace pair: set DEV_* and STAGE_* with the correct port suffixes.
+breakdown (DEV_* + bare {ROLE}_URL for envs 0-1, the bare {ROLE}_URL keys only for envs 2-5). At provision
+you only need the workspace pair: set DEV_* and the bare {ROLE}_URL keys with the correct port suffixes.
 
 **Batch all project-level env vars into a single `zerops_env set` call.** Each call
 restarts every container that reads project-level vars. Multiple calls in sequence
 trigger multiple cascading restarts, each killing any SSH-launched processes. Set
-JWT_SECRET, all DEV_* URLs, and all STAGE_* URLs in one invocation.
+JWT_SECRET, all DEV_* URLs, and the bare {ROLE}_URL keys in one invocation.
 
 </block>
 
@@ -566,26 +566,26 @@ https://{hostname}-${zeropsSubdomainHost}-{port}.prg1.zerops.app   # dynamic run
 https://{hostname}-${zeropsSubdomainHost}.prg1.zerops.app          # static (Nginx, no port segment)
 ```
 
-Dual-runtime recipes use two env var name families. `STAGE_{ROLE}_URL` is present in **every env** (0-5) and resolves to `{role}stage` in env 0-1 and the bare `{role}` in envs 2-5. `DEV_{ROLE}_URL` exists **only in env 0-1** (dev-pair envs) and resolves to `{role}dev`. Typical roles: `API`, `FRONTEND`. Add `WORKER` only if the worker has a public surface (usually it doesn't).
+Dual-runtime recipes use two env var name families. `{ROLE}_URL` is present in **every env** (0-5); at envs 0-1 the value carries `{role}stage` (the production-setup side) and at envs 2-5 it is the bare `{role}` (the only api/frontend at single-slot). `DEV_{ROLE}_URL` exists **only in env 0-1** (dev-pair envs) and resolves to `{role}dev`. Typical roles: `API`, `FRONTEND`. Add `WORKER` only if the worker has a public surface (usually it doesn't).
 
-**Env 0-1 shape** (dev-pair envs — `STAGE_*` + `DEV_*`):
+**Env 0-1 shape** (dev-pair envs — bare `{ROLE}_URL` + `DEV_*`):
 ```yaml
 # in import.yaml for env 0 and env 1
 project:
   envVariables:
     DEV_API_URL: https://apidev-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
     DEV_FRONTEND_URL: https://appdev-${zeropsSubdomainHost}.prg1.zerops.app
-    STAGE_API_URL: https://apistage-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
-    STAGE_FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app
+    API_URL: https://apistage-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
+    FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app
 ```
 
-**Envs 2-5 shape** (single-slot envs — `STAGE_*` only):
+**Envs 2-5 shape** (single-slot envs — bare `{ROLE}_URL` only):
 ```yaml
 # in import.yaml for envs 2, 3, 4, 5
 project:
   envVariables:
-    STAGE_API_URL: https://api-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
-    STAGE_FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app
+    API_URL: https://api-${zeropsSubdomainHost}-{apiPort}.prg1.zerops.app
+    FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app
 ```
 
 Substitute `{apiPort}` with your API's actual HTTP port (from `run.ports[0].port` in the API's zerops.yaml). Static frontends have no port segment.
@@ -618,7 +618,7 @@ zerops:
       envVariables:
         # Client-side vars in build.envVariables get baked into the bundle.
         # This is the prod pattern — `npm run build` substitutes at build time.
-        VITE_API_URL: ${STAGE_API_URL}
+        VITE_API_URL: ${API_URL}
     run:
       base: static
 ```
@@ -672,11 +672,11 @@ items = data.items;             // undefined when res was HTML
 
 The scaffold subagent's brief lists this as a mandatory structural rule — see `client-code-observable-failure` for the general form.
 
-**Consumption**: project-level env vars auto-inject into both runtime AND build containers. Reference them directly by name in zerops.yaml — `build.envVariables: VITE_API_URL: ${STAGE_API_URL}` bakes the stage URL into the cross-deployed bundle; `run.envVariables: FRONTEND_URL: ${STAGE_FRONTEND_URL}` forwards the value under a framework-conventional name for CORS. There is **no `RUNTIME_` prefix** on project vars — that prefix is a different feature (lifting a service-level runtime var into build), not applicable here. The full consumption model (including the shell-prefix alternative in `buildCommands`) lives in the `environment-variables` knowledge guide — fetch it via `zerops_knowledge scope="guide" query="environment-variables"` when you need the platform rules behind this pattern.
+**Consumption**: project-level env vars auto-inject into both runtime AND build containers. Reference them directly by name in zerops.yaml — `build.envVariables: VITE_API_URL: ${API_URL}` bakes the stage URL into the cross-deployed bundle; `run.envVariables: CORS_ALLOWED_ORIGIN: ${FRONTEND_URL}` forwards the value under a framework-conventional name for CORS. There is **no `RUNTIME_` prefix** on project vars — that prefix is a different feature (lifting a service-level runtime var into build), not applicable here. The full consumption model (including the shell-prefix alternative in `buildCommands`) lives in the `environment-variables` knowledge guide — fetch it via `zerops_knowledge scope="guide" query="environment-variables"` when you need the platform rules behind this pattern.
 
-The `setup: dev` block reads `DEV_*`; `setup: prod` reads `STAGE_*`. The same zerops.yaml works in every env: envs 2-5 never invoke `setup: dev` (there is no `appdev` there), so the `DEV_*` reference is dormant and safe.
+The `setup: dev` block reads `DEV_*`; `setup: prod` reads the bare `{ROLE}_URL` keys. The same zerops.yaml works in every env: envs 2-5 never invoke `setup: dev` (there is no `appdev` there), so the `DEV_*` reference is dormant and safe.
 
-**Workspace parity is set at the provision step**, not here — see the provision step's `zerops_env project=true action=set` invocation. By the time you reach generate, the workspace already has `DEV_*` + `STAGE_*` resolved. Single-runtime recipes skip this entirely — they don't cross services for URL baking.
+**Workspace parity is set at the provision step**, not here — see the provision step's `zerops_env project=true action=set` invocation. By the time you reach generate, the workspace already has `DEV_*` + bare `{ROLE}_URL` resolved. Single-runtime recipes skip this entirely — they don't cross services for URL baking.
 
 **The deploy step enforces both halves.** The `feature-sweep-dev` and `feature-sweep-stage` sub-steps run a curl against every api-surface feature's HealthCheck and reject any response with `text/html` content-type — the exact symptom of a missing source-code half. A YAML-perfect recipe with the source-code half wrong will fail the sweep before it ever reaches the browser walk.
 
@@ -693,7 +693,7 @@ The `setup: dev` block reads `DEV_*`; `setup: prod` reads `STAGE_*`. The same ze
 **What NOT to do**:
 - Do NOT invent a `setup: stage` — there is no such thing. Stage uses `setup: prod`.
 - Do NOT reference another service's `${hostname}_zeropsSubdomain` to build URLs. Use the `${zeropsSubdomainHost}` project-scope var and the constant URL format above.
-- Do NOT create a service-level env var with the same name as a project-level env var — that's a shadow loop (the platform interpolator sees the same-name service var first and resolves to the literal `${VAR_NAME}` string). Forward under a DIFFERENT name (e.g. `FRONTEND_URL: ${STAGE_FRONTEND_URL}`); if you want the project var under its own name, just don't write the line — it's already in the OS env.
+- Do NOT create a service-level env var with the same name as a project-level env var — that's a shadow loop (the platform interpolator sees the same-name service var first and resolves to the literal `${VAR_NAME}` string). Forward under a DIFFERENT name (e.g. `CORS_ALLOWED_ORIGIN: ${FRONTEND_URL}`); if you want the project var under its own name, just don't write the line — it's already in the OS env.
 
 </block>
 
@@ -2174,7 +2174,7 @@ This identifies *which* initCommand failed. For *why* it failed, fetch runtime l
 
 **Step 7b: Feature sweep (stage) — MANDATORY gate after every cross-deploy**
 
-After `verify-stage` passes and every stage service is healthy, re-run the feature sweep against the **stage** endpoints. This is the second and final content-type gate — the stage bundle is built from the dev source (via cross-deploy), and the v18 bug class manifests specifically at stage because the `build.envVariables: VITE_API_URL: ${STAGE_API_URL}` bake is STAGE-specific. A dev-green sweep with a broken source-code half will still flip to `text/html` on stage.
+After `verify-stage` passes and every stage service is healthy, re-run the feature sweep against the **stage** endpoints. This is the second and final content-type gate — the stage bundle is built from the dev source (via cross-deploy), and the v18 bug class manifests specifically at stage because the `build.envVariables: VITE_API_URL: ${API_URL}` bake is STAGE-specific. A dev-green sweep with a broken source-code half will still flip to `text/html` on stage.
 
 **How to run the stage sweep:**
 
@@ -2918,8 +2918,8 @@ zerops_workflow action="generate-finalize" \
 
 The dual-runtime URL constants live here. Shape:
 
-- **Envs 0-1** (dev-pair): `DEV_*` + `STAGE_*` for every role.
-- **Envs 2-5** (single-slot): `STAGE_*` only, with hostnames `api`/`app` instead of `apistage`/`appstage`.
+- **Envs 0-1** (dev-pair): `DEV_*` + the bare `{ROLE}_URL` keys for every role.
+- **Envs 2-5** (single-slot): the bare `{ROLE}_URL` keys only, with hostnames `api`/`app` instead of `apistage`/`appstage`.
 
 The values MUST match what the agent set on the workspace project via `zerops_env project=true` (see Provision step). Same values, same names, same pattern.
 
@@ -2930,30 +2930,30 @@ zerops_workflow action="generate-finalize" \
     "0": {
       "DEV_API_URL": "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
       "DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-      "STAGE_API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-      "STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app"
+      "API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+      "FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app"
     },
     "1": {
       "DEV_API_URL": "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
       "DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-      "STAGE_API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-      "STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app"
+      "API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+      "FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app"
     },
     "2": {
-      "STAGE_API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-      "STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
+      "API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+      "FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
     },
     "3": {
-      "STAGE_API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-      "STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
+      "API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+      "FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
     },
     "4": {
-      "STAGE_API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-      "STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
+      "API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+      "FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
     },
     "5": {
-      "STAGE_API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-      "STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
+      "API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+      "FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app"
     }
   }
 ```

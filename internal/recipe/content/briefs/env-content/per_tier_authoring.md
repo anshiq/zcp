@@ -271,14 +271,14 @@ if"*); each names the porter signal that triggers the adapt
 ```yaml
 # APP_SECRET is generated once at import and shared across api +
 # worker so JWT verification holds across the L7 balancer.
-# STAGE_API_URL and STAGE_FRONTEND_URL are the single-slot stage
+# API_URL and FRONTEND_URL are the single-slot stage
 # URLs that frontends and CORS allow-lists consume.
 project:
   name: <recipe-slug>-stage
   envVariables:
     APP_SECRET: <@generateRandomString(<32>)>
-    STAGE_API_URL: https://api-stage.example.com
-    STAGE_FRONTEND_URL: https://app-stage.example.com
+    API_URL: https://api-stage.example.com
+    FRONTEND_URL: https://app-stage.example.com
 ```
 
 **AFTER** — friendly authority, 8.5 anchor:
@@ -288,15 +288,15 @@ project:
 # worker so JWT verification holds across the L7 balancer. Rotate
 # this via the Zerops UI's project envs once you suspect leakage
 # — every container picks up the new value on next restart.
-# Replace STAGE_API_URL and STAGE_FRONTEND_URL with your own
+# Replace API_URL and FRONTEND_URL with your own
 # stage hostnames once subdomain access is swapped for a custom
 # domain.
 project:
   name: <recipe-slug>-stage
   envVariables:
     APP_SECRET: <@generateRandomString(<32>)>
-    STAGE_API_URL: https://api-stage.example.com
-    STAGE_FRONTEND_URL: https://app-stage.example.com
+    API_URL: https://api-stage.example.com
+    FRONTEND_URL: https://app-stage.example.com
 ```
 
 Two friendly-authority phrasings (*"Rotate … once you"*, *"Replace

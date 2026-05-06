@@ -117,7 +117,7 @@ already catches many misroutings; refinement is the backstop:
     ANY mention of Zerops-side mechanisms, **abstract or concrete**.
     Concrete: explicit env-var names (`${db_*}`, `${broker_*}`,
     `${zeropsSubdomainHost}`, project-scope constants like
-    `STAGE_*`/`DEV_*`), `zerops.yaml` directives, named managed
+    `${API_URL}`/`${FRONTEND_URL}`/`${DEV_*}`), `zerops.yaml` directives, named managed
     services. Abstract: phrasings like "project-scope URL constants",
     "the L7 balancer", "the auto-injected cross-service var",
     "container lifecycle", "the platform's deploy primitive" — these
@@ -172,7 +172,7 @@ already catches many misroutings; refinement is the backstop:
       "the `env-var-model` guide covers the project-scope URL
       constants that drive the allowed origins list" — the body has
       a Zerops guide cite; the recipe wires project-scope env vars
-      (`STAGE_FRONTEND_URL`, `DEV_FRONTEND_URL`) into the CORS
+      (`FRONTEND_URL`, `DEV_FRONTEND_URL`) into the CORS
       allow-list. Headline is CORS; body is Zerops × CORS. KEEP —
       or reshape to lead with the project-scope-env angle.
     - **"`fetch().headers.get('X-Cache')` returns null"** with body

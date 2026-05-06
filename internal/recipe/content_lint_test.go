@@ -51,7 +51,7 @@ func scanYAMLBoxDrawing(t *testing.T, path, body string) {
 // TestBrief_TeachesProjectLevelShadowTrap — run-22 RC-2. The
 // scaffold/codebase-content `platform_principles.md` brief must
 // extend the same-key shadow warning to project-level vars
-// (`${APP_SECRET}`, `${STAGE_API_URL}`), not just cross-service
+// (`${APP_SECRET}`, `${API_URL}`), not just cross-service
 // auto-injects (`${db_hostname}`). Authoritative source:
 // internal/knowledge/guides/environment-variables.md L97-115.
 func TestBrief_TeachesProjectLevelShadowTrap(t *testing.T) {

@@ -268,7 +268,7 @@ func BuildEnvContentBrief(plan *Plan, parent *ParentRecipe, facts []FactRecord) 
 	// Run-22 followup F-4 — workspace dual-runtime URL teaching reaches
 	// env-content unconditionally. The per-tier import-comments fragments
 	// authored at this phase routinely narrate URL constants
-	// (`${zeropsSubdomainHost}`, `STAGE_API_URL`, etc); without the atom
+	// (`${zeropsSubdomainHost}`, `API_URL`, etc); without the atom
 	// the env-content sub-agent lacks (a) the literal-stays-literal rule
 	// for the deliverable tier yaml and (b) the `update-plan
 	// projectEnvVars` channel-sync teaching that explains why those

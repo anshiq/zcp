@@ -48,10 +48,10 @@ func TestGenerateEnvImportYAML_ProjectEnvVariables_Env01Shape(t *testing.T) {
 	plan := testMinimalPlan() // has shared secret APP_KEY
 	plan.ProjectEnvVariables = map[string]map[string]string{
 		"0": {
-			"DEV_API_URL":        "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"DEV_FRONTEND_URL":   "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-			"STAGE_API_URL":      "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+			"DEV_API_URL":      "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":          "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL":     "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 	}
 
@@ -66,8 +66,8 @@ func TestGenerateEnvImportYAML_ProjectEnvVariables_Env01Shape(t *testing.T) {
 		"    APP_KEY: <@generateRandomString(<32>)>",
 		"    DEV_API_URL: https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
 		"    DEV_FRONTEND_URL: https://appdev-${zeropsSubdomainHost}.prg1.zerops.app",
-		"    STAGE_API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-		"    STAGE_FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+		"    API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+		"    FRONTEND_URL: https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
 	}
 	for _, line := range wantLines {
 		if !strings.Contains(block, line) {
@@ -82,20 +82,20 @@ func TestGenerateEnvImportYAML_ProjectEnvVariables_Env2PlusShape(t *testing.T) {
 	plan := testMinimalPlan()
 	plan.ProjectEnvVariables = map[string]map[string]string{
 		"2": {
-			"STAGE_API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
+			"API_URL":      "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL": "https://app-${zeropsSubdomainHost}.prg1.zerops.app",
 		},
 	}
 
 	yaml := GenerateEnvImportYAML(plan, 2)
 	block := envVariablesBlock(yaml)
 
-	// Env 2-5 must carry STAGE_* only (no DEV_*).
-	if !strings.Contains(block, "STAGE_API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app") {
-		t.Errorf("expected STAGE_API_URL line\nblock:\n%s", block)
+	// Env 2-5 must carry the bare {ROLE}_URL keys only (no DEV_*).
+	if !strings.Contains(block, "API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app") {
+		t.Errorf("expected API_URL line\nblock:\n%s", block)
 	}
-	if !strings.Contains(block, "STAGE_FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app") {
-		t.Errorf("expected STAGE_FRONTEND_URL line\nblock:\n%s", block)
+	if !strings.Contains(block, "FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app") {
+		t.Errorf("expected FRONTEND_URL line\nblock:\n%s", block)
 	}
 	if strings.Contains(block, "DEV_API_URL") {
 		t.Errorf("env 2 must NOT carry DEV_* vars\nblock:\n%s", block)
@@ -238,7 +238,7 @@ func TestGenerateEnvImportYAML_ProjectEnvVariables_OnlyProjectVarsNoSecret(t *te
 	plan.Research.NeedsAppSecret = false
 	plan.Research.AppSecretKey = ""
 	plan.ProjectEnvVariables = map[string]map[string]string{
-		"2": {"STAGE_API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app"},
+		"2": {"API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app"},
 	}
 
 	yaml := GenerateEnvImportYAML(plan, 2)
@@ -246,8 +246,8 @@ func TestGenerateEnvImportYAML_ProjectEnvVariables_OnlyProjectVarsNoSecret(t *te
 	if block == "" {
 		t.Fatalf("expected envVariables block with just project vars\nyaml:\n%s", yaml)
 	}
-	if !strings.Contains(block, "STAGE_API_URL:") {
-		t.Errorf("missing STAGE_API_URL\nblock:\n%s", block)
+	if !strings.Contains(block, "API_URL:") {
+		t.Errorf("missing API_URL\nblock:\n%s", block)
 	}
 	if strings.Contains(block, "APP_KEY") {
 		t.Errorf("APP_KEY should NOT appear (no secret)\nblock:\n%s", block)
@@ -321,11 +321,11 @@ func TestGenerateFinalize_Idempotent(t *testing.T) {
 	plan := testMinimalPlan()
 	plan.ProjectEnvVariables = map[string]map[string]string{
 		"0": {
-			"DEV_API_URL":   "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
-			"STAGE_API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_API_URL": "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"API_URL":     "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
 		},
 		"2": {
-			"STAGE_API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"API_URL": "https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app",
 		},
 	}
 
