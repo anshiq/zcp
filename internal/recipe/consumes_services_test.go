@@ -469,6 +469,130 @@ func TestBuildCodebaseContentBrief_PropagatesCrossCodebaseFacts(t *testing.T) {
 	}
 }
 
+// TestFactMentionsAnyConsumedService_UnbracedHostnamePrefix_Matches —
+// run-28 fix #1. Worker scaffold's NATS Pattern-A finding cites
+// `broker_connectionString` (alias name) and `broker_hostname` etc.
+// without `${...}` wrapping in fact text. The predicate must match
+// these unbraced hostname-prefix forms at word boundaries so the
+// fact propagates to consumer codebases.
+func TestFactMentionsAnyConsumedService_UnbracedHostnamePrefix_Matches(t *testing.T) {
+	t.Parallel()
+	consumed := map[string]bool{"broker": true}
+	cases := []struct {
+		name string
+		f    FactRecord
+	}{
+		{
+			name: "broker_connectionString_in_why",
+			f: FactRecord{
+				Why: "broker_connectionString crashes nats client at boot.",
+			},
+		},
+		{
+			name: "broker_hostname_in_fixApplied",
+			f: FactRecord{
+				FixApplied: "Switched to broker_hostname + broker_port wiring.",
+			},
+		},
+		{
+			name: "broker_camelCase_alias",
+			f: FactRecord{
+				Why: "Read broker_connectionString as a single env.",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if !factMentionsAnyConsumedService(tc.f, consumed) {
+				t.Errorf("expected match on unbraced %q", tc.name)
+			}
+		})
+	}
+}
+
+// TestFactMentionsAnyConsumedService_AliasOnly_DoesNotMatch — run-28
+// fix #1. Bare alias names without the host prefix (e.g. just
+// `connectionString`) must NOT match — too ambiguous, no host anchor.
+func TestFactMentionsAnyConsumedService_AliasOnly_DoesNotMatch(t *testing.T) {
+	t.Parallel()
+	consumed := map[string]bool{"broker": true}
+	f := FactRecord{
+		Why: "Use connectionString rather than the four split env vars.",
+	}
+	if factMentionsAnyConsumedService(f, consumed) {
+		t.Errorf("alias-only prose should not match without host anchor")
+	}
+}
+
+// TestFactMentionsAnyConsumedService_BareHostnameWord_DoesNotMatch —
+// run-28 fix #1. The bare hostname word "broker" alone must NOT match
+// — would over-propagate facts that narrate tier decisions and use
+// the hostname conversationally.
+func TestFactMentionsAnyConsumedService_BareHostnameWord_DoesNotMatch(t *testing.T) {
+	t.Parallel()
+	consumed := map[string]bool{"broker": true}
+	f := FactRecord{
+		Why: "The broker is a NATS server; choose subjects carefully.",
+	}
+	if factMentionsAnyConsumedService(f, consumed) {
+		t.Errorf("bare hostname word should not match without `_<suffix>` anchor")
+	}
+}
+
+// TestFactMentionsAnyConsumedService_HostnameSubstring_DoesNotMatch —
+// run-28 fix #1. Word boundary must be respected: `embroker_hostname`
+// (where `embroker` is a different host that happens to contain
+// `broker` as a substring) must NOT match consumed=[broker].
+func TestFactMentionsAnyConsumedService_HostnameSubstring_DoesNotMatch(t *testing.T) {
+	t.Parallel()
+	consumed := map[string]bool{"broker": true}
+	f := FactRecord{
+		Why: "Wired embroker_hostname for the embedded queue service.",
+	}
+	if factMentionsAnyConsumedService(f, consumed) {
+		t.Errorf("hostname substring inside a longer token should not match (word boundary regression)")
+	}
+}
+
+// TestScaffoldDecisionRecordingSlim_EnvTokenSection_Present — run-28
+// fix #1b. Pins that the scaffold decision-recording atom teaches
+// porter_change facts about managed-service wiring to cite the
+// `${<host>_*}` env-token form so cross-codebase propagation matches.
+func TestScaffoldDecisionRecordingSlim_EnvTokenSection_Present(t *testing.T) {
+	t.Parallel()
+	body, err := readAtom("briefs/scaffold/decision_recording_slim.md")
+	if err != nil {
+		t.Fatalf("read decision_recording_slim.md: %v", err)
+	}
+	if !strings.Contains(body, "Env-token references in fact text") {
+		t.Errorf("atom missing env-token-references section heading")
+	}
+	if !strings.Contains(body, "CrossCodebaseManagedServiceFacts") {
+		t.Errorf("atom missing reference to cross-codebase propagation predicate")
+	}
+}
+
+// TestScaffoldDecisionRecordingSlim_EnvTokenWorkedExample_GoodForm —
+// run-28 fix #1b. The atom's GOOD example must contain at least one
+// `${broker_*}` env-token reference so the porter sees the shape that
+// makes propagation match.
+func TestScaffoldDecisionRecordingSlim_EnvTokenWorkedExample_GoodForm(t *testing.T) {
+	t.Parallel()
+	body, err := readAtom("briefs/scaffold/decision_recording_slim.md")
+	if err != nil {
+		t.Fatalf("read decision_recording_slim.md: %v", err)
+	}
+	for _, want := range []string{
+		"${broker_hostname}",
+		"${broker_connectionString}",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("worked example missing env-token reference %q", want)
+		}
+	}
+}
+
 // TestRecipeContext_NilConsumesServices_FallsBackToAll — back-compat.
 //
 // Codebase with nil (not zero) ConsumesServices preserves pre-R2-3

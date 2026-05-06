@@ -299,7 +299,41 @@ func factMentionsAnyConsumedService(f FactRecord, consumed map[string]bool) bool
 			}
 		}
 	}
+	// Run-28 fix #1 — unbraced hostname-prefix form. Run-27 worker
+	// scaffolds cited `broker_connectionString` / `broker_hostname` in
+	// `why` / `fixApplied` / `surfaceHint` text without `${...}` wrapping
+	// (the `${X}` shape lives only in zerops.yaml or quoted code blocks).
+	// Without this second pass the worker's NATS Pattern-A finding never
+	// reached the apidev codebase-content brief even though apidev
+	// consumes broker. Match only at word boundaries with at least one
+	// suffix character so bare hostname words ("the broker is a NATS
+	// server") do not over-propagate, and substrings (`embroker_hostname`)
+	// do not collide.
+	for host := range consumed {
+		if host == "" {
+			continue
+		}
+		pat := unbracedHostnamePrefixPattern(host)
+		for _, field := range fields {
+			if field == "" {
+				continue
+			}
+			if pat.MatchString(field) {
+				return true
+			}
+		}
+	}
 	return false
+}
+
+// unbracedHostnamePrefixPattern compiles `\bH_[A-Za-z][A-Za-z0-9_]*\b`
+// for the given host. Suffix character class permits multi-segment
+// aliases (`broker_connection_string`) and camelCase aliases
+// (`broker_connectionString`). The leading `[A-Za-z]` after the
+// underscore prevents matching shapes like `host_1` or `host__` that
+// the platform never emits.
+func unbracedHostnamePrefixPattern(host string) *regexp.Regexp {
+	return regexp.MustCompile(`\b` + regexp.QuoteMeta(host) + `_[A-Za-z][A-Za-z0-9_]*\b`)
 }
 
 // leadingHostnameToken splits on `_` and returns the first segment.

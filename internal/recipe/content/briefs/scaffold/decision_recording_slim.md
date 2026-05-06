@@ -83,6 +83,44 @@ The list of valid `citationGuide` ids is in the scaffold brief's
 non-empty string but only known ids surface as cite-by-name in the
 published prose.
 
+## Env-token references in fact text
+
+When a `porter_change` fact describes managed-service wiring (NATS
+connection, S3 endpoint, DB credentials), at least one text field
+(`why`, `fixApplied`, `surfaceHint`, `evidence`) MUST cite the
+`${<host>_*}` env-token form for every managed service the fact
+touches.
+
+Why: cross-codebase fact propagation
+(`CrossCodebaseManagedServiceFacts`) matches on env-token references
+to decide which sister facts are relevant to this codebase. A fact
+that cites only the alias-name (`connectionString`) or literal URLs
+(`nats://user:pass@host:4222`) won't propagate to consumer codebases
+even when the underlying decision is platform-invariant.
+
+Worked example — BAD vs GOOD:
+
+```yaml
+# BAD — propagation predicate misses; the NATS-broken-shape finding
+# stays scoped to worker even though the decision is platform-wide.
+- topic: nats-pattern-a-separate-credentials
+  kind: porter_change
+  why: |
+    Pattern B (single connectionString) crashes at boot — nats@2.29
+    hostPort() IPv6-misidentifies embedded credentials by colon-count.
+    Use Pattern A: separate servers/user/pass.
+
+# GOOD — env-token cite makes propagation predicate match.
+- topic: nats-pattern-a-separate-credentials
+  kind: porter_change
+  why: |
+    Pattern B (single ${broker_connectionString}) crashes at boot —
+    nats@2.29 hostPort() IPv6-misidentifies the auto-generated
+    password by colon-count. Use Pattern A: ${broker_hostname} +
+    ${broker_port} + ${broker_user} + ${broker_password} as
+    separate servers/user/pass options.
+```
+
 ## Skip rule
 
 Skip recording if `candidateClass ∈ {framework-quirk, library-metadata,
