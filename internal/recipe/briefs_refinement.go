@@ -244,8 +244,10 @@ func composeRefinementFactsBlock(facts []FactRecord, budget int) (string, int, i
 	// Need eviction. Walk most-recent-first and stop adding when the
 	// next fact would exceed the budget, leaving headroom for the
 	// notice + tail markers (sized against worst-case integer counts).
-	worstNotice := len(strings.ReplaceAll(strings.ReplaceAll(noticeFmt, "%d", "9999999"), "\n", "\n"))
-	worstTail := len(strings.ReplaceAll(strings.ReplaceAll(tailFmt, "%d", "9999999"), "\n", "\n"))
+	// `%d` substituted with a 7-digit fact-count ceiling — facts.jsonl
+	// shipping >9.9M records is far outside any observed run scale.
+	worstNotice := len(fmt.Sprintf(noticeFmt, 9999999, 9999999))
+	worstTail := len(fmt.Sprintf(tailFmt, 9999999, 9999999))
 	overhead := len(heading) + worstNotice + worstTail
 	available := budget - overhead
 	if available <= 0 {

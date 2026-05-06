@@ -173,6 +173,11 @@ func addBaseValues(n *yaml.Node, bases map[string]bool) {
 		for _, c := range n.Content {
 			addBaseValues(c, bases)
 		}
+	case yaml.DocumentNode, yaml.MappingNode, yaml.AliasNode:
+		// `base:` values are scalar or sequence by spec; document /
+		// mapping / alias shapes don't appear in this position. Falling
+		// through silently keeps the gate conservative — unparseable
+		// shapes get treated as "no base", scaffold runs un-gated.
 	}
 }
 
