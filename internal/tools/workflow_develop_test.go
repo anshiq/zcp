@@ -537,6 +537,55 @@ func TestHandleDevelopBriefing_DevMode_NoExpansion(t *testing.T) {
 	}
 }
 
+// H2 defense: when no ServiceMeta exists (services live but unmanaged),
+// develop's PREREQUISITE_MISSING rejection must carry a structured Recovery
+// pointing the agent at bootstrap+route=adopt. Generic
+// `WithRecoveryStatus()` (the prior shape) forced agents to round-trip
+// through `zerops_workflow action=status` before discovering the next call,
+// which the workflow router was supposed to telegraph in the first place
+// (build_plan.go:382-388, fixed in same plan). This test pins the
+// defense-in-depth shape so any future regression at workflow_develop.go
+// is caught.
+func TestHandleDevelopBriefing_NoBootstrappedServices_RecoveryPointsAtBootstrapAdopt(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	engine := workflow.NewEngine(dir, workflow.EnvContainer, nil)
+
+	// No ServiceMeta written — simulating live unmanaged services that
+	// the agent skipped past bootstrap and hit develop directly.
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-appdev", Name: "appdev", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+	})
+
+	result, _, err := handleDevelopBriefing(context.Background(), engine, mock, "proj1",
+		WorkflowInput{Intent: "deploy something"}, runtime.Info{InContainer: true})
+	if err != nil {
+		t.Fatalf("handleDevelopBriefing: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected PREREQUISITE_MISSING rejection, got success:\n%s", extractText(result))
+	}
+	text := extractText(result)
+
+	// Structured Recovery shape — agent reads JSON, not prose.
+	for _, needle := range []string{
+		`"recovery"`,
+		`"tool":"zerops_workflow"`,
+		`"action":"start"`,
+		`"workflow":"bootstrap"`,
+		`"route":"adopt"`,
+	} {
+		if !strings.Contains(text, needle) {
+			t.Errorf("Recovery missing %q in error wire shape. Got:\n%s", needle, text)
+		}
+	}
+	// Defense — must NOT fall back to generic status Recovery.
+	if strings.Contains(text, `"recovery":{"tool":"zerops_workflow","action":"status"}`) {
+		t.Errorf("Recovery is generic status; expected specific bootstrap+adopt shape. Got:\n%s", text)
+	}
+}
+
 // P1: scope must be supplied at start — no implicit derivation from metas.
 func TestHandleDevelopBriefing_MissingScope_Rejected(t *testing.T) {
 	t.Parallel()

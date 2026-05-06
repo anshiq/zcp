@@ -84,10 +84,19 @@ func handleCloseMode(input WorkflowInput, stateDir string) (*mcp.CallToolResult,
 				"Ensure the service was bootstrapped first"), WithRecoveryStatus()), nil, nil
 		}
 		if meta == nil || !meta.IsComplete() {
+			// H2 sweep: same shape as workflow_develop.go — point at
+			// bootstrap+adopt, not generic status. Live unmanaged service
+			// being targeted for close-mode means the agent missed the
+			// adopt step.
 			return convertError(platform.NewPlatformError(
 				platform.ErrServiceNotFound,
 				fmt.Sprintf("Service %q is not bootstrapped", hostname),
-				"Run bootstrap first: zerops_workflow action=\"start\" workflow=\"bootstrap\""), WithRecoveryStatus()), nil, nil
+				"Run bootstrap first: zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\""),
+				WithRecovery(&RecoveryHint{
+					Tool:   "zerops_workflow",
+					Action: "start",
+					Args:   map[string]string{"workflow": "bootstrap", "route": "adopt"},
+				})), nil, nil
 		}
 
 		// Local-only services have no Zerops runtime target — closeMode=auto

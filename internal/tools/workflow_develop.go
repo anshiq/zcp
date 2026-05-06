@@ -103,10 +103,21 @@ func handleDevelopBriefing(ctx context.Context, engine *workflow.Engine, client 
 	}
 
 	if len(metas) == 0 {
+		// H2 defense-in-depth: structured Recovery points at the exact
+		// next call. The router (build_plan.go:382-388) already telegraphs
+		// bootstrap+route=adopt for unmanaged-runtimes scenarios; this
+		// rejection only fires when the agent ignored the router and
+		// jumped to develop directly. Generic WithRecoveryStatus()
+		// previously forced an extra status round-trip.
 		return convertError(platform.NewPlatformError(
 			platform.ErrPrerequisiteMissing,
 			"No bootstrapped services found",
-			"Run bootstrap first: action=\"start\" workflow=\"bootstrap\" (route=\"adopt\" if services already live)"), WithRecoveryStatus()), nil, nil
+			"Run bootstrap first: action=\"start\" workflow=\"bootstrap\" (route=\"adopt\" if services already live)"),
+			WithRecovery(&RecoveryHint{
+				Tool:   "zerops_workflow",
+				Action: "start",
+				Args:   map[string]string{"workflow": "bootstrap", "route": "adopt"},
+			})), nil, nil
 	}
 
 	// Build deployable-runtime meta index for scope validation, honoring the
