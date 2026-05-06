@@ -97,6 +97,87 @@ The engine refuses incompatible (classification, fragmentId) pairs at
 
 Source: `docs/spec-content-surfaces.md` §349-362.
 
+## Surface ownership — mechanisms on IG, field-choices on yaml comments
+
+The four codebase-content fragments do NOT share content equally. Each
+surface owns a distinct content class per spec-content-surfaces §§4, 7:
+
+- **IG #2-N owns porter-transferable mechanisms.** A mechanism is a
+  general rule the porter applies to their OWN code: bind to 0.0.0.0,
+  set `trust proxy`, alias-own-key vs platform-side env names, drain on
+  SIGTERM, build-time-bake for static SPAs. The teaching transfers —
+  the porter reads it and changes their own application code.
+- **zerops.yaml comments (Surface 7) own field-adjacent WHY-choices.**
+  A WHY-choice explains a specific field's value in THIS codebase's
+  deployed runtime: why `execOnce` wraps migrate, why
+  `--retryUntilSuccessful` bounds the boot retry, why `deployFiles:
+  ./` in dev vs `./dist/~` in prod, why `npm ci` in prod vs `npm install`
+  in dev. The teaching does NOT transfer (it's about THIS yaml's
+  specific fields).
+- **KB owns post-deploy symptoms.** A KB bullet starts with a symptom
+  the porter encounters AFTER deploy ("relation already exists on
+  second container's boot") that mechanism-teaching alone wouldn't
+  surface.
+
+### Authoring order — IG first, yaml-comments second
+
+1. **Author IG #2-N first.** For each porter-transferable mechanism the
+   recorded facts surface, write an IG step. The mechanism's mechanism-
+   level teaching (general rule + adapt-path for other frameworks)
+   lives here, with one copyable artifact (3-5 line code diff or
+   `npm install` line).
+2. **Author zerops.yaml comments second, as field-adjacent WHY-choices
+   that may cross-reference IG.** When a yaml field's choice flows from
+   a mechanism IG already teaches, the comment is short and references
+   IG by name: *"`DB_HOST` is the own-key alias for `${db_hostname}` —
+   see IG #5 for the same-key shadow trap that mandates a different
+   own-key on the left."* The comment owns WHY-this-name-here; IG owns
+   the mechanism that justifies the rule.
+3. **Author KB last.** If a KB candidate restates an IG mechanism, drop
+   it. KB only adds value when it surfaces a symptom mechanism-teaching
+   wouldn't preempt.
+
+Each Zerops mechanism is taught on exactly ONE surface (IG); the yaml
+comment cross-references when the field's choice flows from that
+mechanism. Cross-references replace duplications.
+
+### Worked example — same-key shadow trap (api codebase)
+
+**BAD** — yaml comment over-reaches into IG territory (mechanism on
+two surfaces):
+
+- `zerops.yaml` comment (8 lines): *"Same-key aliasing self-shadows:
+  declaring `db_hostname: ${db_hostname}` writes the literal
+  `${db_hostname}` string to the OS env because the per-service
+  envVariables write runs after the auto-inject. Pick own-key names
+  that are different..."*
+- IG #5: *"Pick own-key names that are DIFFERENT from the platform-side
+  keys. Declaring `db_hostname: ${db_hostname}` self-shadows: the
+  per-service envVariables write runs after the auto-inject..."*
+
+The yaml comment teaches the mechanism. Surface 7 owns field-adjacent
+choices, not mechanism teaching. Criterion 6 violation; surface
+ownership violation.
+
+**GOOD** — IG owns the mechanism; yaml comment is short field-adjacent
+reason cross-referencing IG:
+
+- IG #5: full mechanism teaching as above (the same-key self-shadow
+  rule, adapt-path for any framework reading `process.env.DB_HOST`).
+- `zerops.yaml` comment (1-2 lines next to the alias block): *"`DB_HOST`
+  is the own-key alias for `${db_hostname}` — same-key would
+  self-shadow (see IG #5 for the resolution-order mechanism)."*
+
+The mechanism lives on IG (Surface 4). The yaml comment owns the
+WHY-choice for THIS specific alias name.
+
+### Special case — IG #1 is engine-stamped
+
+IG #1 contains the verbatim zerops.yaml block. The fenced yaml block
+inside IG #1 IS the codebase's yaml-comment surface as the porter
+sees it. No additional cross-reference work needed — the engine emit
+fulfills the contract by construction.
+
 ## Friendly-authority voice (Surface 7 + Surface 3)
 
 Both reference recipes speak TO the porter, not AT them. Examples:

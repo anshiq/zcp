@@ -102,7 +102,140 @@ func CollectRefinementSuspects(plan *Plan, notices []Violation) []RefinementSusp
 			break
 		}
 	}
+
+	// (c) Run-29 Fix #4 — IG ↔ yaml-comment same-mechanism duplication
+	// pre-scan (Criterion 6 defense-in-depth; the authoring-order
+	// teaching in synthesis_workflow.md is the primary fix). For each
+	// codebase, walk the IG fragment + zerops.yaml fragment; for each
+	// canonical mechanism anchor, if BOTH fragments contain the anchor
+	// AND share ≥10 consecutive non-whitespace bytes of context, emit
+	// a suspect. Anchor list is hand-curated from run-K dogfood
+	// evidence; expansion follows the same dogfood-evidence rule as
+	// the Fix #2 Notice list (don't expand without explicit dogfood
+	// justification — catalog-drift signature).
+	for _, cb := range plan.Codebases {
+		igID := "codebase/" + cb.Hostname + "/integration-guide"
+		yamlID := "codebase/" + cb.Hostname + "/zerops-yaml"
+		igBody := plan.Fragments[igID]
+		yamlBody := plan.Fragments[yamlID]
+		if strings.TrimSpace(igBody) == "" || strings.TrimSpace(yamlBody) == "" {
+			continue
+		}
+		// Ignore IG #1's verbatim yaml block when comparing — that's
+		// the engine-emit and the spec carves it out as the special-case
+		// non-duplication. Strip the first ```yaml ... ``` block.
+		igProse := stripFirstYamlFencedBlock(igBody)
+		for _, anchor := range igYamlSameMechanismAnchors {
+			if !strings.Contains(igProse, anchor) {
+				continue
+			}
+			if !strings.Contains(yamlBody, anchor) {
+				continue
+			}
+			if !sharesProseContext(igProse, yamlBody, anchor, 10) {
+				continue
+			}
+			suspects = append(suspects, RefinementSuspect{
+				Class:      "criterion-6-ig-yamlcomment-dup",
+				FragmentID: igID,
+				Reason: fmt.Sprintf(
+					"IG and zerops.yaml comment for %q both teach the %q mechanism with overlapping prose context — Surface 4 owns the mechanism, Surface 7 owns the field-adjacent WHY-choice (see briefs/codebase-content/synthesis_workflow.md §Surface ownership). Edit one surface to a cross-reference of the other.",
+					cb.Hostname, anchor),
+			})
+		}
+	}
 	return suspects
+}
+
+// igYamlSameMechanismAnchors enumerates the canonical Zerops mechanism
+// tokens that, when present on BOTH the codebase's IG body AND its
+// zerops.yaml comments with overlapping prose context, signal a Run-29
+// Fix #4 surface-ownership violation. Frozen list — expansion would be
+// the catalog-drift signature.
+var igYamlSameMechanismAnchors = []string{
+	"${db_hostname}",
+	"${broker_",
+	"${cache_",
+	"forcePathStyle",
+	"execOnce",
+	"VITE_API_URL",
+}
+
+// stripFirstYamlFencedBlock removes the first ```yaml ... ``` block
+// from `body`. Used by the IG ↔ yaml-comment pre-scan so the engine-
+// stamped IG #1 yaml block (which legitimately contains the codebase's
+// own zerops.yaml verbatim) doesn't tip the duplication predicate.
+func stripFirstYamlFencedBlock(body string) string {
+	const yamlOpen = "```yaml"
+	const fenceClose = "```"
+	i := strings.Index(body, yamlOpen)
+	if i < 0 {
+		return body
+	}
+	closeStart := i + len(yamlOpen)
+	j := strings.Index(body[closeStart:], fenceClose)
+	if j < 0 {
+		return body[:i]
+	}
+	return body[:i] + body[closeStart+j+len(fenceClose):]
+}
+
+// sharesProseContext reports whether `a` and `b` share at least
+// `minRunNoWS` consecutive non-whitespace bytes of prose context
+// drawn from a window around the named anchor in each. Used by the
+// IG ↔ yaml-comment duplication predicate so an anchor mention that
+// lives in disjoint surrounding prose (one teaches mechanism A,
+// the other a different mechanism that happens to mention the same
+// token) doesn't trip the suspect.
+func sharesProseContext(a, b, anchor string, minRunNoWS int) bool {
+	ctxA := contextWindow(a, anchor, 200)
+	ctxB := contextWindow(b, anchor, 200)
+	if ctxA == "" || ctxB == "" {
+		return false
+	}
+	// Build a compacted (whitespace-collapsed) version of A and slide
+	// a window of `minRunNoWS` consecutive non-whitespace bytes;
+	// require any to land inside compacted B.
+	compactA := stripWhitespace(ctxA)
+	compactB := stripWhitespace(ctxB)
+	if len(compactA) < minRunNoWS || len(compactB) < minRunNoWS {
+		return false
+	}
+	for i := 0; i+minRunNoWS <= len(compactA); i++ {
+		if strings.Contains(compactB, compactA[i:i+minRunNoWS]) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextWindow returns a window of up to `radius` bytes on either
+// side of the FIRST occurrence of `anchor` in `body`. Empty when
+// anchor is absent.
+func contextWindow(body, anchor string, radius int) string {
+	i := strings.Index(body, anchor)
+	if i < 0 {
+		return ""
+	}
+	start := max(i-radius, 0)
+	end := min(i+len(anchor)+radius, len(body))
+	return body[start:end]
+}
+
+// stripWhitespace drops ASCII whitespace (space, tab, CR, LF) from s.
+// Non-ASCII whitespace is kept as-is — the predicate is a heuristic,
+// not a Unicode normalizer.
+func stripWhitespace(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // FactBelongsToCodebases reports whether a fact's `service` field maps

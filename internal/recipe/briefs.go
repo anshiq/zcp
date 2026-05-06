@@ -180,8 +180,16 @@ const (
 // run-27 workerdev case where KB + yaml-comments endorsed
 // "Feel free to swap to Pattern B" on an alternative the worker's
 // own facts established as broken at boot.
+// Run-29 Fix #4 — synthesis_workflow.md gained the surface-ownership +
+// authoring-order section (~3 KB) so the codebase-content composer's
+// construction-time cap moves 68 → 72 KB. NOTE the cap-treadmill
+// warning above no longer applies to inline DELIVERY: Run-29 Fix #1
+// introduced BriefDiskFallbackThreshold (40 KB), so any composed brief
+// > 40 KB lands on disk regardless. CodebaseContentBriefCap is now a
+// construction-side sanity check that protects the composer from
+// unbounded growth, not a delivery-channel constraint.
 const (
-	CodebaseContentBriefCap = 68 * 1024
+	CodebaseContentBriefCap = 72 * 1024
 	EnvContentBriefCap      = 56 * 1024
 	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )
