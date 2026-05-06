@@ -168,6 +168,59 @@ Do NOT abandon the spec layout to make every element above-fold by
 default; that produces a non-dashboard deliverable. Below-fold
 clicks are a verification-script bug, not a layout-spec issue.
 
+## Dev loop — appdev HMR first, cross-deploy last
+
+For each feature card (Items / Cache / Queue / Storage / Search):
+
+1. **Author the card on appdev.** Self-deploy via `git push` is the
+   only deploy; the dev container's HMR (`npm run dev` already running
+   under SSH) picks up the change automatically.
+2. **Browser-walk on appdev** with `agent-browser`. Click the card's
+   primary action; verify the response state lands. Use
+   `data-feature` selectors and `scrollIntoView({block: 'center'})`
+   per the layout-pinning section above.
+3. **Iterate WITHIN appdev.** If the click silently fails, the card
+   re-renders incorrectly, or a fetch returns wrong data — debug
+   on appdev. The bundle is the same one appstage will run; build
+   pipeline is shared. There is no class of bug visible only on
+   appstage that is invisible on appdev.
+4. **Cross-deploy to appstage ONCE per feature-pass close.** After
+   all five cards browser-walk green on appdev, ONE cross-deploy
+   verifies the production bundle path (build-time `VITE_API_URL`
+   bake, CORS allow-list, TLS termination, `dist/~` strip). One pass
+   per feature-pass; not one per iteration.
+
+### Why this matters
+
+`zerops_deploy sourceService=appdev targetService=appstage` runs
+`npm ci` + `vite build` + ships `dist/~`. That's 30-60 s per
+iteration. Eight iterations cost 4-8 min — equal to the entire
+features-frontend pass for two cards in run-26. Run-28 features-
+frontend agent dispatched 8 cross-deploys debugging one card; the
+right loop was appdev HMR + browser-verification + a single
+cross-deploy at close.
+
+### When cross-deploy IS the right tool
+
+- The card's behavior depends on a build-time env-var bake
+  (`VITE_API_URL`) and you suspect the bake is wrong. Cross-deploy
+  once; inspect the compiled JS.
+- A CORS / cross-origin / TLS issue surfaces only against the
+  HTTPS subdomain (appstage), not the dev http://localhost path
+  (appdev with port-forwarded HTTPS via L7 covers most of these).
+- The feature-pass is closing and you want stage-side smoke. One
+  cross-deploy.
+
+### When cross-deploy is the WRONG tool
+
+- The click handler doesn't fire. Fix on appdev — same JS.
+- A fetch returns wrong data. Fix on appdev — same backend.
+- A card renders incorrectly. Fix on appdev — same component.
+- ANY in-bundle behavior. The bundle is shared.
+
+If you've cross-deployed the same source twice in a row debugging
+the same card, stop and reach for appdev HMR.
+
 ## Per-card browser-verification
 
 After implementing the cards, run `zerops_browser` against the SPA and
