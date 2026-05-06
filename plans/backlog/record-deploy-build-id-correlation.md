@@ -58,3 +58,12 @@ Design B for ZCP-initiated git-push (covers ~90% of the lifecycle); Design A as 
 - `internal/ops/progress.go::isStartWithoutCodeEvent` (the round-3A surgical fix mirrors this filter pattern in events.go)
 - `internal/content/atoms/develop-build-observe.md`
 - `internal/content/atoms/develop-record-external-deploy.md`
+
+**Update 2026-05-06**: The Round-3A narrow fix
+(`recordDeployBuildStatusGate` gating on latest-appVersion status) shipped
+in commit 20894b04. The broader correlation question — neither Design A
+(`buildId` arg) nor Design B (`LastPushAt` ServiceMeta cache) — is still
+open. Trigger conditions (race surfaced in live eval, second wrong-build-
+acked class, or build-specific feature requiring correlation primitive)
+have not fired in the 6 days since this entry was filed; the smoke-test
+gate has held. Stays parked.

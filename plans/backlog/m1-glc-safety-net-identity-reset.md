@@ -54,3 +54,13 @@ Two complementary tightenings (audit suggestion):
 - Audit M1 verified at HEAD `9669ebb5`:
   `internal/tools/workflow_bootstrap.go:204-206` log-only;
   `internal/ops/deploy_ssh.go:199-202` config-only-when-missing.
+
+**Update 2026-05-06**: Tightening #1 (the deploy-side safety net) shipped
+in commit f7a22c01 (2026-05-03) "refactor(deploy-ssh): atomic safety-net,
+drop inline identity". The deploy path now reconfigures identity
+atomically rather than relying on the missing-`.git/` guard. Tightening
+#2 (bootstrap-side hard-fail surfacing `InitServiceGit` failure as
+`MOUNT_FAILED`) is still open — `workflow_bootstrap.go` continues to
+log-only on InitServiceGit error. Promote this entry only when the
+bootstrap-side hard-fail trigger fires (live-agent commits with wrong
+attribution).
