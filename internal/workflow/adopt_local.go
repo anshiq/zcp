@@ -157,45 +157,108 @@ func LocalAutoAdopt(ctx context.Context, client platform.Client, projectID, stat
 	}
 }
 
-// FormatAdoptionNote renders the plain-English instruction-text appendix
-// describing what auto-adopt did. Three shapes matching plan §2.10; the
-// exact strings are test-asserted so don't drift lightly. Returns empty
-// string when result is nil (already-initialized path — no note emitted).
-func FormatAdoptionNote(result *AdoptionResult) string {
-	if result == nil || result.Meta == nil {
+// FormatLocalStateNote renders the plain-English instruction-text
+// appendix describing the project's current local-adoption state. Called
+// on every server start in local env (not just first-call) so an agent
+// joining a project that was adopted in a previous session still sees
+// the actionable hint — pre-Phase-10 the note was emitted only at first
+// adoption and went silent thereafter, leaving second-server-start
+// agents without recovery guidance.
+//
+// Three shapes:
+//   - local-stage (Mode == PlanModeLocalStage): linkage statement + optional
+//     managed-services hint.
+//   - local-only with at least one runtime detected: leads with
+//     `BEFORE running develop, link a runtime via adopt-local...` so the
+//     actionable recovery sits up front, not buried at the end.
+//   - local-only with no runtimes: legitimate end-state, no adopt-local
+//     prompt — close-mode review handles the next step.
+//
+// Returns empty string when no local meta exists (container env, fresh
+// state dir before adoption, container-only project).
+func FormatLocalStateNote(metas []*ServiceMeta, services []platform.ServiceStack, projectName string) string {
+	local := findLocalMeta(metas)
+	if local == nil {
 		return ""
 	}
-	project := result.Meta.Hostname
+	if projectName == "" {
+		projectName = local.Hostname
+	}
+	runtimes, managed := classifyServicesForNote(services)
 	managedLine := ""
-	if len(result.Managed) > 0 {
-		managedLine = fmt.Sprintf("Managed services detected: %s. Run `zcli vpn up <projectId>` on your machine for dev-time access.", strings.Join(result.Managed, ", "))
+	if len(managed) > 0 {
+		managedLine = fmt.Sprintf("Managed services detected: %s. Run `zcli vpn up <projectId>` on your machine for dev-time access.", strings.Join(managed, ", "))
 	}
 
 	switch {
-	case result.StageAutoLinked:
-		base := fmt.Sprintf("Adopted project %q as local-stage (linked to %s).", project, result.Meta.StageHostname)
+	case local.Mode == topology.PlanModeLocalStage:
+		base := fmt.Sprintf("Adopted project %q as local-stage (linked to %s).", projectName, local.StageHostname)
 		if managedLine != "" {
 			return base + " " + managedLine
 		}
 		return base
 
-	case len(result.UnlinkedRuntimes) > 0:
-		return fmt.Sprintf(
-			"Adopted project %q as local-only. Multiple Zerops runtime services exist (%s) — none linked as stage. "+
+	case len(runtimes) > 0:
+		runtimeNames := make([]string, len(runtimes))
+		for i, r := range runtimes {
+			runtimeNames[i] = r.Name
+		}
+		base := fmt.Sprintf(
+			"Project %q is adopted as local-only. BEFORE running develop, link a runtime via "+
+				"zerops_workflow action=\"adopt-local\" targetService=\"<hostname>\" — "+
+				"detected runtimes: %s. "+
 				"Close-mode options: `git-push` (push to an external remote, ZCP doesn't track what happens downstream) or `manual` (nothing automated). "+
-				"`auto` requires linking one runtime as stage first: zerops_workflow action=\"adopt-local\" targetService=\"<chosen-hostname>\".",
-			project, strings.Join(result.UnlinkedRuntimes, ", "),
+				"`auto` requires linking one runtime as stage first.",
+			projectName, strings.Join(runtimeNames, ", "),
 		)
+		if managedLine != "" {
+			return base + " " + managedLine
+		}
+		return base
 
 	default:
 		base := fmt.Sprintf(
-			"Adopted project %q as local-only. No Zerops runtime services exist. "+
+			"Project %q is adopted as local-only. No Zerops runtime services exist. "+
 				"Close-mode options: `git-push` (push to an external remote; whatever happens downstream is your setup, ZCP doesn't track) or `manual`.",
-			project,
+			projectName,
 		)
 		if managedLine != "" {
 			return base + " " + managedLine
 		}
 		return base
 	}
+}
+
+// findLocalMeta returns the single local-mode meta from a meta list, or
+// nil. Local projects have at most one local-mode meta (the project-keyed
+// one written by LocalAutoAdopt or upgraded by handleAdoptLocal).
+func findLocalMeta(metas []*ServiceMeta) *ServiceMeta {
+	for _, m := range metas {
+		if m == nil {
+			continue
+		}
+		if m.Mode == topology.PlanModeLocalOnly || m.Mode == topology.PlanModeLocalStage {
+			return m
+		}
+	}
+	return nil
+}
+
+// classifyServicesForNote splits services into runtime hostnames and
+// managed-service hostnames for the local-state note. System services
+// (proxies, internal stacks) are filtered out — they're not part of the
+// user's mental model.
+func classifyServicesForNote(services []platform.ServiceStack) (runtimes []platform.ServiceStack, managed []string) {
+	for _, s := range services {
+		if s.IsSystem() {
+			continue
+		}
+		typeName := s.ServiceStackTypeInfo.ServiceStackTypeVersionName
+		if topology.IsManagedService(typeName) {
+			managed = append(managed, s.Name)
+			continue
+		}
+		runtimes = append(runtimes, s)
+	}
+	return runtimes, managed
 }

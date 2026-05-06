@@ -30,11 +30,11 @@ const (
 //   - Returns (true, nil) when the file was rewritten.
 //
 // The marked section preserves any content outside the markers (REFLOG
-// entries, user additions). Used by the MCP server at startup in
-// container env so a long-lived container doesn't drift past the
-// build's template version (G9 — pre-fix the deployed CLAUDE.md was
-// stamped only at the last `zcp init`, leaving stale wording any
-// description-drift lint would refuse to release today).
+// entries, user additions). Used by the MCP server at startup in BOTH
+// envs (local and container) so a long-lived install doesn't drift
+// past the build's template version (G9 — pre-fix the deployed
+// CLAUDE.md was stamped only at the last `zcp init`, leaving stale
+// wording any description-drift lint would refuse to release today).
 func RefreshClaudeMD(path string, rt runtime.Info) (refreshed bool, err error) {
 	existing, err := os.ReadFile(path)
 	if err != nil {

@@ -1,6 +1,7 @@
-// Tests for: adopt_local.go — LocalAutoAdopt, FormatAdoptionNote.
+// Tests for: adopt_local.go — LocalAutoAdopt, FormatLocalStateNote.
 // Package workflow uses global state (os.Getpid, file-based sessions)
-// so these do NOT use t.Parallel().
+// so most tests here do NOT use t.Parallel(); pure-string formatter
+// tests can — they don't touch state.
 package workflow
 
 import (
@@ -203,27 +204,37 @@ func TestLocalAutoAdopt_MultipleRuntimes_LocalOnlyWithEnumeration(t *testing.T) 
 	}
 }
 
-func TestFormatAdoptionNote_Shapes(t *testing.T) {
+func TestFormatLocalStateNote_Shapes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name   string
-		result *AdoptionResult
-		want   []string // substrings that must appear
-		absent []string // substrings that must NOT appear
+		name        string
+		metas       []*ServiceMeta
+		services    []platform.ServiceStack
+		projectName string
+		want        []string // substrings that must appear
+		absent      []string // substrings that must NOT appear
 	}{
 		{
-			name:   "nil result → empty note",
-			result: nil,
-			want:   []string{},
+			name:  "nil metas → empty note",
+			metas: nil,
+			want:  []string{},
 		},
 		{
-			name: "stage auto-linked",
-			result: &AdoptionResult{
-				Meta: &ServiceMeta{
-					Hostname: "myproject", StageHostname: "apistage", Mode: topology.PlanModeLocalStage,
-				},
-				StageAutoLinked: true,
-				Managed:         []string{"db", "cache"},
+			name:  "container-only metas → empty note",
+			metas: []*ServiceMeta{{Hostname: "appdev", Mode: topology.PlanModeStandard}},
+			want:  []string{},
+		},
+		{
+			name: "local-stage linked",
+			metas: []*ServiceMeta{
+				{Hostname: "myproject", StageHostname: "apistage", Mode: topology.PlanModeLocalStage},
 			},
+			services: []platform.ServiceStack{
+				{Name: "apistage", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+				{Name: "db", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "postgresql@16"}},
+				{Name: "cache", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "valkey@8"}},
+			},
+			projectName: "myproject",
 			want: []string{
 				`"myproject"`,
 				"local-stage",
@@ -234,25 +245,34 @@ func TestFormatAdoptionNote_Shapes(t *testing.T) {
 			absent: []string{"adopt-local"},
 		},
 		{
-			name: "multiple runtimes → user picks",
-			result: &AdoptionResult{
-				Meta:             &ServiceMeta{Hostname: "myproject", Mode: topology.PlanModeLocalOnly},
-				UnlinkedRuntimes: []string{"api", "web", "worker"},
+			name: "local-only with multiple runtimes leads with adopt-local",
+			metas: []*ServiceMeta{
+				{Hostname: "myproject", Mode: topology.PlanModeLocalOnly},
 			},
+			services: []platform.ServiceStack{
+				{Name: "api", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+				{Name: "web", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+				{Name: "worker", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+			},
+			projectName: "myproject",
 			want: []string{
 				`"myproject"`,
 				"local-only",
-				"api, web, worker",
+				"BEFORE running develop",
 				"adopt-local",
+				"api, web, worker",
 				"`auto`",
 			},
 		},
 		{
-			name: "no runtime",
-			result: &AdoptionResult{
-				Meta:    &ServiceMeta{Hostname: "myproject", Mode: topology.PlanModeLocalOnly},
-				Managed: []string{"db"},
+			name: "local-only with no runtimes",
+			metas: []*ServiceMeta{
+				{Hostname: "myproject", Mode: topology.PlanModeLocalOnly},
 			},
+			services: []platform.ServiceStack{
+				{Name: "db", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "postgresql@16"}},
+			},
+			projectName: "myproject",
 			want: []string{
 				`"myproject"`,
 				"local-only",
@@ -261,15 +281,26 @@ func TestFormatAdoptionNote_Shapes(t *testing.T) {
 				"manual",
 				"db",
 			},
+			absent: []string{"BEFORE running develop"},
+		},
+		{
+			name: "projectName fallback uses meta hostname when empty",
+			metas: []*ServiceMeta{
+				{Hostname: "fallback-name", Mode: topology.PlanModeLocalOnly},
+			},
+			services:    nil,
+			projectName: "",
+			want:        []string{`"fallback-name"`},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FormatAdoptionNote(tt.result)
-			if tt.result == nil {
+			t.Parallel()
+			got := FormatLocalStateNote(tt.metas, tt.services, tt.projectName)
+			if len(tt.want) == 0 && len(tt.absent) == 0 {
 				if got != "" {
-					t.Errorf("nil result must produce empty note; got %q", got)
+					t.Errorf("expected empty note; got %q", got)
 				}
 				return
 			}
@@ -284,5 +315,84 @@ func TestFormatAdoptionNote_Shapes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRunLocalAutoAdopt_SecondCall_StillSurfacesNote pins that calling
+// the auto-adopt path against an already-adopted state dir still emits
+// a current-state note. Pre-Phase-10 the second call returned "" (the
+// guard `if len(existing) > 0 { return "" }` short-circuited every
+// subsequent server start) — agents joining an existing local-only
+// project never saw the actionable adopt-local hint.
+//
+// Driven through workflow.LocalAutoAdopt + ListServiceMetas +
+// FormatLocalStateNote (the same pipeline runLocalAutoAdopt invokes)
+// so the test stays in the workflow package without needing the server
+// layer.
+func TestRunLocalAutoAdopt_SecondCall_StillSurfacesNote(t *testing.T) {
+	dir := t.TempDir()
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "myproject"}).
+		WithServices([]platform.ServiceStack{
+			{Name: "api", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+			{Name: "web", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+		})
+
+	// First call: adoption fires.
+	if _, err := LocalAutoAdopt(context.Background(), mock, "p1", dir); err != nil {
+		t.Fatalf("first LocalAutoAdopt: %v", err)
+	}
+	metas, err := ListServiceMetas(dir)
+	if err != nil {
+		t.Fatalf("list metas: %v", err)
+	}
+	noteFirst := FormatLocalStateNote(metas, []platform.ServiceStack{
+		{Name: "api", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+		{Name: "web", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+	}, "myproject")
+	if noteFirst == "" {
+		t.Fatal("first-call note must not be empty")
+	}
+
+	// Second call: state dir already populated — runLocalAutoAdopt would
+	// re-list metas and re-format. The note must still emit.
+	metasAgain, err := ListServiceMetas(dir)
+	if err != nil {
+		t.Fatalf("re-list metas: %v", err)
+	}
+	noteSecond := FormatLocalStateNote(metasAgain, []platform.ServiceStack{
+		{Name: "api", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+		{Name: "web", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+	}, "myproject")
+	if noteSecond == "" {
+		t.Fatal("second-call note must still emit (Phase-10 fix); got empty")
+	}
+	if !strings.Contains(noteSecond, "adopt-local") {
+		t.Errorf("second-call note missing actionable adopt-local hint; got:\n%s", noteSecond)
+	}
+}
+
+// TestFormatLocalStateNote_LocalOnlyMultiRuntime_LeadsWithAdoptLocal pins
+// the actionable-recovery-up-front shape. Pre-Phase-10 the adopt-local
+// hint sat at the END of the second sentence — agents skim-reading the
+// note often missed it and tried `develop` against an unlinked project.
+func TestFormatLocalStateNote_LocalOnlyMultiRuntime_LeadsWithAdoptLocal(t *testing.T) {
+	t.Parallel()
+	metas := []*ServiceMeta{{Hostname: "myproject", Mode: topology.PlanModeLocalOnly}}
+	services := []platform.ServiceStack{
+		{Name: "api", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+		{Name: "web", ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+	}
+	got := FormatLocalStateNote(metas, services, "myproject")
+	beforeIdx := strings.Index(got, "BEFORE running develop")
+	closeModeIdx := strings.Index(got, "Close-mode options")
+	if beforeIdx < 0 {
+		t.Fatalf("note missing 'BEFORE running develop' lead-in; got:\n%s", got)
+	}
+	if closeModeIdx < 0 {
+		t.Fatalf("note missing 'Close-mode options'; got:\n%s", got)
+	}
+	if beforeIdx >= closeModeIdx {
+		t.Errorf("'BEFORE running develop' should appear before 'Close-mode options'; got:\n%s", got)
 	}
 }

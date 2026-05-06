@@ -15,9 +15,10 @@ import (
 // pre-rendered: per-server-start runtime context.
 //
 // Two runtime injections feed RuntimeContext:
-//   - AdoptionNote — workflow.FormatAdoptionNote(LocalAutoAdopt result),
-//     local env only. Empty when no auto-adopt fired or nothing was newly
-//     adopted this run.
+//   - AdoptionNote — workflow.FormatLocalStateNote(metas, services, name),
+//     local env only. Emitted on every server start (not just first
+//     adoption) so an agent joining a project that was adopted in a
+//     previous session still sees the actionable hint.
 //   - StateHint — terse summary of active sessions for the current PID.
 //     Surfaces live recipe / bootstrap / work sessions so the LLM doesn't
 //     blindly call zerops_workflow start and earn an ErrSubagentMisuse on

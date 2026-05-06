@@ -79,14 +79,14 @@ func New(ctx context.Context, client platform.Client, authInfo *auth.Info, store
 		adoptionNote = runLocalAutoAdopt(ctx, client, authInfo.ProjectID, stateDir, logger)
 	}
 
-	// Container env: idempotently refresh CLAUDE.md from the embedded
-	// template if the on-disk managed section drifted from this build's
-	// version. Long-lived containers otherwise hold the snapshot from
-	// the last manual `zcp init`, which can be days old and carry
+	// Idempotently refresh CLAUDE.md from the embedded template if the
+	// on-disk managed section drifted from this build's version. Long-
+	// lived installs (container OR local) otherwise hold the snapshot
+	// from the last manual `zcp init`, which can be days old and carry
 	// wording the current description-drift lint would refuse (G9).
 	// First-install (no file present) is left for `zcp init` — this is
 	// incremental refresh only.
-	if rtInfo.InContainer && stateDir != "" {
+	if stateDir != "" {
 		claudemdPath := filepath.Join(filepath.Dir(filepath.Dir(stateDir)), "CLAUDE.md")
 		if refreshed, err := content.RefreshClaudeMD(claudemdPath, rtInfo); err != nil {
 			logger.Warn("CLAUDE.md refresh failed", "path", claudemdPath, "err", err)
@@ -252,31 +252,50 @@ func (s *Server) observe() mcp.Middleware {
 	}
 }
 
-// runLocalAutoAdopt performs the eager local-env state bootstrap:
-// legacy-meta migration first (so existing installs get their meta
-// rewritten to the new shape), then auto-adoption if state is empty.
-// Returns the formatted adoption note for MCP instructions (empty when
-// nothing was adopted or an error prevented adoption).
+// runLocalAutoAdopt performs the eager local-env state bootstrap and
+// always returns a current-state note for MCP instructions:
+//
+//   - Empty state dir → run LocalAutoAdopt, then format the just-written
+//     state.
+//   - Already-adopted state → re-list metas and re-format. Pre-Phase-10
+//     this returned "" on the second call; agents joining an existing
+//     adopted project never saw the actionable hint and could still
+//     bounce off the local-only-with-runtimes case without the
+//     adopt-local prompt.
 //
 // Errors are logged but non-fatal — we'd rather start the server with a
-// missing note than fail startup on a transient API hiccup. The missing
-// note just means the LLM doesn't know the project was auto-adopted;
-// its first tool call will compute the envelope fresh.
+// missing note than fail startup on a transient API hiccup.
 func runLocalAutoAdopt(ctx context.Context, client platform.Client, projectID, stateDir string, logger *slog.Logger) string {
-	existing, err := workflow.ListServiceMetas(stateDir)
+	metas, err := workflow.ListServiceMetas(stateDir)
 	if err != nil {
 		logger.Warn("auto-adopt: list metas failed", "err", err)
 		return ""
 	}
-	if len(existing) > 0 {
-		return ""
+	if len(metas) == 0 {
+		if _, adoptErr := workflow.LocalAutoAdopt(ctx, client, projectID, stateDir); adoptErr != nil {
+			logger.Warn("auto-adopt: adoption failed", "err", adoptErr)
+			return ""
+		}
+		metas, err = workflow.ListServiceMetas(stateDir)
+		if err != nil {
+			logger.Warn("auto-adopt: re-list metas failed", "err", err)
+			return ""
+		}
 	}
-	result, err := workflow.LocalAutoAdopt(ctx, client, projectID, stateDir)
+
+	projectName := ""
+	if project, projectErr := client.GetProject(ctx, projectID); projectErr == nil && project != nil {
+		projectName = project.Name
+	} else if projectErr != nil {
+		logger.Warn("auto-adopt: get project failed", "err", projectErr)
+	}
+
+	services, err := client.ListServices(ctx, projectID)
 	if err != nil {
-		logger.Warn("auto-adopt: adoption failed", "err", err)
-		return ""
+		logger.Warn("auto-adopt: list services failed", "err", err)
+		return workflow.FormatLocalStateNote(metas, nil, projectName)
 	}
-	return workflow.FormatAdoptionNote(result)
+	return workflow.FormatLocalStateNote(metas, services, projectName)
 }
 
 // logLevel returns the slog level from ZCP_LOG_LEVEL env var (default: debug).

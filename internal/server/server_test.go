@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -349,6 +350,83 @@ func TestServer_New_LocalAutoAdopt(t *testing.T) {
 				t.Errorf("container env must not auto-adopt; got meta: %+v", meta)
 			}
 		})
+	}
+}
+
+// TestServerNew_LocalEnv_RefreshesClaudeMD pins that the CLAUDE.md
+// refresh-at-serve hook fires in local env too. Pre-Phase-10 the call
+// was gated on rtInfo.InContainer — local users with stale CLAUDE.md
+// kept reading drifted wording until they manually re-ran `zcp init`.
+//
+// Non-parallel: t.Chdir rebases cwd so server.New's stateDir derivation
+// (filepath.Join(cwd, .zcp/state)) lands under TempDir.
+func TestServerNew_LocalEnv_RefreshesClaudeMD(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	// Seed a CLAUDE.md with the managed-section markers but a stale body
+	// inside, so RefreshClaudeMD must re-render to drop stale and
+	// match the embedded template.
+	claudeMd := filepath.Join(dir, "CLAUDE.md")
+	stale := "# CLAUDE.md\n<!-- ZCP:BEGIN -->\nstale body\n<!-- ZCP:END -->\nuser additions remain\n"
+	if err := os.WriteFile(claudeMd, []byte(stale), 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "demo"}).
+		WithServices(nil)
+	authInfo := &auth.Info{ProjectID: "p1", Token: "t", APIHost: "localhost"}
+	store, err := knowledge.GetEmbeddedStore()
+	if err != nil {
+		t.Fatalf("knowledge store: %v", err)
+	}
+
+	_ = New(context.Background(), mock, authInfo, store, platform.NewMockLogFetcher(), nil, nil, runtime.Info{})
+
+	body, err := os.ReadFile(claudeMd)
+	if err != nil {
+		t.Fatalf("read CLAUDE.md: %v", err)
+	}
+	if string(body) == stale {
+		t.Errorf("CLAUDE.md not refreshed in local env; still:\n%s", string(body))
+	}
+	// User-additions outside the managed block must be preserved.
+	if !strings.Contains(string(body), "user additions remain") {
+		t.Errorf("user-additions section dropped during refresh; got:\n%s", string(body))
+	}
+}
+
+// TestServerNew_ContainerEnv_StillRefreshesClaudeMD pins the container-
+// path regression: dropping the InContainer-only gate must not change
+// behavior in container env.
+func TestServerNew_ContainerEnv_StillRefreshesClaudeMD(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	claudeMd := filepath.Join(dir, "CLAUDE.md")
+	stale := "# CLAUDE.md\n<!-- ZCP:BEGIN -->\nstale body\n<!-- ZCP:END -->\n"
+	if err := os.WriteFile(claudeMd, []byte(stale), 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "demo"}).
+		WithServices(nil)
+	authInfo := &auth.Info{ProjectID: "p1", Token: "t", APIHost: "localhost"}
+	store, err := knowledge.GetEmbeddedStore()
+	if err != nil {
+		t.Fatalf("knowledge store: %v", err)
+	}
+
+	_ = New(context.Background(), mock, authInfo, store, platform.NewMockLogFetcher(), nil, nil, runtime.Info{InContainer: true, ServiceName: "zcp"})
+
+	body, err := os.ReadFile(claudeMd)
+	if err != nil {
+		t.Fatalf("read CLAUDE.md: %v", err)
+	}
+	if string(body) == stale {
+		t.Errorf("CLAUDE.md not refreshed in container env; still:\n%s", string(body))
 	}
 }
 

@@ -16,9 +16,11 @@ import (
 // in <!-- ZCP:BEGIN/END --> markers by the caller (init.generateCLAUDEMD).
 //
 // Render is install-time: zcp init detects rt.InContainer and freezes
-// the env into the disk file. Subsequent zcp serve runs do not
-// re-render. Env is stable per install; if the install moves between
-// envs, zcp init must be re-run to refresh CLAUDE.md.
+// the env into the disk file. Subsequent zcp serve runs use
+// RefreshClaudeMD to re-render the marked section in BOTH envs (local
+// and container) so a long-lived install doesn't drift past the build's
+// template version. Env is stable per install; if the install moves
+// between envs, zcp init must be re-run to refresh CLAUDE.md.
 func BuildClaudeMD(rt runtime.Info) (string, error) {
 	shared, err := GetTemplate("claude_shared.md")
 	if err != nil {
