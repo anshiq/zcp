@@ -91,6 +91,11 @@ func CodebaseScaffoldGates() []Gate {
 		// Catching at scaffold complete-phase puts the refusal in the
 		// authoring agent's same-context window where the fix is cheap.
 		{Name: "zerops-yaml-schema", Run: gateZeropsYamlSchema},
+		// Run-28 fix #4 — gitignore presence. Refuses scaffold complete-
+		// phase when an artifact-producing runtime codebase has no
+		// non-empty `.gitignore`; closes the run-27 workerdev leak that
+		// shipped 242 node_modules dirs into the recipe deliverable.
+		{Name: "gitignore-present", Run: gateGitignorePresent},
 	}
 }
 

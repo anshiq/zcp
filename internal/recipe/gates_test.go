@@ -142,6 +142,187 @@ func TestCompletePhaseScoped_VerdictEquivalentToFullPhaseSlice(t *testing.T) {
 	}
 }
 
+// TestCodebaseScaffoldGate_NodeJSRuntime_RefusesWithoutGitignore — run-28
+// fix #4. A nodejs codebase without `.gitignore` ships node_modules +
+// dist into the recipe deliverable; gate refuses scaffold close.
+func TestCodebaseScaffoldGate_NodeJSRuntime_RefusesWithoutGitignore(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	plan := &Plan{
+		Slug: "x",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22", SourceRoot: dir},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(dir, "zerops.yaml"), []byte("zerops:\n  - setup: api\n    build:\n      base: nodejs@22\n    run:\n      base: nodejs@22\n      start: node index.js\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+
+	violations := gateGitignorePresent(GateContext{Plan: plan})
+	found := false
+	for _, v := range violations {
+		if v.Code == "MISSING_GITIGNORE" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected MISSING_GITIGNORE violation; got %v", violations)
+	}
+}
+
+// TestCodebaseScaffoldGate_StaticRuntime_AllowsNoGitignore — run-28 fix
+// #4. Static / nginx runtimes don't produce build artifacts in the
+// working tree; .gitignore is optional for them.
+func TestCodebaseScaffoldGate_StaticRuntime_AllowsNoGitignore(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	plan := &Plan{
+		Slug: "x",
+		Codebases: []Codebase{
+			{Hostname: "static-site", Role: RoleFrontend, BaseRuntime: "static", SourceRoot: dir},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(dir, "zerops.yaml"), []byte("zerops:\n  - setup: static-site\n    run:\n      base: static\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	violations := gateGitignorePresent(GateContext{Plan: plan})
+	for _, v := range violations {
+		if v.Code == "MISSING_GITIGNORE" {
+			t.Errorf("static runtime should not trigger MISSING_GITIGNORE; got %v", v)
+		}
+	}
+}
+
+// TestCodebaseScaffoldGate_NodeJSWithGitignore_Passes — run-28 fix #4.
+// nodejs codebase with a non-empty `.gitignore` passes cleanly.
+func TestCodebaseScaffoldGate_NodeJSWithGitignore_Passes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	plan := &Plan{
+		Slug: "x",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22", SourceRoot: dir},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(dir, "zerops.yaml"), []byte("zerops:\n  - setup: api\n    build:\n      base: nodejs@22\n    run:\n      base: nodejs@22\n      start: node index.js\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules/\ndist/\n"), 0o600); err != nil {
+		t.Fatalf("write gitignore: %v", err)
+	}
+	violations := gateGitignorePresent(GateContext{Plan: plan})
+	for _, v := range violations {
+		if v.Code == "MISSING_GITIGNORE" {
+			t.Errorf("nodejs codebase with non-empty .gitignore should pass; got %v", v)
+		}
+	}
+}
+
+// TestCodebaseScaffoldGate_EmptyGitignore_Refuses — run-28 fix #4. An
+// empty `.gitignore` file is treated as missing — committing the file
+// shape without content lets node_modules slip through.
+func TestCodebaseScaffoldGate_EmptyGitignore_Refuses(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	plan := &Plan{
+		Slug: "x",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22", SourceRoot: dir},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(dir, "zerops.yaml"), []byte("zerops:\n  - setup: api\n    build:\n      base: nodejs@22\n    run:\n      base: nodejs@22\n      start: node index.js\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), nil, 0o600); err != nil {
+		t.Fatalf("write empty gitignore: %v", err)
+	}
+	violations := gateGitignorePresent(GateContext{Plan: plan})
+	found := false
+	for _, v := range violations {
+		if v.Code == "MISSING_GITIGNORE" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("zero-byte .gitignore should be refused as MISSING_GITIGNORE; got %v", violations)
+	}
+}
+
+// TestCodebaseScaffoldGate_MissingGitignore_MessageNamesRuntime —
+// run-28 fix #4. The Violation message must name the runtime family
+// AND a one-line recommended `.gitignore` content (no separate
+// Recovery struct yet — message-text recovery hint per codex
+// revision).
+func TestCodebaseScaffoldGate_MissingGitignore_MessageNamesRuntime(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	plan := &Plan{
+		Slug: "x",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22", SourceRoot: dir},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(dir, "zerops.yaml"), []byte("zerops:\n  - setup: api\n    run:\n      base: nodejs@22\n      start: node index.js\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	violations := gateGitignorePresent(GateContext{Plan: plan})
+	if len(violations) == 0 {
+		t.Fatal("expected MISSING_GITIGNORE violation; got none")
+	}
+	v := violations[0]
+	if !strings.Contains(v.Message, "nodejs") {
+		t.Errorf("message should name the runtime family `nodejs`; got %q", v.Message)
+	}
+	for _, want := range []string{"node_modules"} {
+		if !strings.Contains(v.Message, want) {
+			t.Errorf("message should suggest `.gitignore` content with %q; got %q", want, v.Message)
+		}
+	}
+}
+
+// TestCodebaseScaffoldGate_RegisteredInScaffoldGates — run-28 fix #4.
+// The new gate must appear in the CodebaseScaffoldGates() set so the
+// scaffold complete-phase gate sweep catches missing files.
+func TestCodebaseScaffoldGate_RegisteredInScaffoldGates(t *testing.T) {
+	t.Parallel()
+	gates := CodebaseScaffoldGates()
+	for _, g := range gates {
+		if g.Name == "gitignore-present" {
+			return
+		}
+	}
+	t.Errorf("CodebaseScaffoldGates() does not contain the gitignore-present gate; got %v", gateNames(gates))
+}
+
+// TestCodebaseScaffoldGate_Idempotent_FeaturePhase — run-28 fix #4. The
+// gate is keyed on the `<SourceRoot>/.gitignore` shape only — no phase
+// distinction. When scaffold-phase wrote the file, feature-phase
+// invocation must pass cleanly.
+func TestCodebaseScaffoldGate_Idempotent_FeaturePhase(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	plan := &Plan{
+		Slug: "x",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22", SourceRoot: dir},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(dir, "zerops.yaml"), []byte("zerops:\n  - setup: api\n    run:\n      base: nodejs@22\n      start: node index.js\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("node_modules/\n"), 0o600); err != nil {
+		t.Fatalf("write gitignore: %v", err)
+	}
+	violations := gateGitignorePresent(GateContext{Plan: plan})
+	for _, v := range violations {
+		if v.Code == "MISSING_GITIGNORE" {
+			t.Errorf("idempotent re-run on a codebase with a populated .gitignore must not refire; got %v", v)
+		}
+	}
+}
+
 func violationsForPathPrefix(vs []Violation, prefix string) []Violation {
 	var out []Violation
 	for _, v := range vs {
