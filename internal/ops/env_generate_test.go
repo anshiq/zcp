@@ -163,6 +163,105 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			wantErr: "could not resolve",
 		},
 		{
+			// Recursive expansion: cross-service ref to a value that is
+			// itself a sibling-template. Zerops's managed-service
+			// `connectionString` follows this shape — `${db_connectionString}`
+			// resolves to db.connectionString's value, which is the
+			// template `postgresql://${user}:${password}@${hostname}:${port}`
+			// where the lone refs are sibling lookups within db's own
+			// env. To match deploy-time semantics in the consumer
+			// container, the local .env must recurse: expand the cross-
+			// service ref, then expand the resulting template against
+			// the source service (db) for lone refs.
+			name: "recursive: connectionString template fully expands",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DATABASE_URL: ${db_connectionString}
+`,
+			hostname: "app",
+			serviceEnvs: map[string][]platform.EnvVar{
+				"db": {
+					{ID: "e1", Key: "user", Content: "myuser"},
+					{ID: "e2", Key: "password", Content: "s3cret"},
+					{ID: "e3", Key: "hostname", Content: "db"},
+					{ID: "e4", Key: "port", Content: "5432"},
+					{ID: "e5", Key: "connectionString", Content: "postgresql://${user}:${password}@${hostname}:${port}/main"},
+				},
+			},
+			wantVars:     1,
+			wantServices: 1,
+			wantContains: []string{"DATABASE_URL=postgresql://myuser:s3cret@db:5432/main"},
+		},
+		{
+			// Recursive expansion across a cross-service hop in a fetched
+			// template. db's connectionString template embeds a
+			// ${cache_url} cross-service ref (rare but a valid Zerops
+			// pattern when one managed service composes another's URL).
+			// The recursive expander must follow the chain.
+			name: "recursive: nested cross-service ref inside fetched value",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DB_URL: ${db_composed}
+`,
+			hostname: "app",
+			serviceEnvs: map[string][]platform.EnvVar{
+				"db": {
+					{ID: "d1", Key: "composed", Content: "db@${cache_url}"},
+				},
+				"cache": {
+					{ID: "c1", Key: "url", Content: "redis://cache:6379"},
+				},
+			},
+			wantVars:     1,
+			wantServices: 2,
+			wantContains: []string{"DB_URL=db@redis://cache:6379"},
+		},
+		{
+			// Cycle detection: db.x references db.y references db.x.
+			// Without cycle detection, the recursive expander would
+			// loop forever (or hit the depth limit and produce a
+			// nonsense partial). Surface a specific cycle error so the
+			// agent can fix the offending env var on the source side.
+			name: "recursive: cycle detection errors",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        FOO: ${db_x}
+`,
+			hostname: "app",
+			serviceEnvs: map[string][]platform.EnvVar{
+				"db": {
+					{ID: "d1", Key: "x", Content: "${y}"},
+					{ID: "d2", Key: "y", Content: "${x}"},
+				},
+			},
+			wantErr: "circular",
+		},
+		{
+			// Top-level lone refs (no underscore, no source-service context)
+			// stay literal — they're either project-level vars (handled by
+			// the GetProjectEnv pass) or runtime placeholders that the
+			// deploy-time container resolves. The recursive expander must
+			// NOT try to resolve them as cross-service refs.
+			name: "recursive: top-level lone ref stays literal",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        URL: https://${hostname}:${port}/api
+`,
+			hostname:     "app",
+			serviceEnvs:  map[string][]platform.EnvVar{},
+			wantVars:     1,
+			wantServices: 0,
+			wantContains: []string{"URL=https://${hostname}:${port}/api"},
+		},
+		{
 			name: "zerops.yaml envVariable takes precedence over project env",
 			zeropsYml: `zerops:
   - setup: app
