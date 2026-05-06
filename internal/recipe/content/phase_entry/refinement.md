@@ -76,6 +76,21 @@ isn't namable.
 A series of `record-fragment mode=replace` and `replace-by-topic`
 calls. End with `complete-phase phase=refinement`.
 
+## Dispatch — inline-or-pointer
+
+`build-subagent-prompt briefKind=refinement` returns ONE OF two
+response shapes per call:
+
+- **Inline** (body ≤ 40 KB) — `response.prompt` is the full composed
+  brief; dispatch with `prompt=<response.prompt>` byte-identical.
+- **Pointer** (body > 40 KB) — `response.prompt` is empty;
+  `response.briefPath` is the absolute path to the engine-persisted
+  brief on disk under `<outputRoot>/.briefs/`. Dispatch with a thin
+  wrapper telling the sub-agent to `Read <briefPath>` first thing.
+
+Branch on `briefPath != ""`. The two shapes are mutually exclusive —
+disk-fallback closes the cap-treadmill (run-29 Fix #1).
+
 ## Read order
 
 1. `phase_entry/refinement.md` — this atom.

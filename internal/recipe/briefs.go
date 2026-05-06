@@ -186,6 +186,22 @@ const (
 	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )
 
+// BriefDiskFallbackThreshold is the body-size cutoff above which
+// build-subagent-prompt persists the composed brief to
+// `<sess.OutputRoot>/.briefs/<kind>-<codebase>-<unixnano>.md` and returns
+// a pointer (`briefPath` + `briefSize`) instead of an inline `prompt`
+// payload. Run-29 Fix #1 — closes the cap-treadmill (44→48→52→56→60→64
+// KB across runs 22-28) by making disk-write the designed primary path
+// for large briefs rather than the error-recovery fallback.
+//
+// 40 KB chosen empirically: even with ~5 % JSON-escape inflation +
+// envelope overhead, a 40 KB body encodes to ~43 KB tool-result JSON,
+// comfortably under the MCP ~80 KB cap. Below the threshold the inline
+// path stays; above, the engine writes and returns a pointer. The
+// either-or semantics is load-bearing — `Prompt` and `BriefPath` are
+// never both populated; callers branch on `BriefPath != ""`.
+const BriefDiskFallbackThreshold = 40 * 1024
+
 // RefinementBriefCap caps the refinement-pass brief. Run-26 + run-27
 // hit the MCP 25K-token stdin cap (97 KB observed in run-27) when the
 // refinement composer streamed every fact + the embedded rubric +

@@ -8,6 +8,26 @@ import (
 	"testing"
 )
 
+// dispatchedPromptBody resolves a build-subagent-prompt response into
+// its full body, handling both the inline shape (`res.Prompt`) and the
+// run-29 Fix #1 disk-fallback shape (`res.BriefPath` — file under
+// <outputRoot>/.briefs/). Returns "" if neither is set or the path
+// cannot be read.
+func dispatchedPromptBody(t *testing.T, res RecipeResult) string {
+	t.Helper()
+	if res.Prompt != "" {
+		return res.Prompt
+	}
+	if res.BriefPath != "" {
+		body, err := os.ReadFile(res.BriefPath)
+		if err != nil {
+			t.Fatalf("read brief at %s: %v", res.BriefPath, err)
+		}
+		return string(body)
+	}
+	return ""
+}
+
 // TestScaffoldBrief_DispatchedToProductionAgent_CarriesReachableSlugList
 // pins run-15 R-14-P-1 — the run-14 stealth regression.
 //
@@ -78,7 +98,7 @@ func TestScaffoldBrief_DispatchedToProductionAgent_CarriesReachableSlugList(t *t
 		t.Fatalf("build-subagent-prompt: %s", res.Error)
 	}
 
-	prompt := res.Prompt
+	prompt := dispatchedPromptBody(t, res)
 	if prompt == "" {
 		t.Fatal("dispatched prompt is empty")
 	}
@@ -129,10 +149,11 @@ func TestCodebaseContentBrief_DispatchedToProductionAgent_CarriesAtoms(t *testin
 	if !res.OK {
 		t.Fatalf("build-subagent-prompt codebase-content: %s", res.Error)
 	}
-	if !strings.Contains(res.Prompt, "Codebase-content phase") {
+	prompt := dispatchedPromptBody(t, res)
+	if !strings.Contains(prompt, "Codebase-content phase") {
 		t.Error("dispatched codebase-content prompt missing phase entry header")
 	}
-	if !strings.Contains(res.Prompt, plan.Codebases[0].Hostname) {
+	if !strings.Contains(prompt, plan.Codebases[0].Hostname) {
 		t.Error("dispatched codebase-content prompt missing target hostname")
 	}
 }
@@ -161,7 +182,8 @@ func TestClaudeMDBrief_DispatchedToProductionAgent_HardProhibition(t *testing.T)
 	if !res.OK {
 		t.Fatalf("build-subagent-prompt claudemd-author: %s", res.Error)
 	}
-	if !strings.Contains(res.Prompt, "Hard prohibition") {
+	prompt := dispatchedPromptBody(t, res)
+	if !strings.Contains(prompt, "Hard prohibition") {
 		t.Error("dispatched claudemd-author prompt missing the hard-prohibition block (R-15-4 closure)")
 	}
 }
@@ -189,7 +211,8 @@ func TestEnvContentBrief_DispatchedToProductionAgent_CarriesTierFacts(t *testing
 	if !res.OK {
 		t.Fatalf("build-subagent-prompt env-content: %s", res.Error)
 	}
-	if !strings.Contains(res.Prompt, "Per-tier capability matrix") {
+	prompt := dispatchedPromptBody(t, res)
+	if !strings.Contains(prompt, "Per-tier capability matrix") {
 		t.Error("dispatched env-content prompt missing capability matrix")
 	}
 }

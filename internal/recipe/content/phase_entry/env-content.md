@@ -28,3 +28,18 @@ content on demand via `Read` rather than receiving them embedded.
 `root/intro` recorded; `env/<N>/intro` for every tier; per-service-block
 import-comments for every codebase + managed service across every tier.
 EnvGates() validators run.
+
+## Dispatch — inline-or-pointer
+
+`build-subagent-prompt briefKind=env-content` returns ONE OF two
+response shapes per call:
+
+- **Inline** (body ≤ 40 KB) — `response.prompt` is the full composed
+  brief; dispatch with `prompt=<response.prompt>` byte-identical.
+- **Pointer** (body > 40 KB) — `response.prompt` is empty;
+  `response.briefPath` is the absolute path to the engine-persisted
+  brief on disk under `<outputRoot>/.briefs/`. Dispatch with a thin
+  wrapper telling the sub-agent to `Read <briefPath>` first thing.
+
+Branch on `briefPath != ""`. The two shapes are mutually exclusive —
+disk-fallback closes the cap-treadmill (run-29 Fix #1).

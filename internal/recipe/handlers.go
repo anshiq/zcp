@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -168,7 +169,7 @@ const errSessionNotOpen = "session not open"
 
 // RecipeInput is the input schema for zerops_recipe.
 type RecipeInput struct {
-	Action           string      `json:"action"                     jsonschema:"One of: start, enter-phase, complete-phase, build-brief, build-subagent-prompt, verify-subagent-dispatch, record-fact, record-fragment, fill-fact-slot, resolve-chain, emit-yaml, update-plan, stitch-content, status."`
+	Action           string      `json:"action"                     jsonschema:"One of: start, enter-phase, complete-phase, build-brief, build-subagent-prompt, verify-subagent-dispatch, record-fact, record-fragment, fill-fact-slot, resolve-chain, emit-yaml, update-plan, stitch-content, status. For build-subagent-prompt: bodies > 40 KB return 'briefPath' (absolute path under <outputRoot>/.briefs/) instead of 'prompt'; dispatch the sub-agent with a thin wrapper telling it to Read briefPath first thing. Either-or — branch on briefPath != ''."`
 	Slug             string      `json:"slug,omitempty"             jsonschema:"Recipe slug (e.g. {framework}-showcase). Required for every action."`
 	OutputRoot       string      `json:"outputRoot,omitempty"       jsonschema:"Directory where the recipe tree + facts log live. Required for 'start'. Canonical shape: '/var/www/zcprecipator/<slug>/' — outputs MUST nest one level under the SSHFS mount base ('/var/www/'); the engine refuses outputRoot at or above the mount base because that path hosts dev-codebase mounts (apidev/, appdev/, workerdev/) and stitched output would shadow source."`
 	Phase            string      `json:"phase,omitempty"            jsonschema:"Phase name for enter-phase / complete-phase: research, provision, scaffold, feature, codebase-content, env-content, finalize, refinement."`
@@ -250,7 +251,20 @@ type RecipeResult struct {
 	// typed wrapper that compounded math/path drift across runs.
 	// Run-13 §B2.
 	Prompt string `json:"prompt,omitempty"`
-	Error  string `json:"error,omitempty"`
+	// BriefPath is the absolute path to a disk-persisted sub-agent
+	// dispatch prompt — populated by action=build-subagent-prompt when
+	// the composed body exceeds BriefDiskFallbackThreshold. The main
+	// agent dispatches the sub-agent with a thin wrapper telling it to
+	// Read briefPath first thing. Either-or semantics with Prompt: when
+	// BriefPath is set, Prompt is empty and vice versa. Run-29 Fix #1.
+	BriefPath string `json:"briefPath,omitempty"`
+	// BriefSize is the byte count of the disk-persisted brief body
+	// (NOT the body itself). Sized as an int so the main agent can
+	// sanity-check the pointer before dispatching the sub-agent.
+	// Populated alongside BriefPath; zero on the inline path.
+	// Run-29 Fix #1.
+	BriefSize int    `json:"briefSize,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 // Register installs the zerops_recipe tool. server.go gates it behind
@@ -458,6 +472,39 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 		r.Error = err.Error()
 		return r
 	}
+	// Run-29 Fix #1 — disk-fallback for oversized briefs. Above the
+	// threshold the engine writes the body to
+	// `<sess.OutputRoot>/.briefs/<kind>-<codebase>-<unixnano>.md` and
+	// returns a pointer instead of inlining; closes the cap-treadmill
+	// (44→48→52→56→60→64 KB across runs 22-28) by making disk-write
+	// the designed primary path for large briefs. Either-or semantics
+	// with Prompt: when BriefPath is set, Prompt is empty.
+	// OutputRoot is populated before this handler runs (set at
+	// handlers.go NewSession path / OpenOrCreate path). Defense-in-
+	// depth: an empty OutputRoot falls through to the inline path,
+	// matching legacy in-memory test fixtures that construct sessions
+	// without an on-disk root.
+	if len(prompt) > BriefDiskFallbackThreshold && sess.OutputRoot != "" {
+		path, wErr := writeBriefToDisk(sess.OutputRoot, BriefKind(in.BriefKind), in.Codebase, prompt)
+		if wErr != nil {
+			r.Error = wErr.Error()
+			return r
+		}
+		r.BriefPath = path
+		r.BriefSize = len(prompt)
+		r.Notice = "brief written to disk; dispatch sub-agent with this path"
+		// Run-23 F-26 — flip RefinementDispatched only after the brief
+		// is actually deliverable (inline or pointer). Earlier flip would
+		// let `complete-phase phase=finalize` pass even when an oversized
+		// refinement brief failed to write to disk.
+		if BriefKind(in.BriefKind) == BriefRefinement {
+			sess.mu.Lock()
+			sess.RefinementDispatched = true
+			sess.mu.Unlock()
+		}
+		r.OK = true
+		return r
+	}
 	// Run-23 F-26 — flip RefinementDispatched on a successful
 	// briefKind=refinement build so `complete-phase phase=finalize`
 	// can refuse closure until the refinement sub-agent has been
@@ -470,6 +517,57 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 	}
 	r.Prompt, r.OK = prompt, true
 	return r
+}
+
+// writeBriefToDisk persists an oversized sub-agent dispatch prompt to
+// `<outputRoot>/.briefs/<kind>-<codebase>-<unix>.md` atomically (temp
+// file + Sync + rename). Returns the absolute destination path so the
+// caller can populate RecipeResult.BriefPath. Run-29 Fix #1.
+//
+// Atomic-write pattern mirrors stitch_yaml.go's
+// CreateTemp+Write+Sync+Close+Rename so a partial-write never leaves a
+// half-written file at the target path; the rename is atomic on the
+// same filesystem and concurrent readers (the dispatched sub-agent's
+// Read call) never see the truncate-then-write window.
+func writeBriefToDisk(outputRoot string, kind BriefKind, codebase, body string) (string, error) {
+	dir := filepath.Join(outputRoot, ".briefs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create briefs dir: %w", err)
+	}
+	cb := codebase
+	if cb == "" {
+		cb = "phase"
+	}
+	// UnixNano (not Unix) so two large briefs with the same kind +
+	// codebase in the same second resolve to distinct destinations;
+	// otherwise os.Rename would overwrite the prior brief and the
+	// caller's BriefPath pointer races with the next call's write.
+	name := fmt.Sprintf("%s-%s-%d.md", kind, cb, time.Now().UnixNano())
+	dst := filepath.Join(dir, name)
+	tmp, err := os.CreateTemp(dir, ".brief.tmp.*")
+	if err != nil {
+		return "", fmt.Errorf("create temp brief: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if _, wErr := tmp.WriteString(body); wErr != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("write temp brief: %w", wErr)
+	}
+	if sErr := tmp.Sync(); sErr != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("sync temp brief: %w", sErr)
+	}
+	if cErr := tmp.Close(); cErr != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("close temp brief: %w", cErr)
+	}
+	if rErr := os.Rename(tmpPath, dst); rErr != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("rename temp brief: %w", rErr)
+	}
+	return dst, nil
 }
 
 // handleFillFactSlot implements the fill-fact-slot dispatch branch.

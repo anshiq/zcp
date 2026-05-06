@@ -22,14 +22,17 @@ dispatched in parallel:
 For each codebase, the main agent calls `build-subagent-prompt` TWICE
 (once for `briefKind=codebase-content`, once for
 `briefKind=claudemd-author`), then issues all 2N briefs in a single
-message with parallel `Agent` tool calls:
+message with parallel `Agent` tool calls. For each response, branch on
+the inline-or-pointer contract (next section): pass `response.prompt`
+byte-identical when set; otherwise wrap `response.briefPath` in a thin
+"Read this file first" dispatch.
 
 ```
 [message]
-  Agent(description: "codebase-content-api", prompt: <response.prompt for codebase-content api>)
-  Agent(description: "claudemd-author-api",  prompt: <response.prompt for claudemd-author api>)
-  Agent(description: "codebase-content-app", prompt: <response.prompt for codebase-content app>)
-  Agent(description: "claudemd-author-app",  prompt: <response.prompt for claudemd-author app>)
+  Agent(description: "codebase-content-api", prompt: <inline body or "Read <briefPath>" wrapper>)
+  Agent(description: "claudemd-author-api",  prompt: <inline body or "Read <briefPath>" wrapper>)
+  Agent(description: "codebase-content-app", prompt: <inline body or "Read <briefPath>" wrapper>)
+  Agent(description: "claudemd-author-app",  prompt: <inline body or "Read <briefPath>" wrapper>)
   ...
 ```
 
@@ -40,12 +43,33 @@ Net savings vs serial: 5-15 minutes for 3-codebase dispatches.
 Two correct dispatch shapes. Pick by main-agent context budget:
 
 - **Inline**: pass `response.prompt` from `build-subagent-prompt`
-  byte-identically as the `Agent` prompt parameter.
+  byte-identically as the `Agent` prompt parameter (only when
+  `response.prompt` is non-empty — see inline-or-pointer rule below).
 - **Self-fetch wrapper**: when context is tight, send the sub-agent a
   one-sentence context cue plus the
   `zerops_recipe action=build-subagent-prompt slug=<slug>
   briefKind=codebase-content codebase=<host>` invocation so it fetches
   the prompt itself.
+
+## Dispatch — inline-or-pointer
+
+`build-subagent-prompt` returns ONE OF two response shapes per call:
+
+- **Inline** (body ≤ 40 KB) — `response.prompt` is the full composed
+  brief; dispatch with `prompt=<response.prompt>` byte-identical.
+- **Pointer** (body > 40 KB) — `response.prompt` is empty;
+  `response.briefPath` is the absolute path to the engine-persisted
+  brief on disk under `<outputRoot>/.briefs/`. `response.briefSize`
+  carries the byte count for sanity-check. Dispatch with a thin
+  wrapper telling the sub-agent to `Read <briefPath>` first thing,
+  then proceed.
+
+Branch on `briefPath != ""`. The two shapes are mutually exclusive —
+the engine never populates both. Below the threshold the inline path
+keeps run-13 §B2's byte-identical dispatch; above, disk-fallback
+closes the cap-treadmill (run-29 Fix #1) by making disk-write the
+designed primary path for large briefs rather than the error-recovery
+fallback.
 
 Hand-typed paraphrase wrappers — out. Re-stating the brief in your
 own words compounds math errors and path drift (run-13 §B2) and at
