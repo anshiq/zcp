@@ -178,6 +178,20 @@ const (
 	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )
 
+// RefinementBriefCap caps the refinement-pass brief. Run-26 + run-27
+// hit the MCP 25K-token stdin cap (97 KB observed in run-27) when the
+// refinement composer streamed every fact + the embedded rubric +
+// engine-flagged suspects unbounded; the sub-agent recovered via
+// file-fallback at 30-60 s overhead per OOM. Cap is 80 KB — ~40 %
+// margin under the 25K-token cap at the typical 3.5 chars/token
+// average. Composer keeps rubric blocks (phase entry, synthesis
+// workflow, embedded rubric, reference catalog, stitched-output
+// pointer, engine-flagged suspects) intact and elides only the
+// variable-size fact stream, most-recent-first; the elision marker
+// stays in the brief body so the agent reading the brief sees that
+// older facts are on disk.
+const RefinementBriefCap = 80 * 1024
+
 // FinalizeBriefCap caps the finalize brief size. Sized for a typical
 // 3-codebase recipe with ~67 fragments (run 10 had 67 actual; the
 // hand-typed wrapper claimed 89 wrongly). Below the scaffold cap

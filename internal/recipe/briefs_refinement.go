@@ -157,6 +157,13 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 	// dropped so the refinement composer ships ~half the prior fact
 	// volume. Service-empty facts (run-wide tier_decisions, project-
 	// scope porter_changes) stay in scope.
+	//
+	// Run-28 fix #2 — RefinementBriefCap enforced via streaming
+	// most-recent-first into a separate buffer; surplus facts elided to
+	// disk with a marker line in the brief body so the agent sees the
+	// trim. Eviction preserves the rubric blocks (assembled into `b`
+	// above) by construction — only the facts buffer is sized against
+	// the remaining budget.
 	filteredFacts := facts[:0:0]
 	for _, f := range facts {
 		if FactBelongsToCodebases(f, plan.Codebases) {
@@ -164,12 +171,13 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		}
 	}
 	if len(filteredFacts) > 0 {
-		b.WriteString("## Recorded facts (per-codebase scoped)\n\n")
-		for _, f := range filteredFacts {
-			writeFactSummary(&b, f)
-		}
-		b.WriteString("\n")
+		factsBuf, kept, evicted := composeRefinementFactsBlock(filteredFacts, RefinementBriefCap-b.Len())
+		b.WriteString(factsBuf)
 		parts = append(parts, "filtered-facts")
+		if evicted > 0 {
+			parts = append(parts, "facts_evicted_for_cap")
+		}
+		_ = kept
 	}
 
 	return Brief{
@@ -178,4 +186,100 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		Bytes: b.Len(),
 		Parts: parts,
 	}, nil
+}
+
+// composeRefinementFactsBlock streams `facts` most-recent-first into a
+// single "## Recorded facts" block whose total size stays under the
+// remaining `budget` bytes. Returns the rendered block, the count of
+// facts kept, and the count evicted. When eviction fires, an inline
+// notice + tail elision marker land in the rendered block so the
+// refinement sub-agent reading the brief sees that older facts went
+// to disk; budget exhaustion is the only way to elide.
+//
+// Iteration most-recent-first per Run-28 fix #2 — keeping the LAST N
+// facts is the right choice when authors record corrective findings
+// late in the run (e.g. "Pattern A wires NATS via four vars, Pattern B
+// crashes" added at feature pass after scaffold's earlier
+// connectivity attempts).
+func composeRefinementFactsBlock(facts []FactRecord, budget int) (string, int, int) {
+	if len(facts) == 0 {
+		return "", 0, 0
+	}
+	if budget <= 0 {
+		// No headroom even for the heading — drop the entire block.
+		return "", 0, len(facts)
+	}
+
+	// Render each fact into its own line so eviction is per-fact.
+	rendered := make([]string, len(facts))
+	for i, f := range facts {
+		var line strings.Builder
+		writeFactSummary(&line, f)
+		rendered[i] = line.String()
+	}
+
+	const heading = "## Recorded facts (per-codebase scoped)\n\n"
+	const trailer = "\n"
+	// `notice` is reserved when eviction fires; rendered into the
+	// pre-fact area so the agent encounters it before the kept facts.
+	noticeFmt := "> Refinement brief approached the cap; %d facts were elided to disk (oldest-first). The newest %d are listed below.\n\n"
+	tailFmt := "\n> _%d facts elided to fit RefinementBriefCap (80 KB); the most recent %d are included above. Full fact stream is on disk under the run output directory._\n"
+
+	// First, optimistic pass — does the whole thing fit?
+	totalAll := len(heading) + len(trailer)
+	for _, line := range rendered {
+		totalAll += len(line)
+	}
+	if totalAll <= budget {
+		var b strings.Builder
+		b.Grow(totalAll)
+		b.WriteString(heading)
+		for _, line := range rendered {
+			b.WriteString(line)
+		}
+		b.WriteString(trailer)
+		return b.String(), len(rendered), 0
+	}
+
+	// Need eviction. Walk most-recent-first and stop adding when the
+	// next fact would exceed the budget, leaving headroom for the
+	// notice + tail markers (sized against worst-case integer counts).
+	worstNotice := len(strings.ReplaceAll(strings.ReplaceAll(noticeFmt, "%d", "9999999"), "\n", "\n"))
+	worstTail := len(strings.ReplaceAll(strings.ReplaceAll(tailFmt, "%d", "9999999"), "\n", "\n"))
+	overhead := len(heading) + worstNotice + worstTail
+	available := budget - overhead
+	if available <= 0 {
+		// Even rubric overhead doesn't fit; return empty so the brief
+		// composer can still report the eviction marker via parts.
+		return "", 0, len(rendered)
+	}
+
+	keptLines := make([]string, 0, len(rendered))
+	used := 0
+	for i := len(rendered) - 1; i >= 0; i-- {
+		line := rendered[i]
+		if used+len(line) > available {
+			break
+		}
+		// Insert at front so output stays chronological even though we
+		// iterate from the tail.
+		keptLines = append([]string{line}, keptLines...)
+		used += len(line)
+	}
+	evicted := len(rendered) - len(keptLines)
+
+	var b strings.Builder
+	b.WriteString(heading)
+	if evicted > 0 {
+		fmt.Fprintf(&b, noticeFmt, evicted, len(keptLines))
+	}
+	for _, line := range keptLines {
+		b.WriteString(line)
+	}
+	if evicted > 0 {
+		fmt.Fprintf(&b, tailFmt, evicted, len(keptLines))
+	} else {
+		b.WriteString(trailer)
+	}
+	return b.String(), len(keptLines), evicted
 }

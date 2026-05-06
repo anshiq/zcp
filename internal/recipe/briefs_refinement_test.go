@@ -210,6 +210,175 @@ func TestBuildRefinementBrief_NilPlan_Errors(t *testing.T) {
 	}
 }
 
+// TestBuildRefinementBrief_OverCap_TrimsFacts — run-28 fix #2.
+// Synthetic plan with 200 facts must not blow `RefinementBriefCap`;
+// surplus facts get evicted and the brief carries the marker so the
+// agent reading the brief knows older facts were dropped to disk.
+func TestBuildRefinementBrief_OverCap_TrimsFacts(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug: "synth-showcase",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"},
+		},
+	}
+	// 200 large facts — each ~700 bytes of why-text. With no cap the
+	// brief easily exceeds 80 KB; under the cap we expect eviction.
+	bigPad := strings.Repeat("a fact text padding word ", 30)
+	facts := make([]FactRecord, 200)
+	for i := range facts {
+		facts[i] = FactRecord{
+			Topic: "synthetic-fact",
+			Kind:  FactKindPorterChange,
+			Why:   bigPad + " #" + strings.Repeat("x", 4),
+		}
+	}
+	// Make each fact have a unique topic (so we can later check which
+	// were kept vs evicted).
+	for i := range facts {
+		facts[i].Topic = "synthetic-fact-" + indexLabel(i)
+	}
+	brief, err := BuildRefinementBrief(plan, nil, "/run/dir", facts)
+	if err != nil {
+		t.Fatalf("BuildRefinementBrief: %v", err)
+	}
+	if brief.Bytes > RefinementBriefCap {
+		t.Errorf("refinement brief %d bytes exceeds RefinementBriefCap %d", brief.Bytes, RefinementBriefCap)
+	}
+	if !slices.Contains(brief.Parts, "facts_evicted_for_cap") {
+		t.Errorf("brief.Parts missing facts_evicted_for_cap marker; got %v", brief.Parts)
+	}
+	if !strings.Contains(brief.Body, "facts elided to fit RefinementBriefCap") {
+		t.Errorf("brief body missing elision-marker prose")
+	}
+}
+
+// TestBuildRefinementBrief_UnderCap_NoElision — run-28 fix #2. A
+// small recipe with 20 facts comfortably fits under the cap; no
+// elision marker, no eviction part.
+func TestBuildRefinementBrief_UnderCap_NoElision(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug: "synth-showcase",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"},
+		},
+	}
+	facts := make([]FactRecord, 20)
+	for i := range facts {
+		facts[i] = FactRecord{
+			Topic: "small-fact-" + indexLabel(i),
+			Kind:  FactKindPorterChange,
+			Why:   "small why text",
+		}
+	}
+	brief, err := BuildRefinementBrief(plan, nil, "/run/dir", facts)
+	if err != nil {
+		t.Fatalf("BuildRefinementBrief: %v", err)
+	}
+	if slices.Contains(brief.Parts, "facts_evicted_for_cap") {
+		t.Errorf("brief.Parts unexpectedly carries facts_evicted_for_cap on small input")
+	}
+	if strings.Contains(brief.Body, "facts elided to fit RefinementBriefCap") {
+		t.Errorf("brief body should not carry elision marker when under cap")
+	}
+}
+
+// TestBuildRefinementBrief_EvictionKeepsRecentFacts — run-28 fix #2.
+// Eviction iterates most-recent-first; oldest facts are dropped. Pin
+// that the LAST fact (index 199) survives and the FIRST (index 0)
+// does not.
+func TestBuildRefinementBrief_EvictionKeepsRecentFacts(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug: "synth-showcase",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"},
+		},
+	}
+	bigPad := strings.Repeat("padding word ", 30)
+	facts := make([]FactRecord, 200)
+	for i := range facts {
+		facts[i] = FactRecord{
+			Topic: "fact-" + indexLabel(i),
+			Kind:  FactKindPorterChange,
+			Why:   bigPad,
+		}
+	}
+	brief, err := BuildRefinementBrief(plan, nil, "/run/dir", facts)
+	if err != nil {
+		t.Fatalf("BuildRefinementBrief: %v", err)
+	}
+	// Most recent (last) must be kept.
+	if !strings.Contains(brief.Body, "fact-"+indexLabel(199)) {
+		t.Errorf("most-recent fact (index 199) should be kept after eviction")
+	}
+	// Oldest (first) must be evicted under such pressure.
+	if strings.Contains(brief.Body, "fact-"+indexLabel(0)+" |") {
+		t.Errorf("oldest fact (index 0) should have been evicted")
+	}
+}
+
+// TestBuildRefinementBrief_EvictionPreservesRubricBlocks — run-28
+// fix #2. Eviction targets ONLY facts; phase-entry, synthesis_workflow,
+// embedded_rubric, reference_atom_catalog, stitched-output-pointer,
+// and engine_flagged_suspects must remain in Parts/body even when
+// facts are heavily evicted.
+func TestBuildRefinementBrief_EvictionPreservesRubricBlocks(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug: "synth-showcase",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"},
+		},
+	}
+	bigPad := strings.Repeat("padding word ", 30)
+	facts := make([]FactRecord, 200)
+	for i := range facts {
+		facts[i] = FactRecord{
+			Topic: "fact-" + indexLabel(i),
+			Kind:  FactKindPorterChange,
+			Why:   bigPad,
+		}
+	}
+	brief, err := BuildRefinementBrief(plan, nil, "/run/dir", facts)
+	if err != nil {
+		t.Fatalf("BuildRefinementBrief: %v", err)
+	}
+	for _, want := range []string{
+		"phase_entry/refinement.md",
+		"briefs/refinement/synthesis_workflow.md",
+		"briefs/refinement/embedded_rubric.md",
+		"reference_atom_catalog",
+		"stitched-output-pointer-block",
+	} {
+		if !slices.Contains(brief.Parts, want) {
+			t.Errorf("brief.Parts missing rubric block %q after eviction; got %v", want, brief.Parts)
+		}
+	}
+	for _, anchor := range []string{
+		"Criterion 1",
+	} {
+		if !strings.Contains(brief.Body, anchor) {
+			t.Errorf("rubric anchor %q evicted unexpectedly", anchor)
+		}
+	}
+}
+
+// indexLabel returns a stable padded decimal label for synthetic
+// fact topics so eviction tests can assert ordering without relying
+// on lexicographic surprises.
+func indexLabel(i int) string {
+	const pad = "00000"
+	s := pad
+	n := i
+	for j := len(s) - 1; j >= 0 && n > 0; j-- {
+		s = s[:j] + string(rune('0'+n%10)) + s[j+1:]
+		n /= 10
+	}
+	return s
+}
+
 // TestRefinementAtoms_TeachesBareCodebaseFragmentId — run-23 F-17 pin.
 // The synthesis_workflow.md atom uses unresolved `<h>` placeholders for
 // codebase fragment ids; agents inferred `<h>` from facts' `service`
