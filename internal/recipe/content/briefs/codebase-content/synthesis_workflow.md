@@ -579,6 +579,50 @@ re-invoking `zerops_recipe` with `action: record-fragment` and
 - Root/intro, env/<N>/intro, env/<N>/import-comments (env-content
   sub-agent at phase 6).
 
+## Friendly-authority voice scope — never on broken alternatives
+
+Friendly-authority phrasing ("Feel free to swap", "Configure this to
+use", "Bump this when") signals that an alternative path is
+supported and porter-controlled. Do NOT apply this voice to
+alternatives the scaffold or feature phase recorded as failing.
+
+If a `porter_change` fact says "Pattern A wires NATS via separate
+${broker_hostname}, ${broker_port}, ${broker_user}, ${broker_password}
+vars; Pattern B (single ${broker_connectionString}) crashes at boot
+because nats@2.29 hostPort() IPv6-misparses the auto-generated
+password" — you may NOT author "Feel free to swap to Pattern B" in
+any KB / IG / yaml-comment surface. The friendly-authority voice
+implies the alternative works; the recipe's own facts established it
+does not.
+
+Worked example — yaml comment:
+
+```yaml
+# BAD — friendly-authority on a known-broken alternative.
+NATS_HOST: ${broker_hostname}
+NATS_PORT: ${broker_port}
+# Feel free to switch to Pattern B by replacing these with a
+# single NATS_URL: ${broker_connectionString}.
+NATS_USER: ${broker_user}
+NATS_PASS: ${broker_password}
+
+# GOOD — name the alternative as broken with the recipe's own
+# evidence, no friendly-authority hedge.
+NATS_HOST: ${broker_hostname}
+NATS_PORT: ${broker_port}
+NATS_USER: ${broker_user}
+NATS_PASS: ${broker_password}
+# Pattern A (separate vars). Pattern B (${broker_connectionString})
+# crashes at boot — nats@2.29 hostPort() IPv6-misparses the auto-
+# generated password's `-` characters by colon-count.
+```
+
+When unsure whether an alternative is broken: search the recorded
+facts (`zerops_recipe action=read-facts`) for the topic before
+authoring a "Feel free to" hedge. If a `porter_change` fact in scope
+says the alternative fails, the friendly-authority template does not
+apply.
+
 ## Cap reminders
 
 - Codebase intro: ≤ 350 chars.

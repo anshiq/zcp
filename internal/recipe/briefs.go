@@ -172,8 +172,16 @@ const (
 // `${broker_connectionString}` never reached apidev's brief, leading
 // the apidev sub-agent to fall back to atom-corpus generic guidance
 // and ship a contradicting KB endorsement.
+//
+// Run-28 fix #6 bumped CodebaseContentBriefCap 64→68 KB after the
+// "Friendly-authority voice scope — never on broken alternatives"
+// section landed in `briefs/codebase-content/synthesis_workflow.md`
+// (~1.7 KB including the BAD/GOOD worked example). Closes the
+// run-27 workerdev case where KB + yaml-comments endorsed
+// "Feel free to swap to Pattern B" on an alternative the worker's
+// own facts established as broken at boot.
 const (
-	CodebaseContentBriefCap = 64 * 1024
+	CodebaseContentBriefCap = 68 * 1024
 	EnvContentBriefCap      = 56 * 1024
 	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )
