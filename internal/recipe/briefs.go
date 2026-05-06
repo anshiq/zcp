@@ -162,8 +162,18 @@ const (
 // rejection-pattern pre-warning targets the 85% iteration rate seen
 // at cc-api in run-23; small-brief growth, large authoring-quality
 // signal.
+// Run-26 F-31 bumped CodebaseContentBriefCap 60→64 KB after the
+// "Dispatch contract — pass response.prompt verbatim" section landed
+// in `phase_entry/codebase-content.md` (~700 bytes) AND the engine
+// began propagating cross-codebase managed-service facts into the
+// codebase-content brief (variable size; tested with `nil` facts but
+// the cap must headroom the populated-facts case). Closes the run-26
+// apidev-NATS factuality drift where worker-scaffold findings about
+// `${broker_connectionString}` never reached apidev's brief, leading
+// the apidev sub-agent to fall back to atom-corpus generic guidance
+// and ship a contradicting KB endorsement.
 const (
-	CodebaseContentBriefCap = 60 * 1024
+	CodebaseContentBriefCap = 64 * 1024
 	EnvContentBriefCap      = 56 * 1024
 	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )

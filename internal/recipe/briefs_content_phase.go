@@ -173,6 +173,10 @@ func BuildCodebaseContentBrief(plan *Plan, cb Codebase, parent *ParentRecipe, fa
 		parts = append(parts, "filtered-facts")
 	}
 
+	if appendCrossCodebaseFactsBlock(&b, facts, cb) {
+		parts = append(parts, "cross-codebase-facts")
+	}
+
 	// Pointer block — files the sub-agent reads on demand. The Surface
 	// contracts + classification taxonomy live in the embedded
 	// synthesis_workflow.md atom above, NOT in an external file pointer
@@ -498,6 +502,26 @@ func filterOutEngineEmitted(records []FactRecord) []FactRecord {
 		out = append(out, r)
 	}
 	return out
+}
+
+// appendCrossCodebaseFactsBlock emits the run-26 F-31 cross-codebase
+// managed-service facts block. Returns true when the block was emitted
+// (caller appends `cross-codebase-facts` to brief.Parts), false when
+// no propagation was needed. Closes the run-26 apidev-NATS factuality
+// drift where the worker-scaffold finding about
+// `${broker_connectionString}` never reached apidev's brief.
+func appendCrossCodebaseFactsBlock(b *strings.Builder, facts []FactRecord, cb Codebase) bool {
+	crossFacts := filterOutEngineEmitted(CrossCodebaseManagedServiceFacts(facts, cb))
+	if len(crossFacts) == 0 {
+		return false
+	}
+	b.WriteString("## Cross-codebase managed-service facts\n\n")
+	b.WriteString("Facts authored by sister codebases that reference managed services this codebase also consumes. Engine-propagated so connection-shape decisions stay consistent across codebases — when a sister codebase recorded that a specific env-key shape crashed at boot, this codebase's IG/KB must not endorse that shape. Treat each entry as authoritative for THIS recipe; the atom corpus's generic guidance defers to the run's recorded scaffold findings.\n\n")
+	for _, f := range crossFacts {
+		writeFactSummary(b, f)
+	}
+	b.WriteString("\n")
+	return true
 }
 
 func writeFactSummary(b *strings.Builder, f FactRecord) {

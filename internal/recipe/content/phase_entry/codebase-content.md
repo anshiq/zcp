@@ -26,14 +26,35 @@ message with parallel `Agent` tool calls:
 
 ```
 [message]
-  Agent(description: "codebase-content-api", prompt: <codebase-content brief for api>)
-  Agent(description: "claudemd-author-api",  prompt: <claudemd-author brief for api>)
-  Agent(description: "codebase-content-app", prompt: <codebase-content brief for app>)
-  Agent(description: "claudemd-author-app",  prompt: <claudemd-author brief for app>)
+  Agent(description: "codebase-content-api", prompt: <response.prompt for codebase-content api>)
+  Agent(description: "claudemd-author-api",  prompt: <response.prompt for claudemd-author api>)
+  Agent(description: "codebase-content-app", prompt: <response.prompt for codebase-content app>)
+  Agent(description: "claudemd-author-app",  prompt: <response.prompt for claudemd-author app>)
   ...
 ```
 
 Net savings vs serial: 5-15 minutes for 3-codebase dispatches.
+
+## Dispatch contract — pass response.prompt verbatim
+
+Two correct dispatch shapes. Pick by main-agent context budget:
+
+- **Inline**: pass `response.prompt` from `build-subagent-prompt`
+  byte-identically as the `Agent` prompt parameter.
+- **Self-fetch wrapper**: when context is tight, send the sub-agent a
+  one-sentence context cue plus the
+  `zerops_recipe action=build-subagent-prompt slug=<slug>
+  briefKind=codebase-content codebase=<host>` invocation so it fetches
+  the prompt itself.
+
+Hand-typed paraphrase wrappers — out. Re-stating the brief in your
+own words compounds math errors and path drift (run-13 §B2) and at
+codebase-content phase historically dropped run-specific findings
+(run-26 F-31). The brief carries cross-codebase managed-service
+facts so connection-shape decisions stay consistent across codebases —
+the engine surfaces a sister codebase's finding (e.g. worker scaffold
+recording a NATS auth-shape crash) into this codebase's brief when
+both consume the same managed service.
 
 ## Why two sub-agents
 

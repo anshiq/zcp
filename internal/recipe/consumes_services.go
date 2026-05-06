@@ -201,6 +201,107 @@ func filterConsumedServices(all []Service, consumed []string) []Service {
 	return out
 }
 
+// CrossCodebaseManagedServiceFacts returns the subset of `facts`
+// authored by sister codebases that reference a managed service `cb`
+// consumes via `${<host>_*}` or `${<host>}` env-key shape. Closes the
+// run-26 apidev-NATS factuality drift where the worker scaffold
+// recorded `worker-nats-connection-string` (Scope=workerdev/...)
+// noting that `${broker_connectionString}` crashes the nats client
+// at boot, but the apidev codebase-content sub-agent's brief carried
+// only apidev-scoped facts and reverted to atom-corpus generic NATS
+// guidance — published apidev KB endorsed `${broker_connectionString}`
+// as a viable shape, contradicting the recipe's own scaffold finding.
+//
+// Per system.md §3 phase-5 contract codebase-content reads "the
+// codebase's facts"; this function extends "the codebase's facts" to
+// include sister-codebase facts that touch managed services THIS
+// codebase consumes. Symmetric extension of run-21 R2-3
+// `Codebase.ConsumesServices` from atom selection to fact selection.
+//
+// Match predicate: fact's text fields contain `${<host>_*}` or
+// `${<host>}` for any host in cb.ConsumesServices, AND fact.Scope is
+// not this codebase. Scope-prefix dedup avoids double-emit of facts
+// already included in the codebase-scoped fact stream
+// (FilterByCodebase).
+//
+// nil or empty ConsumesServices returns nil — conservative vs the
+// fall-back-to-everything pattern used for atom selection. An
+// unanalyzed codebase (sim path that skips scaffold) propagating every
+// sister fact would leak unrelated infrastructure findings; under-
+// propagation is the safer failure mode here.
+func CrossCodebaseManagedServiceFacts(facts []FactRecord, cb Codebase) []FactRecord {
+	if len(cb.ConsumesServices) == 0 {
+		return nil
+	}
+	consumed := make(map[string]bool, len(cb.ConsumesServices))
+	for _, h := range cb.ConsumesServices {
+		consumed[h] = true
+	}
+	cbPrefix := cb.Hostname + "/"
+	var out []FactRecord
+	for _, f := range facts {
+		// Skip facts already in this codebase's scope (cbFacts emits
+		// them via FilterByCodebase).
+		if f.Scope == cb.Hostname || strings.HasPrefix(f.Scope, cbPrefix) {
+			continue
+		}
+		if !factMentionsAnyConsumedService(f, consumed) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// factMentionsAnyConsumedService scans every text field of f for
+// `${<host>_*}` / `${<host>}` references and returns true on the first
+// hit whose leading host token is in consumed. Field set covers:
+//
+//   - Legacy platform-trap shape (Kind=""): Topic/Symptom/Mechanism/
+//     SurfaceHint/Citation/FailureMode/FixApplied/Evidence.
+//   - Run-16 porter_change: Why/Diff/Library/CitationGuide/
+//     CandidateHeading.
+//   - Run-16 field_rationale: FieldPath/FieldValue/Alternatives/
+//     CompoundReasoning.
+//   - Run-16 tier_decision: ChosenValue/TierContext (often carry
+//     `${<host>_*}` env-key references when the tier_decision records
+//     which env-key shape was baked at the tier).
+//   - Run-16 contract: Subject/Purpose (contract subjects sometimes
+//     embed env refs and Purpose narrates the recipe-side concern).
+//
+// Bare-string Service field (tier_decision's hostname) is intentionally
+// NOT scanned — Service is metadata about WHICH service the tier
+// decision applies to, not a connection-shape reference. Propagating
+// on Service alone would surface tier-shape facts to every consumer
+// even when the fact isn't about the env-key wiring.
+func factMentionsAnyConsumedService(f FactRecord, consumed map[string]bool) bool {
+	fields := [...]string{
+		f.Topic,
+		f.Symptom, f.Mechanism, f.SurfaceHint, f.Citation,
+		f.FailureMode, f.FixApplied, f.Evidence,
+		f.Why, f.Diff, f.Library, f.CitationGuide, f.CandidateHeading,
+		f.FieldPath, f.FieldValue, f.Alternatives, f.CompoundReasoning,
+		f.ChosenValue, f.TierContext,
+		f.Subject, f.Purpose,
+	}
+	for _, field := range fields {
+		if field == "" {
+			continue
+		}
+		matches := envVarReferencePattern.FindAllStringSubmatch(field, -1)
+		for _, m := range matches {
+			if len(m) < 2 {
+				continue
+			}
+			head := leadingHostnameToken(m[1])
+			if consumed[head] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // leadingHostnameToken splits on `_` and returns the first segment.
 // `db_hostname` → `db`, `cache` → `cache`, `nats_jetstream_url` → `nats`.
 func leadingHostnameToken(s string) string {

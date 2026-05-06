@@ -46,8 +46,19 @@ math, validator tripwires, managed-service list — all Plan-derived) +
 closing notes naming the stitch-then-complete-phase path. Pass
 `response.prompt` verbatim to `Agent`. Hand-typed wrappers are out —
 math errors and path drift compound (run-10 wrapper claimed 89
-fragments when actual was 67; carried obsolete pre-§L paths). Run-11
-gap S-1; run-13 §B2.
+fragments when actual was 67; carried obsolete pre-§L paths), and a
+cramped wrapper at codebase-content phase historically dropped run-
+specific findings (run-26 F-31: apidev KB endorsed
+`${broker_connectionString}` despite the worker-scaffold finding that
+that shape crashes the nats client at boot — the brief now propagates
+cross-codebase managed-service facts so connection-shape decisions
+stay consistent across the dispatched fleet).
+
+When main-agent context is tight, the canonical recovery is to
+dispatch with a thin wrapper INSTEAD of inlining: one-sentence cue
+plus the `zerops_recipe action=build-subagent-prompt ...` invocation
+so the sub-agent fetches its own prompt. Both shapes are correct.
+Run-11 gap S-1; run-13 §B2; run-26 F-31.
 
 ## The env-var template model (critical)
 
