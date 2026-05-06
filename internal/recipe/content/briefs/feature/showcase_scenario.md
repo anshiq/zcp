@@ -109,14 +109,18 @@ it.
 Per-snapshot DOM refs go stale across `zerops_browser` calls (silent
 no-op clicks). Use stable attribute selectors. Add `data-feature` to
 interactive elements (`publish`, `upload`, `search`, `create-item`,
-`cache-fetch`). Add `data-test` to every counter and badge — the
-canonical set: `[data-test="items-count"]`,
+`cache-fetch`). Add `data-test` to every counter and badge using the
+patterns `[data-test="<category>-<metric>"]` for counters,
+`[data-test="<category>-state-badge"]` for state badges, and
+`[data-test="status-<service>"]` for service health; a variant
+adding a new card follows the same naming rules. The cards in this
+scenario emit: `[data-test="items-count"]`,
 `[data-test="cache-hits"]`, `[data-test="cache-misses"]`,
 `[data-test="cache-state-badge"]` (carrying the literal `HIT` or
 `MISS` text), `[data-test="queue-processed"]`,
 `[data-test="storage-objects"]`, `[data-test="search-indexed"]`,
-`[data-test="status-<service>"]`. Browser-walk targets by attribute,
-not per-snapshot ref.
+`[data-test="status-<service>"]`. Browser-walk targets by
+attribute, not per-snapshot ref.
 
 ## Layout: card grid sized to the headless viewport
 
@@ -178,10 +182,11 @@ within 5s); storage (upload click fires + `[data-test=
 curl alone is insufficient); search (query returns ranked hits,
 result count matches rendered list length).
 
-Verification protocol for any card with a counter: read the counter
-selector → click `[data-feature="<name>"]` → wait for response (up
-to 5s on async) → re-read the same counter selector → assert delta
-(typically +1). The counter delta is the canonical
+Verification protocol for any card with a counter: wait for the
+counter selector to be present AND its `textContent` to parse as an
+integer → read the counter selector → click `[data-feature="<name>"]`
+→ wait for response (up to 5s on async) → re-read the same counter
+selector → assert delta (typically +1). The counter delta is the canonical
 click-caused-state-change signal but does NOT replace the
 category-specific mandatory observable (X-Cache `HIT`/`MISS` badge
 text, ranked results, queue→search integration, upload-handler-fires,
