@@ -13,9 +13,12 @@ import (
 )
 
 // withTuneables shrinks cleanup-loop timing knobs for unit tests and
-// restores them on cleanup. Production defaults stay untouched.
-func withTuneables(t *testing.T, settle, interval time.Duration, maxRetries int) {
+// restores them on cleanup. Production defaults stay untouched. The
+// poll interval is fixed at 5ms — all callers want it tight; settle and
+// max-retries vary per scenario.
+func withTuneables(t *testing.T, settle time.Duration, maxRetries int) {
 	t.Helper()
+	const interval = 5 * time.Millisecond
 	prevSettle, prevInterval, prevRetries, prevProcInterval :=
 		CleanupSettleTimeout, CleanupVerifyInterval, CleanupVerifyMaxRetries, CleanupProcessPollInterval
 	CleanupSettleTimeout = settle
@@ -162,7 +165,7 @@ func TestIsAllSettled_TerminalStates(t *testing.T) {
 // The settle-wait must hold off DeleteService until the service reaches
 // ACTIVE, then delete and verify clean.
 func TestDeleteAllUserServices_CreatingServiceWaitsThenDeletes(t *testing.T) {
-	withTuneables(t, 500*time.Millisecond, 5*time.Millisecond, 3)
+	withTuneables(t, 500*time.Millisecond, 3)
 
 	// Mock starts with appdev in CREATING. After ~20ms a goroutine flips
 	// it to ACTIVE so settle-wait can advance. WithDeleteRemovesService
@@ -194,7 +197,7 @@ func TestDeleteAllUserServices_CreatingServiceWaitsThenDeletes(t *testing.T) {
 // "residual services" error so the suite stops on a real platform
 // problem rather than running a confused agent.
 func TestDeleteAllUserServices_PersistentResidualFailsLoud(t *testing.T) {
-	withTuneables(t, 30*time.Millisecond, 5*time.Millisecond, 2)
+	withTuneables(t, 30*time.Millisecond, 2)
 
 	// Service stays in CREATING forever. Settle-wait times out, delete
 	// fires (and "succeeds" per mock), but verify-empty still sees it.
@@ -332,6 +335,73 @@ func TestCleanClaudeMemory_EmptyClaudeHomeDefaultsToUserHome(t *testing.T) {
 	}
 }
 
+// TestCleanupProject_SentinelEnvUnset_NoCheck pins that container mode
+// behavior is unchanged: with ZCP_EVAL_SENTINEL_FILE empty, CleanupProject
+// proceeds without looking for any sentinel.
+func TestCleanupProject_SentinelEnvUnset_NoCheck(t *testing.T) {
+	// non-parallel: t.Setenv mutates process env, plus withTuneables touches
+	// package-level cleanup tuneables shared with parallel tests.
+	t.Setenv("ZCP_EVAL_SENTINEL_FILE", "")
+	withTuneables(t, 200*time.Millisecond, 2)
+
+	dir := t.TempDir()
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-zcp", Name: "zcp", Status: "ACTIVE"},
+	})
+
+	if err := CleanupProject(context.Background(), mock, "proj-1", dir); err != nil {
+		t.Fatalf("no sentinel env → no check; got: %v", err)
+	}
+}
+
+// TestCleanupProject_SentinelEnvSet_PresentAllows pins the local-mode
+// happy path: when the wrapper has written <workDir>/<sentinel>, cleanup
+// proceeds normally.
+func TestCleanupProject_SentinelEnvSet_PresentAllows(t *testing.T) {
+	t.Setenv("ZCP_EVAL_SENTINEL_FILE", ".zcp-eval-workdir")
+	withTuneables(t, 200*time.Millisecond, 2)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".zcp-eval-workdir"), []byte(""), 0o644); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-zcp", Name: "zcp", Status: "ACTIVE"},
+	})
+
+	if err := CleanupProject(context.Background(), mock, "proj-1", dir); err != nil {
+		t.Fatalf("sentinel present → cleanup proceeds; got: %v", err)
+	}
+}
+
+// TestCleanupProject_SentinelEnvSet_AbsentRefuses pins the gate: when the
+// env var asks for a sentinel but the workdir lacks it, CleanupProject
+// refuses early — no service delete, no workdir touch. This guards against
+// a misconfigured ZCP_EVAL_WORK_DIR pointing at the operator's source repo
+// or home, where rm -rf would be destructive.
+func TestCleanupProject_SentinelEnvSet_AbsentRefuses(t *testing.T) {
+	t.Setenv("ZCP_EVAL_SENTINEL_FILE", ".zcp-eval-workdir")
+
+	dir := t.TempDir()
+	// No sentinel file written — bare temp dir.
+
+	mock := platform.NewMock().WithServices([]platform.ServiceStack{
+		{ID: "svc-other", Name: "other", Status: "ACTIVE"},
+	})
+
+	err := CleanupProject(context.Background(), mock, "proj-1", dir)
+	if err == nil {
+		t.Fatal("missing sentinel must refuse cleanup")
+	}
+	if !strings.Contains(err.Error(), ".zcp-eval-workdir") {
+		t.Errorf("error must mention sentinel path; got: %v", err)
+	}
+	if got := mock.CallCounts["DeleteService"]; got != 0 {
+		t.Errorf("refused cleanup must not delete; DeleteService calls = %d", got)
+	}
+}
+
 // TestCleanupProject_RemovesClaudeMD_EndToEnd pins that the full
 // CleanupProject sequence ends with no CLAUDE.md in workDir. Uses a clean
 // platform mock so only the workdir-cleanup half is exercised; the
@@ -343,7 +413,7 @@ func TestCleanupProject_RemovesClaudeMD_EndToEnd(t *testing.T) {
 	// transitively read those via deleteServices → pollProcess. Sibling
 	// withTuneables-using tests (TestDeleteAllUserServices_*) are correctly
 	// non-parallel for the same reason.
-	withTuneables(t, 200*time.Millisecond, 5*time.Millisecond, 2)
+	withTuneables(t, 200*time.Millisecond, 2)
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "CLAUDE.md")

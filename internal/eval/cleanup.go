@@ -22,10 +22,16 @@ const ProtectedService = "zcp"
 // CLAUDE.md is intentionally NOT protected: each scenario regenerates it via
 // init.Run after seed, so carrying stale REFLOG/service references between
 // runs only pollutes the next agent's context.
+//
+// `.zcp-eval-workdir` is the sentinel file written by the local-mode flow-eval
+// wrapper to mark a workdir as disposable; protecting it lets CleanupProject
+// run multiple times in the same workdir without the second call tripping
+// the sentinel gate (the first cleanWorkDir would otherwise remove it).
 var protectedPaths = map[string]bool{
-	".claude":   true,
-	".mcp.json": true,
-	".zcp":      true,
+	".claude":           true,
+	".mcp.json":         true,
+	".zcp":              true,
+	".zcp-eval-workdir": true,
 }
 
 // MatchesEvalPrefix returns true if the hostname starts with the given eval prefix.
@@ -107,7 +113,18 @@ var terminalDeletableStatuses = map[string]bool{
 // the list is fetched fresh and ANY non-system, non-zcp service is deleted,
 // regardless of name. Stale ServiceMeta entries from prior runs naming
 // services that no longer exist are tolerated.
+//
+// Sentinel safety: when the env var ZCP_EVAL_SENTINEL_FILE is non-empty,
+// cleanup refuses to proceed unless <workDir>/<sentinelName> exists. The
+// local-mode flow-eval wrapper sets this so a misconfigured
+// ZCP_EVAL_WORK_DIR (e.g. operator's source repo or $HOME) cannot trigger
+// destructive cleanup. Container mode leaves the env var unset and behaves
+// as before.
 func CleanupProject(ctx context.Context, client platform.Client, projectID, workDir string) error {
+	if err := assertWorkDirSafe(workDir); err != nil {
+		return err
+	}
+
 	// 1. Delete all non-protected services with settle-wait + post-verify.
 	// Cleanup runs at suite boundaries; agents observed (suite 20260504-142503)
 	// that a single list+delete pass can leave a residual mid-CREATING
@@ -272,6 +289,21 @@ func verifyProjectEmpty(ctx context.Context, client platform.Client, projectID s
 		names[i] = fmt.Sprintf("%s(%s)", s.Name, s.Status)
 	}
 	return fmt.Errorf("residual services after delete pass: %s", strings.Join(names, ", "))
+}
+
+// assertWorkDirSafe gates destructive cleanup behind a caller-supplied
+// sentinel file when ZCP_EVAL_SENTINEL_FILE names one. Empty env var =
+// no gate (preserves container-mode invariant).
+func assertWorkDirSafe(workDir string) error {
+	sentinelName := os.Getenv("ZCP_EVAL_SENTINEL_FILE")
+	if sentinelName == "" {
+		return nil
+	}
+	sentinelPath := filepath.Join(workDir, sentinelName)
+	if _, err := os.Stat(sentinelPath); err != nil {
+		return fmt.Errorf("CleanupProject refuses: workdir %q lacks sentinel file %q — local-mode eval marks disposable workdirs with this file; if you're running cleanup manually, either touch the sentinel or unset ZCP_EVAL_SENTINEL_FILE", workDir, sentinelPath)
+	}
+	return nil
 }
 
 // IsProtectedPath returns true if the given filename should survive cleanup.
