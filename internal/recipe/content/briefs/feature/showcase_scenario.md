@@ -89,6 +89,47 @@ client-only fake counters that increment without a backend
 round-trip. The recipe does not ship websocket infra; do not invent
 it.
 
+## List ordering — newest-first across every card
+
+Every list rendered on a card (chip lists, ranked results, event
+streams, items rows) MUST display newest-first. The browser-walk's
+primary observable for any "trigger fires + something appears in the
+list" verification is *the just-added item lands at the top of the
+visible list*. If the list is ordered ASC (oldest-first) or by a
+non-time key (alphabetical, key-name), the just-added item lands
+offscreen at position 6+ after a few iterations and the verifier
+reads "no change" — false-negative click failure with no recovery
+signal.
+
+Backend contract per surface:
+
+- **DB-backed cards (Items, etc.)** — `ORDER BY created_at DESC` (or
+  framework equivalent: TypeORM `order: { createdAt: 'DESC' }`,
+  Eloquent `latest()`, Prisma `orderBy: { createdAt: 'desc' }`).
+- **Cache / Redis-style cards (Queue events, etc.)** — `LPUSH` puts
+  newest at the head; `LTRIM 0 N-1` keeps the most-recent N; `LRANGE
+  0 N-1` reads them newest-first by construction. Do not author
+  `RPUSH` for an event-stream list.
+- **Object-storage cards** — `ListObjectsV2Command` returns
+  alphabetical-by-key. With timestamp-suffixed upload keys
+  (`uploads/dashboard-upload-${Date.now()}.txt`), alphabetical IS
+  monotonic-numeric — but the natural order is OLDEST-first. Sort
+  the result DESC by `LastModified` (or by key for monotonic
+  timestamp keys) on the API side before returning. The frontend
+  `slice(0, N)` then takes the N newest.
+- **Search results** — Meilisearch / equivalent return by relevance
+  score, not by recency; that's correct for a search box (relevance
+  > recency). Do NOT reverse-sort search results by time.
+
+Frontend contract: `slice(0, N)` on a backend list assumes the API
+already ordered DESC by recency. Do not author client-side
+re-sorting; the backend owns the contract.
+
+The verifier reads `[data-test=...]` text and the first chip in
+`[aria-label="..."] li`. If position 1 is yesterday's item, the
+verification fails silently no matter how many times the click fires
+correctly.
+
 ## Design priorities
 
 - **Demonstration-first content.** Effort goes on what each card
@@ -269,3 +310,56 @@ before close. The feature_kinds taxonomy names the backend endpoints;
 the cards are the frontend's responsibility — a queue-demo backend
 that's never visualized fails this scenario spec even if curl proves
 round-trip. The dashboard is the deliverable.
+
+## Storage-upload card — resilient shape
+
+The `zerops_browser` tool surface (commands: `click`, `fill`, `find`,
+`get`, `is`, `wait`, `snapshot`) does NOT include a file-input
+selector primitive — there is no `setInputFiles` or equivalent. A
+real `<input type="file">` element cannot be programmatically
+populated from a browser-walk. The Storage card MUST therefore expose
+both:
+
+- **A real file selector** (`<input type="file" data-feature="upload-file"
+  accept="*">` plus a labeled "Select file" affordance) for the human
+  porter who deploys the recipe and uses it normally.
+- **A blob-fallback button** (`<button data-feature="upload">`) whose
+  click handler builds an in-memory `Blob` programmatically (no DOM
+  file dialog), wraps it in `FormData`, and POSTs to
+  `/api/storage/upload`. The blob shape is tiny (a one-line text
+  payload with a timestamp); the button is the browser-walk path.
+
+Both affordances target the same `POST /api/storage/upload` endpoint.
+The selector lets a human upload a real file; the blob button lets
+`zerops_browser` exercise the upload pipeline without a file dialog.
+
+### Browser-walk fallback escape hatch
+
+If `[data-feature="upload"]` click delivery fails (silent, counter
+doesn't increment) after **2 attempts** with `scrollIntoView` applied
+per the Layout section above, record the field_rationale and move on
+— do NOT loop. The backend curl chain in the features-backend pass
+is the canonical proof of the upload pipeline; the frontend
+browser-walk is a supplementary check that some headless-Chromium
+versions can't deliver:
+
+```
+zerops_recipe action=record-fact slug=<slug>
+  topic=<frontend-cb>-storage-upload-click-headless-fragility
+  kind=field_rationale
+  symptom="zerops_browser click on [data-feature=upload] silent
+    after 2 attempts with scrollIntoView; counter
+    [data-test=storage-upload-attempts] did not increment;
+    no console errors visible"
+  fixApplied="recorded as platform-side click-delivery limitation;
+    backend curl chain in features-backend pass remains canonical
+    upload-pipeline proof"
+  surfaceHint=field-rationale
+  scope=<frontend-cb>/storage
+```
+
+Then proceed to the next card. Two click attempts is the cap; do not
+spend a feature-pass debugging click-delivery. The on-mount card
+surface (object count from `getStorageState()` + chip list of recent
+uploads, newest-first per the List ordering section) is the
+demonstration; click-fired-on-button is the bonus.
