@@ -85,11 +85,13 @@ func handleCloseMode(input WorkflowInput, stateDir string) (*mcp.CallToolResult,
 		}
 		if meta == nil || !meta.IsComplete() {
 			// H2 sweep: same shape as workflow_develop.go — point at
-			// bootstrap+adopt, not generic status. Live unmanaged service
-			// being targeted for close-mode means the agent missed the
-			// adopt step.
+			// bootstrap+adopt, not generic status. Code is ErrAdoptRequired
+			// (not ErrServiceNotFound — the service IS found in Zerops, it
+			// just lacks ZCP bootstrap metadata). Self-evident from the code
+			// name what Recovery should look like; pinned by
+			// TestErrAdoptRequiredCarriesAdoptRecovery.
 			return convertError(platform.NewPlatformError(
-				platform.ErrServiceNotFound,
+				platform.ErrAdoptRequired,
 				fmt.Sprintf("Service %q is not bootstrapped", hostname),
 				"Run bootstrap first: zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\""),
 				WithRecovery(&RecoveryHint{

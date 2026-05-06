@@ -40,14 +40,30 @@ const (
 	ErrSSHDeployFailed        = "SSH_DEPLOY_FAILED"
 	ErrDeployFailed           = "DEPLOY_FAILED"
 	ErrPrerequisiteMissing    = "PREREQUISITE_MISSING"
-	ErrWorkflowRequired       = "WORKFLOW_REQUIRED"
-	ErrSelfServiceBlocked     = "SELF_SERVICE_BLOCKED"
-	ErrGitTokenMissing        = "GIT_TOKEN_MISSING"
-	ErrSubagentMisuse         = "SUBAGENT_MISUSE"
-	ErrExportBlocked          = "EXPORT_BLOCKED"
-	ErrMissingEvidence        = "MISSING_EVIDENCE"
-	ErrTopicEmpty             = "TOPIC_EMPTY"
-	ErrWorkSessionCorrupt     = "WORK_SESSION_CORRUPT"
+	// ErrAdoptRequired narrows ErrPrerequisiteMissing for the specific
+	// "service exists in Zerops but lacks ZCP bootstrap metadata, and
+	// the agent must run bootstrap+route=adopt before this operation"
+	// case. The semantic is encoded in the code name so the Recovery
+	// shape (zerops_workflow action=start workflow=bootstrap route=adopt)
+	// is self-evident at every emit site. Pinned by
+	// `TestErrAdoptRequiredCarriesAdoptRecovery` — every emit site must
+	// carry the corresponding specific Recovery.
+	//
+	// Why narrowed from ErrPrerequisiteMissing: PREREQUISITE_MISSING was
+	// emitted at 18 sites covering 5+ semantic categories (transient
+	// API failure, manual operator action, filesystem state, deploy
+	// strategy gate, adopt required). A single test invariant on the
+	// broad code would false-positive on legitimate non-actionable
+	// preconditions; splitting at the source makes the contract per-code.
+	ErrAdoptRequired      = "ADOPT_REQUIRED"
+	ErrWorkflowRequired   = "WORKFLOW_REQUIRED"
+	ErrSelfServiceBlocked = "SELF_SERVICE_BLOCKED"
+	ErrGitTokenMissing    = "GIT_TOKEN_MISSING"
+	ErrSubagentMisuse     = "SUBAGENT_MISUSE"
+	ErrExportBlocked      = "EXPORT_BLOCKED"
+	ErrMissingEvidence    = "MISSING_EVIDENCE"
+	ErrTopicEmpty         = "TOPIC_EMPTY"
+	ErrWorkSessionCorrupt = "WORK_SESSION_CORRUPT"
 	// ErrPreflightFailed signals a deploy preflight check failure. Carried
 	// alongside structured CheckWire entries so the agent can re-run the
 	// failed check or fix the underlying issue. Replaces the legacy

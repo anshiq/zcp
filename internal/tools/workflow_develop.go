@@ -107,10 +107,12 @@ func handleDevelopBriefing(ctx context.Context, engine *workflow.Engine, client 
 		// next call. The router (build_plan.go:382-388) already telegraphs
 		// bootstrap+route=adopt for unmanaged-runtimes scenarios; this
 		// rejection only fires when the agent ignored the router and
-		// jumped to develop directly. Generic WithRecoveryStatus()
-		// previously forced an extra status round-trip.
+		// jumped to develop directly. Code is ErrAdoptRequired (the
+		// semantic-specific narrow form of PrerequisiteMissing) so the
+		// Recovery shape is self-evident from the wire code. Pinned by
+		// TestErrAdoptRequiredCarriesAdoptRecovery.
 		return convertError(platform.NewPlatformError(
-			platform.ErrPrerequisiteMissing,
+			platform.ErrAdoptRequired,
 			"No bootstrapped services found",
 			"Run bootstrap first: action=\"start\" workflow=\"bootstrap\" (route=\"adopt\" if services already live)"),
 			WithRecovery(&RecoveryHint{
@@ -189,13 +191,22 @@ func handleDevelopBriefing(ctx context.Context, engine *workflow.Engine, client 
 	if err != nil {
 		if errors.Is(err, errStandardPairStageMissing) {
 			// Disk meta points at a stage hostname that's no longer in the
-			// live service list. Surfacing this as PrerequisiteMissing
-			// (not InvalidParameter) signals the agent to repair the pair
-			// rather than retry with a different scope shape.
+			// live service list. Same H2-class fix as the no-bootstrapped
+			// site above — code is ErrAdoptRequired so Recovery shape is
+			// self-evident, and Recovery itself is specific (re-bootstrap
+			// with route=adopt repairs the pair meta). The prose hint
+			// retains the alternative path (delete dev meta + re-bootstrap
+			// with mode=dev/simple) for the case where the stage half was
+			// intentionally removed.
 			return convertError(platform.NewPlatformError(
-				platform.ErrPrerequisiteMissing,
+				platform.ErrAdoptRequired,
 				err.Error(),
-				"Re-bootstrap to refresh the pair meta: zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\". If the stage half was intentionally removed, delete the dev meta and re-bootstrap with mode=dev or mode=simple."), WithRecoveryStatus()), nil, nil
+				"Re-bootstrap to refresh the pair meta: zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\". If the stage half was intentionally removed, delete the dev meta and re-bootstrap with mode=dev or mode=simple."),
+				WithRecovery(&RecoveryHint{
+					Tool:   "zerops_workflow",
+					Action: "start",
+					Args:   map[string]string{"workflow": "bootstrap", "route": "adopt"},
+				})), nil, nil
 		}
 		return convertError(platform.NewPlatformError(
 			platform.ErrInvalidParameter,

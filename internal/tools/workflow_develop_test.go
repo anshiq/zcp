@@ -538,7 +538,7 @@ func TestHandleDevelopBriefing_DevMode_NoExpansion(t *testing.T) {
 }
 
 // H2 defense: when no ServiceMeta exists (services live but unmanaged),
-// develop's PREREQUISITE_MISSING rejection must carry a structured Recovery
+// develop's ADOPT_REQUIRED rejection must carry a structured Recovery
 // pointing the agent at bootstrap+route=adopt. Generic
 // `WithRecoveryStatus()` (the prior shape) forced agents to round-trip
 // through `zerops_workflow action=status` before discovering the next call,
@@ -546,6 +546,11 @@ func TestHandleDevelopBriefing_DevMode_NoExpansion(t *testing.T) {
 // (build_plan.go:382-388, fixed in same plan). This test pins the
 // defense-in-depth shape so any future regression at workflow_develop.go
 // is caught.
+//
+// Wire code is `ADOPT_REQUIRED` (the narrowed semantic) post-S1 from
+// plans/test-pinning-elevation-2026-05-06.md — TestErrAdoptRequiredCarriesAdoptRecovery
+// pins the per-code Recovery contract uniformly; this test pins the
+// specific develop-rejection behavior end-to-end.
 func TestHandleDevelopBriefing_NoBootstrappedServices_RecoveryPointsAtBootstrapAdopt(t *testing.T) {
 	t.Parallel()
 
@@ -564,7 +569,7 @@ func TestHandleDevelopBriefing_NoBootstrappedServices_RecoveryPointsAtBootstrapA
 		t.Fatalf("handleDevelopBriefing: %v", err)
 	}
 	if !result.IsError {
-		t.Fatalf("expected PREREQUISITE_MISSING rejection, got success:\n%s", extractText(result))
+		t.Fatalf("expected ADOPT_REQUIRED rejection, got success:\n%s", extractText(result))
 	}
 	text := extractText(result)
 
