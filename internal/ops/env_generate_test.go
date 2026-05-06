@@ -335,6 +335,49 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			},
 			wantErr: "could not resolve",
 		},
+		{
+			// Dash-bearing hostname: Zerops accepts hyphens in service
+			// names but env-var refs swap them for underscores. Without
+			// longest-prefix matching against live hostnames the splitter
+			// reads `${my_db_hostname}` as host="my", var="db_hostname"
+			// and reports "service not found". Verified live in
+			// behavioral eval suite 20260506-145922.
+			name: "dash hostname matched via underscore canonical form",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DB_HOST: ${my_db_hostname}
+`,
+			hostname: "app",
+			serviceEnvs: map[string][]platform.EnvVar{
+				"my-db": {
+					{ID: "e1", Key: "hostname", Content: "my-db"},
+				},
+			},
+			wantVars:     1,
+			wantServices: 1,
+			wantContains: []string{"DB_HOST=my-db"},
+		},
+		{
+			// Top-level lone ref WITH underscore must stay literal, not
+			// blow up as "service not found". The splitter used to treat
+			// `${SOME_PROJECT_VAR}` as host=SOME / var=PROJECT_VAR — there
+			// is no service "SOME", so the whole generate-dotenv aborted
+			// even when the user only wanted a project-level var.
+			name: "top-level lone ref with underscore stays literal",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        FALLBACK: ${SOME_PROJECT_VAR}
+`,
+			hostname:     "app",
+			serviceEnvs:  map[string][]platform.EnvVar{},
+			wantVars:     1,
+			wantServices: 0,
+			wantContains: []string{"FALLBACK=${SOME_PROJECT_VAR}"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -407,5 +450,53 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 				t.Error(".env should contain header comment")
 			}
 		})
+	}
+}
+
+// TestEnvGenerateDotenv_ListServices_CalledOncePerBatch pins the contract
+// that ref expansion fetches the project's service list once at the start
+// of EnvGenerateDotenv — not lazily per cache miss in the recursive
+// expander. With three distinct cross-service refs the unfixed code called
+// ListServices three times (one per cache miss inside expandRefs).
+func TestEnvGenerateDotenv_ListServices_CalledOncePerBatch(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DB_HOST: ${db_hostname}
+        CACHE_URL: ${cache_url}
+        QUEUE_URL: ${queue_url}
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	services := []platform.ServiceStack{
+		{ID: "svc-app", Name: "app", ProjectID: "proj-1", Status: "RUNNING",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"}},
+		{ID: "svc-db", Name: "db", ProjectID: "proj-1", Status: "RUNNING",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "postgresql@16"}},
+		{ID: "svc-cache", Name: "cache", ProjectID: "proj-1", Status: "RUNNING",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "valkey@8"}},
+		{ID: "svc-queue", Name: "queue", ProjectID: "proj-1", Status: "RUNNING",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nats@2"}},
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "proj-1", Name: "test", Status: statusActive}).
+		WithServices(services).
+		WithServiceEnv("svc-db", []platform.EnvVar{{ID: "d1", Key: "hostname", Content: "db"}}).
+		WithServiceEnv("svc-cache", []platform.EnvVar{{ID: "c1", Key: "url", Content: "redis://cache:6379"}}).
+		WithServiceEnv("svc-queue", []platform.EnvVar{{ID: "q1", Key: "url", Content: "nats://queue:4222"}})
+
+	if _, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir); err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+
+	if got := mock.CallCounts["ListServices"]; got != 1 {
+		t.Errorf("ListServices called %d times, want exactly 1 per batch", got)
 	}
 }

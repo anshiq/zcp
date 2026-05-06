@@ -72,7 +72,14 @@ func TestCheckEnvRefs_Table(t *testing.T) {
 			wantStatus:    "pass",
 		},
 		{
-			name: "unresolved hostname fails",
+			// Under the longest-hostname-prefix classifier a body that
+			// doesn't match any live hostname is a lone ref (project-
+			// level var / runtime placeholder), not a typo. The shim
+			// validator is loosened deliberately — the live deploy
+			// pipeline still catches genuinely undefined refs at the
+			// platform layer. Documented as accepted trade-off in the
+			// Phase-5 plan.
+			name: "ref body without matching live host is treated as lone (passes)",
 			entry: func() *ops.ZeropsYmlEntry {
 				e := &ops.ZeropsYmlEntry{}
 				e.Run.EnvVariables = map[string]string{
@@ -82,8 +89,7 @@ func TestCheckEnvRefs_Table(t *testing.T) {
 			}(),
 			discoveredEnvVars: map[string][]string{},
 			liveHostnames:     []string{"apidev"},
-			wantStatus:        "fail",
-			wantDetail:        []string{"missing_hostname"},
+			wantStatus:        "pass",
 		},
 		{
 			name: "unresolved env var fails",

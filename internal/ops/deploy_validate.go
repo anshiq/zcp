@@ -323,77 +323,41 @@ func (b zeropsYmlBuild) hasZscNoop() bool {
 type EnvRefError struct {
 	Variable  string `json:"variable"`  // env var name containing the bad ref
 	Reference string `json:"reference"` // the ${hostname_varName} reference
-	Reason    string `json:"reason"`    // "unknown hostname" or "unknown variable"
+	Reason    string `json:"reason"`    // "unknown variable"
 }
 
-// ValidateEnvReferences checks ${hostname_varName} patterns in env var values
-// against discovered env vars and live hostnames. Returns errors for invalid refs.
+// ValidateEnvReferences checks ${hostname_varName} patterns in env var
+// values against the platform-discovered env vars per hostname. Lone refs
+// (bodies that match no live hostname prefix) are skipped — they're either
+// project-level vars (handled by GetProjectEnv at deploy time) or runtime
+// placeholders the platform resolves inside the container. Empty live-
+// hostnames slice loosens validation to "skip everything", matching the
+// shim-mode contract documented on CheckEnvRefs.
 func ValidateEnvReferences(envVars map[string]string, discoveredEnvVars map[string][]string, liveHostnames []string) []EnvRefError {
-	hostnameSet := make(map[string]bool, len(liveHostnames))
+	services := make([]platform.ServiceStack, 0, len(liveHostnames))
 	for _, h := range liveHostnames {
-		hostnameSet[h] = true
+		services = append(services, platform.ServiceStack{Name: h})
 	}
+	classifier := NewEnvRefClassifier(services)
 
 	var errs []EnvRefError
 	for varName, value := range envVars {
-		refs := parseEnvRefs(value)
-		for _, ref := range refs {
-			hostname, varPart := ref.hostname, ref.varName
-			if !hostnameSet[hostname] {
-				errs = append(errs, EnvRefError{
-					Variable:  varName,
-					Reference: ref.raw,
-					Reason:    fmt.Sprintf("unknown hostname %q", hostname),
-				})
+		for _, m := range FindEnvRefs(value) {
+			host, varPart, isCross := classifier.Classify(m.Body)
+			if !isCross {
 				continue
 			}
-			knownVars := discoveredEnvVars[hostname]
+			knownVars := discoveredEnvVars[host]
 			if !slices.Contains(knownVars, varPart) {
 				errs = append(errs, EnvRefError{
 					Variable:  varName,
-					Reference: ref.raw,
-					Reason:    fmt.Sprintf("unknown variable %q on hostname %q", varPart, hostname),
+					Reference: m.Raw,
+					Reason:    fmt.Sprintf("unknown variable %q on hostname %q", varPart, host),
 				})
 			}
 		}
 	}
 	return errs
-}
-
-type envRef struct {
-	raw      string // e.g. "${db_connectionString}"
-	hostname string // e.g. "db"
-	varName  string // e.g. "connectionString"
-}
-
-// parseEnvRefs extracts all ${hostname_varName} references from a string.
-func parseEnvRefs(s string) []envRef {
-	var refs []envRef
-	for {
-		idx := strings.Index(s, "${")
-		if idx == -1 {
-			break
-		}
-		s = s[idx:]
-		end := strings.Index(s, "}")
-		if end == -1 {
-			break
-		}
-		inner := s[2:end] // hostname_varName
-		s = s[end+1:]
-
-		// Must contain exactly one underscore separating hostname and varName.
-		underIdx := strings.Index(inner, "_")
-		if underIdx <= 0 || underIdx == len(inner)-1 {
-			continue
-		}
-		refs = append(refs, envRef{
-			raw:      "${" + inner + "}",
-			hostname: inner[:underIdx],
-			varName:  inner[underIdx+1:],
-		})
-	}
-	return refs
 }
 
 // IsImplicitWebServerType returns true if the given service type (e.g. "php-nginx@8.4")

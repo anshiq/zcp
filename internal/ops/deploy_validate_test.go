@@ -597,7 +597,13 @@ func TestValidateEnvReferences_ValidRef_NoError(t *testing.T) {
 	}
 }
 
-func TestValidateEnvReferences_InvalidHostname_Error(t *testing.T) {
+// TestValidateEnvReferences_LoneRefIgnored — refs whose body matches no
+// live hostname are project-level vars or runtime placeholders (e.g.
+// ${SOME_PROJECT_VAR}, ${zeropsSubdomainHost}) that the platform resolves
+// at deploy time. The validator skips them; the older split-on-first-
+// underscore code mistook them for cross-service refs and surfaced
+// "unknown hostname" errors.
+func TestValidateEnvReferences_LoneRefIgnored(t *testing.T) {
 	t.Parallel()
 
 	envVars := map[string]string{
@@ -609,14 +615,30 @@ func TestValidateEnvReferences_InvalidHostname_Error(t *testing.T) {
 	hostnames := []string{"db", "app"}
 
 	errs := ValidateEnvReferences(envVars, discovered, hostnames)
-	if len(errs) != 1 {
-		t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+	if len(errs) != 0 {
+		t.Errorf("expected no errors for lone ref against unknown prefix, got %v", errs)
 	}
-	if errs[0].Reference != "${nonexistent_connectionString}" {
-		t.Errorf("Reference = %q, want ${nonexistent_connectionString}", errs[0].Reference)
+}
+
+// TestValidateEnvReferences_DashHostnameLongestMatch — Zerops accepts
+// hyphens in service names but env-var refs canonicalize the dash to an
+// underscore (`my-db` → `${my_db_*}`). Splitting on first underscore would
+// parse the ref as host="my", var="db_port" and fail. The classifier
+// matches the longest live-hostname prefix instead.
+func TestValidateEnvReferences_DashHostnameLongestMatch(t *testing.T) {
+	t.Parallel()
+
+	envVars := map[string]string{
+		"DB_PORT": "${my_db_port}",
 	}
-	if !strings.Contains(errs[0].Reason, "unknown hostname") {
-		t.Errorf("Reason = %q, want to contain 'unknown hostname'", errs[0].Reason)
+	discovered := map[string][]string{
+		"my-db": {"port", "hostname"},
+	}
+	hostnames := []string{"my-db", "app"}
+
+	errs := ValidateEnvReferences(envVars, discovered, hostnames)
+	if len(errs) != 0 {
+		t.Errorf("expected no errors when ref body matches dash-hostname canonical form, got %v", errs)
 	}
 }
 

@@ -12,8 +12,9 @@ import (
 // CheckEnvRefs validates cross-service env-variable references in a single
 // zerops.yaml entry. Resolves each `${...}` reference against the map of
 // platform-discovered env vars per hostname and the live-hostname list.
-// An unresolved reference (unknown service, unknown var, wrong shape) is
-// a v14-class failure the agent can iterate on.
+// A reference whose hostname prefix matches a live service but names an
+// unknown var on that service fails — that's a typo or schema drift the
+// agent can fix.
 //
 // Inputs:
 //   - hostname: the codebase/runtime hostname the entry belongs to. Used
@@ -27,8 +28,11 @@ import (
 //     shim mode the CLI fills it from a locally-cached snapshot or
 //     passes an empty map (graceful skip).
 //   - liveHostnames: every hostname visible to the recipe (runtime
-//     dev/stage targets + managed-service hostnames). Unresolvable
-//     `${<host>_*}` references fail when <host> is absent from this list.
+//     dev/stage targets + managed-service hostnames). A `${...}` body
+//     whose prefix doesn't match any live hostname is treated as a lone
+//     ref (project-level var / runtime placeholder the platform resolves
+//     at deploy time) and skipped — empty liveHostnames therefore
+//     gracefully skips all refs in shim mode.
 //
 // Returns nil when the entry declares no env vars — no surface to check.
 // Returns one StepCheck per call (pass or fail). The server-side

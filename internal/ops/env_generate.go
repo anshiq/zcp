@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/zeropsio/zcp/internal/platform"
@@ -26,25 +25,6 @@ type EnvDotenvResult struct {
 	VPNHint   string `json:"vpnHint,omitempty"`
 }
 
-// refPatternAny matches any `${name}` placeholder. The interpreter
-// classifies based on the body's shape AND the resolution context:
-//
-//   - Body contains `_` → cross-service `${host_var}`. Resolved by
-//     fetching `host`'s env vars and looking up `var`. Always tried,
-//     regardless of whether we're at top level or inside a recursive
-//     expansion.
-//   - Body has no `_` AND we're inside a source-service context (recursing
-//     through a fetched value) → sibling lookup against the source
-//     service's own env vars. This matches Zerops's deploy-time
-//     semantics for templates like `connectionString =
-//     postgresql://${user}:${password}@${hostname}:${port}` where the
-//     lone refs resolve against the source service's siblings.
-//   - Body has no `_` AND we're at top level (yaml run.envVariables) →
-//     left literal. Project-level vars get appended later via
-//     GetProjectEnv; runtime-only placeholders (`${zeropsSubdomainHost}`)
-//     resolve at deploy time inside the container.
-var refPatternAny = regexp.MustCompile(`\$\{([a-zA-Z][a-zA-Z0-9_]*)\}`)
-
 // maxRefExpansionDepth caps recursive expansion regardless of cycle
 // detection — a defensive bound for pathological chains of length N
 // where each ref is unique (cycle detection wouldn't fire). 16 levels
@@ -52,14 +32,33 @@ var refPatternAny = regexp.MustCompile(`\$\{([a-zA-Z][a-zA-Z0-9_]*)\}`)
 const maxRefExpansionDepth = 16
 
 // refExpander resolves `${...}` placeholders against the live API.
+//
+// The interpreter classifies each `${...}` body via the shared
+// EnvRefClassifier:
+//
+//   - Cross-service hit (`${host_var}` matches a live hostname) → fetch
+//     host's env vars and look up var. Tried regardless of nesting.
+//   - Lone ref AND we're inside a source-service context (recursing
+//     through a fetched value) → sibling lookup against the source
+//     service's own env vars. Matches Zerops's deploy-time semantics for
+//     templates like `connectionString =
+//     postgresql://${user}:${password}@${hostname}:${port}` where the
+//     lone refs resolve against the source service's siblings.
+//   - Lone ref at top level (yaml run.envVariables) → left literal.
+//     Project-level vars get appended later via GetProjectEnv; runtime-
+//     only placeholders (`${zeropsSubdomainHost}`) resolve at deploy
+//     time inside the container.
+//
 // cache is shared across all expandRefs calls within one
-// EnvGenerateDotenv invocation: a single ListServices and one
-// GetServiceEnv per touched service, regardless of how many refs
-// reference the service or how deeply they recurse.
+// EnvGenerateDotenv invocation: one GetServiceEnv per touched service,
+// regardless of how many refs reference the service or how deeply they
+// recurse. The project's full service list and classifier are built once
+// in EnvGenerateDotenv and passed in — expandRefs never calls ListServices.
 type refExpander struct {
-	client    platform.Client
-	projectID string
-	cache     map[string][]platform.EnvVar
+	client       platform.Client
+	classifier   *EnvRefClassifier
+	serviceIndex map[string]platform.ServiceStack
+	cache        map[string][]platform.EnvVar
 }
 
 // expandRefs walks `value` and substitutes resolvable `${...}` refs.
@@ -82,7 +81,7 @@ func (r *refExpander) expandRefs(ctx context.Context, value, sourceService strin
 	if depth > maxRefExpansionDepth {
 		return "", 0, fmt.Errorf("ref expansion depth exceeded (>%d) at %q", maxRefExpansionDepth, value)
 	}
-	matches := refPatternAny.FindAllStringSubmatchIndex(value, -1)
+	matches := FindEnvRefs(value)
 	if len(matches) == 0 {
 		return value, 0, nil
 	}
@@ -90,46 +89,49 @@ func (r *refExpander) expandRefs(ctx context.Context, value, sourceService strin
 	unresolved := 0
 	last := 0
 	for _, m := range matches {
-		sb.WriteString(value[last:m[0]])
-		refBody := value[m[2]:m[3]]
-		original := value[m[0]:m[1]]
+		sb.WriteString(value[last:m.Start])
 
 		var svcHost, varName string
+		host, varPart, isCross := r.classifier.Classify(m.Body)
 		switch {
-		case strings.Contains(refBody, "_"):
-			svcHost, varName, _ = strings.Cut(refBody, "_")
+		case isCross:
+			svcHost, varName = host, varPart
 		case sourceService != "":
-			svcHost, varName = sourceService, refBody
+			svcHost, varName = sourceService, m.Body
 		default:
-			// Top-level lone ref — leave literal.
-			sb.WriteString(original)
-			last = m[1]
+			// Lone ref at top level — leave literal so the platform
+			// (project-level vars, runtime placeholders) can resolve it
+			// at deploy time.
+			sb.WriteString(m.Raw)
+			last = m.End
 			continue
 		}
 
 		key := svcHost + "." + varName
 		if visited[key] {
-			return "", 0, fmt.Errorf("circular reference at ${%s}: chain re-enters %s", refBody, key)
+			return "", 0, fmt.Errorf("circular reference at %s: chain re-enters %s", m.Raw, key)
 		}
 
 		if _, cached := r.cache[svcHost]; !cached {
-			services, err := r.client.ListServices(ctx, r.projectID)
-			if err != nil {
-				return "", 0, fmt.Errorf("list services: %w", err)
-			}
-			svc, err := FindService(services, svcHost)
-			if err != nil {
+			svc, ok := r.serviceIndex[svcHost]
+			if !ok {
 				if depth == 0 {
-					// Top-level typo / missing service — surface the
-					// specific error the user can act on.
+					// Top-level cross-service ref to an unknown host —
+					// surface a specific error so the agent can fix the
+					// yaml. Reuse FindService's "Available: ..." wording
+					// for parity with other ops/* errors.
+					services := make([]platform.ServiceStack, 0, len(r.serviceIndex))
+					for _, s := range r.serviceIndex {
+						services = append(services, s)
+					}
+					_, err := FindService(services, svcHost)
 					return "", 0, err
 				}
 				// Inside a recursive expansion: maybe the fetched
-				// template references a host that's part of platform
-				// vocabulary ZCP doesn't model. Leave literal so .env
-				// keeps the original ref visible.
-				sb.WriteString(original)
-				last = m[1]
+				// template references a host ZCP doesn't model. Leave
+				// literal so .env keeps the original ref visible.
+				sb.WriteString(m.Raw)
+				last = m.End
 				unresolved++
 				continue
 			}
@@ -142,8 +144,8 @@ func (r *refExpander) expandRefs(ctx context.Context, value, sourceService strin
 
 		rawVal := findEnvValue(r.cache[svcHost], varName)
 		if rawVal == "" {
-			sb.WriteString(original)
-			last = m[1]
+			sb.WriteString(m.Raw)
+			last = m.End
 			unresolved++
 			continue
 		}
@@ -159,7 +161,7 @@ func (r *refExpander) expandRefs(ctx context.Context, value, sourceService strin
 		}
 		unresolved += sub
 		sb.WriteString(expanded)
-		last = m[1]
+		last = m.End
 	}
 	sb.WriteString(value[last:])
 	return sb.String(), unresolved, nil
@@ -205,6 +207,22 @@ func EnvGenerateDotenv(
 			"Add run.envVariables to zerops.yaml first")
 	}
 
+	// One service-list fetch up-front feeds the classifier (longest-
+	// hostname-prefix matching for cross-service refs) AND the index
+	// (hostname → ServiceStack for ID lookup before fetching env vars).
+	// Without this the recursive expander used to call ListServices
+	// once per cache miss — wasteful and inconsistent across ref-rich
+	// yamls.
+	services, err := ListProjectServices(ctx, client, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list services: %w", err)
+	}
+	classifier := NewEnvRefClassifier(services)
+	serviceIndex := make(map[string]platform.ServiceStack, len(services))
+	for _, s := range services {
+		serviceIndex[s.Name] = s
+	}
+
 	// Resolve run.envVariables. The expander handles cross-service refs
 	// (${host_var}) AND recursively resolves through fetched values —
 	// e.g. `${db_connectionString}` resolves to db's connectionString
@@ -214,7 +232,12 @@ func EnvGenerateDotenv(
 	// Zerops's deploy-time semantics so the local .env is equivalent to
 	// what lands inside the runtime container.
 	serviceEnvCache := make(map[string][]platform.EnvVar)
-	expander := &refExpander{client: client, projectID: projectID, cache: serviceEnvCache}
+	expander := &refExpander{
+		client:       client,
+		classifier:   classifier,
+		serviceIndex: serviceIndex,
+		cache:        serviceEnvCache,
+	}
 	resolved := make(map[string]string, len(entry.Run.EnvVariables))
 	var unresolvedKeys []string
 
@@ -276,7 +299,7 @@ func EnvGenerateDotenv(
 	// host triggers the hint — users typically run one `zcli vpn up`
 	// per project, not per service.
 	if len(serviceEnvCache) > 0 {
-		if hint := probeManagedServicesForVPN(ctx, client, projectID, serviceEnvCache); hint != "" {
+		if hint := probeManagedServicesForVPN(ctx, projectID, serviceIndex, serviceEnvCache); hint != "" {
 			result.VPNHint = hint
 		}
 	}
@@ -286,17 +309,11 @@ func EnvGenerateDotenv(
 // probeManagedServicesForVPN attempts one TCP dial per referenced
 // managed service. Returns a hint string when any probe fails, empty
 // when all succeed (or no port info is available to probe against).
-func probeManagedServicesForVPN(ctx context.Context, client platform.Client, projectID string, cache map[string][]platform.EnvVar) string {
-	services, err := client.ListServices(ctx, projectID)
-	if err != nil {
-		return ""
-	}
-	serviceByName := make(map[string]platform.ServiceStack, len(services))
-	for _, s := range services {
-		serviceByName[s.Name] = s
-	}
+// The serviceIndex is the same map EnvGenerateDotenv already built for
+// the ref expander, so the probe doesn't need a second ListServices.
+func probeManagedServicesForVPN(ctx context.Context, projectID string, serviceIndex map[string]platform.ServiceStack, cache map[string][]platform.EnvVar) string {
 	for host := range cache {
-		svc, ok := serviceByName[host]
+		svc, ok := serviceIndex[host]
 		if !ok || len(svc.Ports) == 0 {
 			continue
 		}
