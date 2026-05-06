@@ -244,10 +244,9 @@ If `ok:false` with violations:
   claude-md/*}` ids → fix via `record-fragment mode=replace
   fragmentId=codebase/<host>/<name> fragment=<corrected body>`.
 - Violations on `<SourceRoot>/zerops.yaml` (yaml-comment-missing-
-  causal-word, IG-scaffold-filename, etc.) → ssh-edit the yaml file
-  directly; it's not a fragment, it's the committed source. After
-  ssh-edit, the engine's IG item-1 generator will re-read the yaml
-  body on next stitch.
+  causal-word, etc.) → ssh-edit the yaml file directly; it's not a
+  fragment, it's the committed source. After ssh-edit, the engine's
+  IG item-1 generator will re-read the yaml body on next stitch.
 - Re-call `complete-phase phase=scaffold codebase=<your-host>` to
   verify the fix.
 - Repeat until `ok:true`, then terminate.

@@ -167,6 +167,13 @@ func codebaseHostFromFragmentID(id string) string {
 // SurfaceFromFragmentID router.
 const fragmentTailIntro = "intro"
 
+// fragmentTailIG is the leaf tail for the unslotted codebase
+// integration-guide fragment id (`codebase/<host>/integration-guide`).
+// Constant keeps the literal single-source across the IG-id predicate,
+// the slot-shape switch in isValidFragmentID, and the slotted-IG
+// prefix check.
+const fragmentTailIG = "integration-guide"
+
 // validateFragmentID returns nil for a recognized fragment id, an
 // actionable error otherwise. Wraps isValidFragmentID so the codebase/
 // case can surface the slot-vs-codebase distinction (run-11 gap N-1).
@@ -232,13 +239,13 @@ func isValidFragmentID(plan *Plan, id string) bool {
 		// back-compat sub-slots. Run-21-prep — whole-yaml `zerops-yaml`
 		// replaces the per-block `zerops-yaml-comments/<block>` shape.
 		switch tail {
-		case fragmentTailIntro, "integration-guide", "knowledge-base",
+		case fragmentTailIntro, fragmentTailIG, "knowledge-base",
 			"claude-md", "claude-md/service-facts", "claude-md/notes",
 			"zerops-yaml":
 			return true
 		}
 		// Run-16 §6.5 — slotted IG: `codebase/<h>/integration-guide/<n>`.
-		if rest, ok := strings.CutPrefix(tail, "integration-guide/"); ok {
+		if rest, ok := strings.CutPrefix(tail, fragmentTailIG+"/"); ok {
 			if _, err := parseTierIndex(rest); err == nil {
 				return true
 			}
@@ -258,6 +265,87 @@ func isValidFragmentID(plan *Plan, id string) bool {
 // isValidFragmentID silently).
 func parseTierIndex(s string) (int, error) {
 	return strconv.Atoi(s)
+}
+
+// isIGFragmentID reports whether a fragmentId addresses a codebase
+// integration-guide surface — either the legacy unslotted
+// `codebase/<h>/integration-guide` body or a slotted
+// `codebase/<h>/integration-guide/<n>` slot. Run-29 Fix #2 — used by
+// the IG scaffold-filename Notice path in handleRecordFragment so the
+// signal scopes to IG fragments only.
+func isIGFragmentID(id string) bool {
+	if !strings.HasPrefix(id, "codebase/") {
+		return false
+	}
+	rest := strings.TrimPrefix(id, "codebase/")
+	slash := strings.IndexByte(rest, '/')
+	if slash <= 0 {
+		return false
+	}
+	tail := rest[slash+1:]
+	if tail == fragmentTailIG {
+		return true
+	}
+	if strings.HasPrefix(tail, fragmentTailIG+"/") {
+		return true
+	}
+	return false
+}
+
+// igScaffoldFilenames is the literal set whose appearance in IG prose
+// (outside engine-stamped yaml) signals a porter-doesn't-have-this
+// teaching. The four entries trace to specific run-K dogfood evidence
+// and stay frozen — expanding the list is the catalog-drift signature
+// per system.md §4. Run-29 Fix #2.
+var igScaffoldFilenames = []string{"migrate.ts", "seed.ts", "main.ts", "api.ts"}
+
+// igScaffoldFilenameOutsideYamlBlock reports the first scaffold-source
+// filename found in IG fragment prose OUTSIDE any ```yaml fenced
+// block. Engine-stamped IG #1 yaml legitimately names the codebase's
+// own initCommands sources (run.initCommands: [npx ts-node -T
+// src/migrate.ts]); the Notice predicate excludes those by stripping
+// fenced yaml ranges before scanning. Returns ("", false) when no
+// match is found.
+func igScaffoldFilenameOutsideYamlBlock(body string) (string, bool) {
+	stripped := stripYamlFencedBlocks(body)
+	for _, name := range igScaffoldFilenames {
+		if strings.Contains(stripped, name) {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// stripYamlFencedBlocks removes every ```yaml ... ``` block from
+// `body`, returning the prose that remains. Used by the IG scaffold-
+// filename Notice predicate so engine-stamped yaml content (which
+// legitimately names the codebase's helper files) never trips the
+// Notice. Non-yaml fenced blocks (```bash, ```ts, etc.) are kept
+// because scaffold-source mentions in those blocks ARE prose-level
+// teaching the porter-doesn't-have-this rule covers.
+func stripYamlFencedBlocks(body string) string {
+	const yamlOpen = "```yaml"
+	const fenceClose = "```"
+	var b strings.Builder
+	rest := body
+	for {
+		i := strings.Index(rest, yamlOpen)
+		if i < 0 {
+			b.WriteString(rest)
+			return b.String()
+		}
+		b.WriteString(rest[:i])
+		// Skip past the opening fence line — search for the closing
+		// fence AFTER the opening fence's final char.
+		closeStart := i + len(yamlOpen)
+		j := strings.Index(rest[closeStart:], fenceClose)
+		if j < 0 {
+			// Unterminated yaml block — drop the rest defensively.
+			return b.String()
+		}
+		// Advance past the closing fence.
+		rest = rest[closeStart+j+len(fenceClose):]
+	}
 }
 
 // serviceKnown reports whether a hostname matches one of the plan's

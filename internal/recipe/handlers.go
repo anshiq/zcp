@@ -725,6 +725,28 @@ func handleRecordFragment(sess *Session, in RecipeInput, r RecipeResult) RecipeR
 		}
 	}
 
+	// Run-29 Fix #2 — IG scaffold-filename Notice. The legacy Blocking
+	// gate at validators_codebase.go:81-93 banned `migrate.ts` /
+	// `seed.ts` / `main.ts` / `api.ts` literals across ALL IG content,
+	// including engine-stamped IG #1 yaml that legitimately names the
+	// codebase's own initCommands sources; the agent's evasion (delete
+	// the engine emit) became the shape that shipped (system.md §4
+	// catalog-drift). Notice now scopes to IG fragment text OUTSIDE
+	// any ```yaml fenced block so the porter-transferable signal still
+	// surfaces but engine emits are never flagged.
+	if isIGFragmentID(in.FragmentID) {
+		if name, found := igScaffoldFilenameOutsideYamlBlock(in.Fragment); found {
+			r.Notices = append(r.Notices, Violation{
+				Code:     "codebase-ig-scaffold-filename",
+				Path:     in.FragmentID,
+				Severity: SeverityNotice,
+				Message: fmt.Sprintf(
+					"IG step prose mentions a scaffold-source filename %q — porters bringing their own code don't have these. Consider demoting the teaching to a code-comment in the codebase, or rewriting the IG step around the platform contract (init-commands key shape, the env-var alias rule) rather than the recipe's own helper file.",
+					name),
+			})
+		}
+	}
+
 	// F.2 — attach the per-surface contract for the resolved fragment id
 	// so the agent reads reader / test / caps verbatim at authoring
 	// decision time, not just at brief-preface time.

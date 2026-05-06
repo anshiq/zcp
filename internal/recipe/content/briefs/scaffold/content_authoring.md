@@ -251,10 +251,9 @@ If `ok:false` with violations:
   the same phase.
 
 - Violations on `<SourceRoot>/zerops.yaml` (yaml-comment-missing-
-  causal-word, IG-scaffold-filename, etc.) → ssh-edit the yaml file
-  directly; it's not a fragment, it's the committed source. After
-  ssh-edit, the engine's IG item-1 generator will re-read the yaml
-  body on next stitch.
+  causal-word, etc.) → ssh-edit the yaml file directly; it's not a
+  fragment, it's the committed source. After ssh-edit, the engine's
+  IG item-1 generator will re-read the yaml body on next stitch.
 
 - Re-call `complete-phase phase=scaffold codebase=<your-host>` to
   verify the fix.
@@ -312,7 +311,6 @@ Either re-route to a compatible surface or discard.
 Finalize gates reject on these; fix at author-time:
 
 - IG item #1 is engine-owned; your items start at `### 2.`
-- IG 2+: no scaffold-only filenames (`main.ts`, `seed.ts`, `migrate.ts`)
 - IG cap: 5 items per codebase including engine-emitted IG #1
 - KB cap: 8 bullets per codebase. Over-collection signals scaffold
   decisions / framework quirks / self-inflicted observations leaking

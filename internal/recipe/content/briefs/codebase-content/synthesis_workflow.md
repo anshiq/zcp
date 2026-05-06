@@ -631,3 +631,24 @@ apply.
 - zerops.yaml: ONE whole-yaml fragment per codebase; comment density
   is judgment, not capped — comment every field a porter benefits
   from, skip routine ones.
+
+## IG #1 is engine-stamped — do NOT override
+
+IG #1 (`### 1. Adding zerops.yaml`) is engine-emitted from the
+codebase's verbatim zerops.yaml. The fenced yaml block IS the source
+of truth — porter copies it into their own zerops.yaml as the first
+deploy step. DO NOT override IG #1 via `record-fragment mode=replace`.
+If a validator fires on its content, surface the error; do not delete
+the engine emit.
+
+## IG #2-N covers porter-transferable mechanisms
+
+IG #2-N teach platform contracts the porter applies to their OWN code
+(bind-address pin, trust-proxy flag, drain-on-SIGTERM hook, env-var
+alias pattern, build-time bake timing). Don't author IG steps that
+describe the recipe's own helper files (`migrate.ts` / `seed.ts` /
+`main.ts` / `api.ts`) — porters bringing their own code don't have
+those files; the platform contract is what transfers, not the recipe's
+implementation walkthrough. If a topic is recipe-implementation-only,
+it belongs in CLAUDE.md (architecture bullet) or as a yaml comment,
+not on IG.

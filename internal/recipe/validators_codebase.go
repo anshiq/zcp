@@ -26,10 +26,12 @@ var igPlainOrderedItemRE = regexp.MustCompile(`(?m)^\d+\.\s+\S`)
 
 // validateCodebaseIG checks the integration-guide fragment: marker
 // present, ≥ 2 `### N.` heading items, first item introduces
-// `zerops.yaml`, no scaffold-only filenames in body, item count
-// within the surface's ItemCap. Plain ordered-list items (without the
-// heading shape) are rejected (run-11 gap R-1) — the engine generates
-// item #1 in heading shape; porter-authored items must match.
+// `zerops.yaml`, item count within the surface's ItemCap, no
+// authoring-tool leaks. Plain ordered-list items (without the heading
+// shape) are rejected (run-11 gap R-1) — the engine generates item #1
+// in heading shape; porter-authored items must match. The legacy
+// scaffold-only-filename Blocking gate moved to a record-time Notice
+// in handleRecordFragment (run-29 Fix #2).
 //
 // Run-15 F.5 — adds the `codebase-ig-too-many-items` cap (5 items
 // including engine-emitted IG #1, per spec). Run-14 shipped 8-10 IG
@@ -78,19 +80,15 @@ func validateCodebaseIG(_ context.Context, path string, body []byte, _ SurfaceIn
 				"first IG item must introduce `zerops.yaml`"))
 		}
 	}
-	// Scaffold-only filenames — `migrate.ts`, `main.ts`, `seed.ts`,
-	// `api.ts`, helper names. Porter bringing their own code doesn't
-	// have these files; an IG item naming them is giving scaffold
-	// implementation, not a platform contract.
-	scaffoldOnly := []string{
-		"migrate.ts", "seed.ts", "main.ts", "api.ts",
-	}
-	for _, name := range scaffoldOnly {
-		if strings.Contains(ig, name) {
-			vs = append(vs, violation("codebase-ig-scaffold-filename", path,
-				fmt.Sprintf("IG mentions scaffold-only filename %q — porters bringing their own code don't have it", name)))
-		}
-	}
+	// Run-29 Fix #2 — the scaffold-only filename ban (`migrate.ts` /
+	// `seed.ts` / `main.ts` / `api.ts`) was removed: it triggered on
+	// engine-stamped IG #1 yaml content (which legitimately names the
+	// codebase's own initCommands sources), and the agent's evasion
+	// (delete the engine emit) became the shape that shipped. The
+	// underlying signal is now a record-time Notice in
+	// handlers_fragments.go::recordFragment scoped to IG fragment text
+	// OUTSIDE the engine-emitted yaml fenced block (see system.md §4
+	// catalog-drift corrective example for IG #1).
 	// Run-15 E.2 — authoring-tool patrol. The porter operates with
 	// framework-canonical commands; tool names like `zerops_*` / `zcli`
 	// signal authoring leakage.
