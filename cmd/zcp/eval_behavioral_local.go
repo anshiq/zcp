@@ -10,22 +10,30 @@ import (
 
 // runBehavioralRunLocal executes a behavioral scenario in local mode:
 // agent runs on this Mac (not over SSH to a Zerops container). The
-// flow mirrors the existing `run` subcommand but with isolated workdir,
-// HOME, and sentinel-gated cleanup so the operator's real source repo,
-// $HOME, and ~/.claude/ stay untouched.
+// flow mirrors the existing `run` subcommand but with isolated workdir
+// and sentinel-gated cleanup so the operator's source repo + $HOME
+// stay untouched.
 //
 //	zcp eval behavioral run-local --id <id>
 //	zcp eval behavioral run-local --id <id> --scenarios-dir <dir>
 //	zcp eval behavioral run-local --id <id> --cleanup-workdir
+//	zcp eval behavioral run-local --id <id> --isolate-claude-home
 //
 // Sequence:
 //  1. Prereqs: ZCP_API_KEY env, `zcp` in PATH (per `make install`).
 //  2. Resolve scenario file.
 //  3. Compute paths under /tmp/zcp-flow-eval-local/<suite>/<id>/, with
 //     results landing back in <repo>/eval/behavioral/runs-local/.
-//  4. mkdir workdir + claude-home + results, write sentinel.
-//  5. Symlink ~/.claude/.credentials.json into sandbox claude-home so
-//     OAuth keeps working without ANTHROPIC_API_KEY.
+//  4. mkdir workdir + results, write sentinel.
+//  5. (Opt-in via --isolate-claude-home) Prepare sandbox claude-home
+//     and set HOME override for the spawned claude process. Currently
+//     OFF by default on macOS — Claude Code on Mac stores OAuth in
+//     the Keychain (entry "Claude Code-credentials") and the spawned
+//     `claude` reports "Not logged in" when HOME is overridden, even
+//     with ~/.claude.json copied through. Investigation deferred; for
+//     now the eval shares operator's real ~/.claude/ (per-eval
+//     session+memory state lands under a temp-path project key, so
+//     it doesn't pollute the operator's main project memory).
 //  6. Set ZCP_EVAL_* env vars; unset serviceId defensively.
 //  7. Delegate to existing initEvalRunner() + RunBehavioralScenario().
 //  8. Print result paths; optionally rm -rf the scratch dir on success.
@@ -33,6 +41,7 @@ func runBehavioralRunLocal(args []string) {
 	id := flagValue(args, "--id")
 	scenariosDir := flagValue(args, "--scenarios-dir")
 	cleanupWorkdir := hasFlag(args, "--cleanup-workdir")
+	isolateClaudeHome := hasFlag(args, "--isolate-claude-home")
 
 	if id == "" {
 		fmt.Fprintln(os.Stderr, "error: --id <scenario-id> required")
@@ -66,19 +75,23 @@ func runBehavioralRunLocal(args []string) {
 		fmt.Fprintf(os.Stderr, "error: prepare dirs: %v\n", err)
 		os.Exit(1)
 	}
-	if err := eval.PrepareIsolatedClaudeHome(paths.ClaudeHome); err != nil {
-		fmt.Fprintf(os.Stderr, "error: prepare claude home: %v\n", err)
-		os.Exit(1)
-	}
 
-	// Env handoff to initEvalRunner (which reads these), the Runner
-	// (which embeds them in RunnerConfig), and the spawned `claude`
-	// process (which inherits via cmd.Env, see Runner.claudeEnv).
+	// HOME isolation is opt-in (see func docstring). When disabled,
+	// ZCP_EVAL_CLAUDE_HOME stays empty so Runner.claudeEnv returns nil
+	// and the spawned claude inherits the operator's real HOME (auth
+	// via macOS Keychain works; per-eval state still lands under a
+	// temp-path project key so cross-scenario contamination is bounded).
 	envOverrides := map[string]string{
 		"ZCP_EVAL_WORK_DIR":      paths.WorkDir,
-		"ZCP_EVAL_CLAUDE_HOME":   paths.ClaudeHome,
 		"ZCP_EVAL_RESULTS_DIR":   paths.ResultsDir,
 		"ZCP_EVAL_SENTINEL_FILE": eval.SentinelFilename,
+	}
+	if isolateClaudeHome {
+		if err := eval.PrepareIsolatedClaudeHome(paths.ClaudeHome); err != nil {
+			fmt.Fprintf(os.Stderr, "error: prepare claude home: %v\n", err)
+			os.Exit(1)
+		}
+		envOverrides["ZCP_EVAL_CLAUDE_HOME"] = paths.ClaudeHome
 	}
 	for k, v := range envOverrides {
 		_ = os.Setenv(k, v)
