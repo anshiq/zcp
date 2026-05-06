@@ -10,6 +10,7 @@ import (
 	"github.com/zeropsio/zcp/internal/platform"
 )
 
+//nolint:maintidx // single table-driven test, intentional broad coverage of the resolver paths
 func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 	t.Parallel()
 
@@ -83,6 +84,83 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			wantVars:     2,
 			wantServices: 1,
 			wantContains: []string{"NODE_ENV=production", "DB_HOST=db"},
+		},
+		{
+			// Compound expression: ${...} refs embedded inside a larger
+			// string. The platform substitutes inline at deploy time; the
+			// local .env must do the same so DATABASE_URL works against the
+			// VPN'd managed service. Reproducer: behavioral eval suite
+			// 20260506-145922 — agent wrote a Postgres URL with embedded
+			// refs and got literal `${db_user}` in the .env, breaking
+			// `npm start` against the VPN.
+			name: "compound URL with multiple cross-service refs",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DATABASE_URL: postgresql://${db_user}:${db_password}@db:${db_port}/${db_dbName}
+`,
+			hostname: "app",
+			serviceEnvs: map[string][]platform.EnvVar{
+				"db": {
+					{ID: "e1", Key: "user", Content: "appuser"},
+					{ID: "e2", Key: "password", Content: "s3cret"},
+					{ID: "e3", Key: "port", Content: "5432"},
+					{ID: "e4", Key: "dbName", Content: "main"},
+				},
+			},
+			wantVars:     1,
+			wantServices: 1,
+			wantContains: []string{"DATABASE_URL=postgresql://appuser:s3cret@db:5432/main"},
+		},
+		{
+			// Mix: lone ref + compound ref + static value, all in one yaml.
+			// Each variable must resolve independently.
+			name: "mixed lone + compound + static",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DB_HOST: ${db_hostname}
+        DATABASE_URL: postgresql://${db_user}@${db_hostname}:${db_port}/main
+        NODE_ENV: production
+`,
+			hostname: "app",
+			serviceEnvs: map[string][]platform.EnvVar{
+				"db": {
+					{ID: "e1", Key: "hostname", Content: "db"},
+					{ID: "e2", Key: "user", Content: "u"},
+					{ID: "e3", Key: "port", Content: "5432"},
+				},
+			},
+			wantVars:     3,
+			wantServices: 1,
+			wantContains: []string{
+				"DB_HOST=db",
+				"DATABASE_URL=postgresql://u@db:5432/main",
+				"NODE_ENV=production",
+			},
+		},
+		{
+			// Compound with one unresolved ref must error — partial
+			// resolution would silently leave a literal `${...}` in the
+			// .env, which is exactly the failure mode this whole fix
+			// avoids. The error names the unresolved var so the agent
+			// can fix the yaml.
+			name: "compound with unresolved ref errors",
+			zeropsYml: `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DATABASE_URL: postgresql://${db_user}:${db_typoed}@db/main
+`,
+			hostname: "app",
+			serviceEnvs: map[string][]platform.EnvVar{
+				"db": {
+					{ID: "e1", Key: "user", Content: "u"},
+				},
+			},
+			wantErr: "could not resolve",
 		},
 		{
 			name: "zerops.yaml envVariable takes precedence over project env",

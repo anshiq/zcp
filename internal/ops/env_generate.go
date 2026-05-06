@@ -26,9 +26,16 @@ type EnvDotenvResult struct {
 	VPNHint   string `json:"vpnHint,omitempty"`
 }
 
-// refPattern matches a full ${hostname_varName} cross-service reference.
-// In Zerops, ${...} is ONLY for cross-service refs — project-level env vars are auto-injected.
-var refPattern = regexp.MustCompile(`^\$\{([a-zA-Z][a-zA-Z0-9]*_[a-zA-Z_][a-zA-Z0-9_]*)\}$`)
+// refPatternInline matches `${hostname_varName}` cross-service references
+// anywhere in a string. The platform substitutes inline at deploy time
+// (a Postgres URL like `postgresql://${db_user}:${db_password}@db:${db_port}/${db_dbName}`
+// gets every embedded ref expanded), so the local .env must do the same to
+// stay equivalent to the runtime container. The leading underscore-bearing
+// shape is what filters cross-service refs from project-level / runtime
+// placeholders (`${zeropsSubdomainHost}`, `${hostname}`, `${port}`) which
+// are NOT cross-service references and stay as-is here — project-level
+// values are appended later via GetProjectEnv.
+var refPatternInline = regexp.MustCompile(`\$\{([a-zA-Z][a-zA-Z0-9]*_[a-zA-Z_][a-zA-Z0-9_]*)\}`)
 
 // EnvGenerateDotenv reads zerops.yaml `run.envVariables` for a service, resolves ${hostname_varName}
 // cross-service references by fetching actual values from managed services, appends project-level
@@ -76,38 +83,60 @@ func EnvGenerateDotenv(
 	var unresolvedKeys []string
 
 	for envName, rawValue := range entry.Run.EnvVariables {
-		match := refPattern.FindStringSubmatch(rawValue)
-		if match == nil {
-			// Static value (not a cross-service reference) — use as-is.
+		matches := refPatternInline.FindAllStringSubmatchIndex(rawValue, -1)
+		if len(matches) == 0 {
+			// No cross-service refs — pass value through unchanged.
 			resolved[envName] = rawValue
 			continue
 		}
 
-		// Cross-service reference: ${hostname_varName}.
-		refBody := match[1]
-		svcHostname, varName, _ := strings.Cut(refBody, "_")
+		// Inline-expand every ${hostname_varName} match. last walks the
+		// rawValue, sb accumulates the spliced output. Each match index
+		// triple is [fullStart, fullEnd, groupStart, groupEnd]; the group
+		// is the host_var body without the surrounding ${}.
+		var sb strings.Builder
+		hadUnresolved := false
+		last := 0
+		for _, m := range matches {
+			sb.WriteString(rawValue[last:m[0]])
+			refBody := rawValue[m[2]:m[3]]
+			svcHostname, varName, _ := strings.Cut(refBody, "_")
 
-		if _, cached := serviceEnvCache[svcHostname]; !cached {
-			services, listErr := client.ListServices(ctx, projectID)
-			if listErr != nil {
-				return nil, fmt.Errorf("list services: %w", listErr)
+			if _, cached := serviceEnvCache[svcHostname]; !cached {
+				services, listErr := client.ListServices(ctx, projectID)
+				if listErr != nil {
+					return nil, fmt.Errorf("list services: %w", listErr)
+				}
+				svc, resolveErr := FindService(services, svcHostname)
+				if resolveErr != nil {
+					return nil, resolveErr
+				}
+				envs, getErr := client.GetServiceEnv(ctx, svc.ID)
+				if getErr != nil {
+					return nil, fmt.Errorf("fetch env vars for %s: %w", svcHostname, getErr)
+				}
+				serviceEnvCache[svcHostname] = envs
 			}
-			svc, resolveErr := FindService(services, svcHostname)
-			if resolveErr != nil {
-				return nil, resolveErr
+
+			val := findEnvValue(serviceEnvCache[svcHostname], varName)
+			if val == "" {
+				hadUnresolved = true
+				// Keep the original `${...}` literal in the buffer so a
+				// partial-resolution diff is at least debuggable, but the
+				// envName goes on the unresolved list and the whole call
+				// fails at the outer aggregate check below.
+				sb.WriteString(rawValue[m[0]:m[1]])
+			} else {
+				sb.WriteString(val)
 			}
-			envs, getErr := client.GetServiceEnv(ctx, svc.ID)
-			if getErr != nil {
-				return nil, fmt.Errorf("fetch env vars for %s: %w", svcHostname, getErr)
-			}
-			serviceEnvCache[svcHostname] = envs
+			last = m[1]
 		}
+		sb.WriteString(rawValue[last:])
 
-		val := findEnvValue(serviceEnvCache[svcHostname], varName)
-		if val == "" {
+		if hadUnresolved {
 			unresolvedKeys = append(unresolvedKeys, envName)
 		} else {
-			resolved[envName] = val
+			resolved[envName] = sb.String()
 		}
 	}
 
