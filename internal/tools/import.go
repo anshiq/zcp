@@ -132,9 +132,28 @@ func gateOverrideOnFailedHistory(
 		if err != nil {
 			return nil, err
 		}
-		if failed != nil {
-			failedTargets = append(failedTargets, hostname)
+		if failed == nil {
+			continue
 		}
+		failedTargets = append(failedTargets, hostname)
+		// Snapshot the live env-var keys so wouldDestroy.envVars reflects
+		// what override would actually erase. Best-effort: a lookup or
+		// fetch failure leaves the key list empty for this host (the
+		// gate still fires on the failed history alone). Keys only —
+		// values stay on the platform.
+		svc, lookupErr := ops.LookupService(ctx, client, projectID, hostname)
+		if lookupErr != nil {
+			continue
+		}
+		envs, fetchErr := ops.FetchServiceEnv(ctx, client, svc.ID)
+		if fetchErr != nil {
+			continue
+		}
+		keys := make([]string, 0, len(envs))
+		for _, e := range envs {
+			keys = append(keys, e.Key)
+		}
+		envVarsByService[hostname] = keys
 	}
 
 	if len(failedTargets) == 0 {

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -71,7 +72,7 @@ func ValidateDestructiveAck(ack *DestructiveAck, expected DiagnosedDestruction) 
 		return platform.NewPlatformError(
 			platform.ErrDiagnosisRequired,
 			fmt.Sprintf("%s requires confirmDestructive after diagnosis", expected.Operation),
-			"Read zerops_logs / zerops_events for the targets, then re-call with confirmDestructive matching wouldDestroy.",
+			suggestionForFirstCallRefusal(expected),
 		)
 	}
 	if ack.Operation != expected.Operation {
@@ -137,4 +138,53 @@ func WithWouldDestroy(d *DiagnosedDestruction) ErrorOption {
 // Used by error-message construction in destructive-tool handlers.
 func (d DiagnosedDestruction) JoinTargets() string {
 	return strings.Join(d.Targets, ", ")
+}
+
+// suggestionForFirstCallRefusal builds the agent-facing suggestion string
+// for the ack==nil case: a one-line restate of "read logs first" plus a
+// copy-paste JSON snippet of the next tool call. Pre-fix the agent had to
+// hand-construct the ack payload from the wouldDestroy shape; reading the
+// suggestion now produces a directly executable retry.
+//
+// Operation→tool mapping is centralized so each new destructive operation
+// (env-set, env-delete, ...) drops in one switch arm and the snippet
+// stays in sync with the actual handler signature.
+func suggestionForFirstCallRefusal(expected DiagnosedDestruction) string {
+	const fallback = "Read zerops_logs / zerops_events for the targets, then re-call with confirmDestructive matching wouldDestroy."
+	tool, paramPrefix := retryShapeFor(expected.Operation)
+	if tool == "" {
+		return fallback
+	}
+	type ackPayload struct {
+		Operation           string   `json:"operation"`
+		AcknowledgedTargets []string `json:"acknowledgedTargets"`
+	}
+	blob, err := json.Marshal(ackPayload{
+		Operation:           expected.Operation,
+		AcknowledgedTargets: append([]string{}, expected.Targets...),
+	})
+	if err != nil {
+		return fallback
+	}
+	return fmt.Sprintf("After reading logs, retry with: %s %sconfirmDestructive=%s", tool, paramPrefix, string(blob))
+}
+
+// retryShapeFor maps an Operation token to the tool call shape used by
+// the suggestion text. Empty tool means "no recipe yet for this
+// operation" — caller falls back to generic guidance.
+//
+// Add new destructive operations here as they land (env-set, env-delete).
+func retryShapeFor(operation string) (tool, paramPrefix string) {
+	shape, ok := retryShapes[operation]
+	if !ok {
+		return "", ""
+	}
+	return shape.tool, shape.paramPrefix
+}
+
+var retryShapes = map[string]struct {
+	tool        string
+	paramPrefix string
+}{
+	importOverrideOperation: {tool: "zerops_import", paramPrefix: "override=true "},
 }

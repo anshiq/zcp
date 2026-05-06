@@ -24,6 +24,10 @@ func TestImport_OverrideOnFailedRequiresAck(t *testing.T) {
 		WithServices([]platform.ServiceStack{
 			{ID: "s1", Name: "api", Status: platform.ServiceStatusReadyToDeploy},
 		}).
+		WithServiceEnv("s1", []platform.EnvVar{
+			{ID: "e1", Key: "DATABASE_URL", Content: "postgresql://..."},
+			{ID: "e2", Key: "APP_KEY", Content: "secret"},
+		}).
 		WithAppVersionEvents([]platform.AppVersionEvent{
 			{ID: "av-1", ServiceStackID: "s1", Status: platform.BuildStatusBuildFailed, Created: "2026-05-05T10:00:00Z"},
 		})
@@ -55,6 +59,121 @@ func TestImport_OverrideOnFailedRequiresAck(t *testing.T) {
 	}
 	if len(wire.WouldDestroy.Targets) != 1 || wire.WouldDestroy.Targets[0] != "api" {
 		t.Errorf("Targets = %v", wire.WouldDestroy.Targets)
+	}
+	// envVars population was a Phase-7 fix: pre-fix the gate built an
+	// empty envVarsByService map and ALWAYS reported wouldDestroy.envVars=[]
+	// even when override would erase real keys.
+	if got := wire.WouldDestroy.Loss.EnvVars; len(got) != 2 {
+		t.Fatalf("WouldDestroy.Loss.EnvVars = %v, want 2 keys", got)
+	}
+	gotKeys := map[string]bool{}
+	for _, k := range wire.WouldDestroy.Loss.EnvVars {
+		gotKeys[k] = true
+	}
+	for _, want := range []string{"DATABASE_URL", "APP_KEY"} {
+		if !gotKeys[want] {
+			t.Errorf("WouldDestroy.Loss.EnvVars missing %q (got %v)", want, wire.WouldDestroy.Loss.EnvVars)
+		}
+	}
+}
+
+// TestGateOverrideOnFailedHistory_PopulatesEnvVarLoss pins the multi-
+// service path: env vars on every failed target aggregate (dedup-by-key)
+// into wouldDestroy.envVars. Previously the gate built but never
+// populated envVarsByService — the Loss surface always reported zero env
+// vars regardless of how much state would actually disappear.
+func TestGateOverrideOnFailedHistory_PopulatesEnvVarLoss(t *testing.T) {
+	t.Parallel()
+	mock := platform.NewMock().
+		WithServices([]platform.ServiceStack{
+			{ID: "s1", Name: "api", Status: platform.ServiceStatusReadyToDeploy},
+			{ID: "s2", Name: "worker", Status: platform.ServiceStatusReadyToDeploy},
+		}).
+		WithServiceEnv("s1", []platform.EnvVar{
+			{ID: "e1", Key: "DATABASE_URL", Content: "postgresql://..."},
+			{ID: "e2", Key: "SHARED", Content: "from-api"},
+		}).
+		WithServiceEnv("s2", []platform.EnvVar{
+			{ID: "e3", Key: "QUEUE_URL", Content: "nats://..."},
+			{ID: "e4", Key: "SHARED", Content: "from-worker"},
+		}).
+		WithAppVersionEvents([]platform.AppVersionEvent{
+			{ID: "av-1", ServiceStackID: "s1", Status: platform.BuildStatusBuildFailed, Created: "2026-05-05T10:00:00Z"},
+			{ID: "av-2", ServiceStackID: "s2", Status: platform.BuildStatusDeployFailed, Created: "2026-05-05T11:00:00Z"},
+		})
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.1"}, nil)
+	RegisterImport(srv, mock, "proj-1", testEngine(t), "", nil)
+
+	yaml := "services:\n  - hostname: api\n    type: nodejs@22\n  - hostname: worker\n    type: nodejs@22\n"
+	result := callTool(t, srv, "zerops_import", map[string]any{
+		"content":  yaml,
+		"override": true,
+	})
+	if !result.IsError {
+		t.Fatalf("expected IsError, got success: %s", getTextContent(t, result))
+	}
+	var wire ErrorWire
+	if err := json.Unmarshal([]byte(getTextContent(t, result)), &wire); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if wire.WouldDestroy == nil {
+		t.Fatalf("WouldDestroy missing")
+	}
+	got := map[string]bool{}
+	for _, k := range wire.WouldDestroy.Loss.EnvVars {
+		got[k] = true
+	}
+	want := []string{"DATABASE_URL", "SHARED", "QUEUE_URL"}
+	if len(got) != len(want) {
+		t.Errorf("Loss.EnvVars deduped count = %d, want %d (got %v)", len(got), len(want), wire.WouldDestroy.Loss.EnvVars)
+	}
+	for _, k := range want {
+		if !got[k] {
+			t.Errorf("Loss.EnvVars missing %q (got %v)", k, wire.WouldDestroy.Loss.EnvVars)
+		}
+	}
+}
+
+// TestGateOverrideOnFailedHistory_SuggestionIncludesRetryShape pins that
+// the first-call rejection's suggestion text includes a copy-pasteable
+// JSON snippet of the next zerops_import call (operation +
+// acknowledgedTargets matching wouldDestroy). Pre-fix the agent had to
+// hand-construct the ack payload from the wouldDestroy shape.
+func TestGateOverrideOnFailedHistory_SuggestionIncludesRetryShape(t *testing.T) {
+	t.Parallel()
+	mock := platform.NewMock().
+		WithServices([]platform.ServiceStack{
+			{ID: "s1", Name: "api", Status: platform.ServiceStatusReadyToDeploy},
+		}).
+		WithAppVersionEvents([]platform.AppVersionEvent{
+			{ID: "av-1", ServiceStackID: "s1", Status: platform.BuildStatusBuildFailed, Created: "2026-05-05T10:00:00Z"},
+		})
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.1"}, nil)
+	RegisterImport(srv, mock, "proj-1", testEngine(t), "", nil)
+
+	yaml := "services:\n  - hostname: api\n    type: nodejs@22\n"
+	result := callTool(t, srv, "zerops_import", map[string]any{
+		"content":  yaml,
+		"override": true,
+	})
+	if !result.IsError {
+		t.Fatalf("expected IsError")
+	}
+	var wire ErrorWire
+	if err := json.Unmarshal([]byte(getTextContent(t, result)), &wire); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	wants := []string{
+		"zerops_import",
+		`"operation":"import-override"`,
+		`"acknowledgedTargets":["api"]`,
+	}
+	for _, want := range wants {
+		if !strings.Contains(wire.Suggestion, want) {
+			t.Errorf("Suggestion missing %q; full suggestion:\n%s", want, wire.Suggestion)
+		}
 	}
 }
 
