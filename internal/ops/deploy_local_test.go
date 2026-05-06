@@ -150,6 +150,48 @@ func TestDeployLocal_ZcliNotFound(t *testing.T) {
 	}
 }
 
+// TestDeployLocal_AcceptsZeropsYaml pins that the canonical .yaml
+// extension is accepted. Pre-fix the inline stat checked only .yml,
+// so an agent following the platform docs (which uniformly say
+// `zerops.yaml`) hit a confusing "zerops.yaml not found" error
+// while the file was sitting right there. flow-eval-local suite
+// 20260506-123002 burned five tool calls on this trap.
+func TestDeployLocal_AcceptsZeropsYaml(t *testing.T) {
+	mock := platform.NewMock().
+		WithServices([]platform.ServiceStack{
+			{
+				ID:   "svc-1",
+				Name: "appstage",
+				ServiceStackTypeInfo: platform.ServiceTypeInfo{
+					ServiceStackTypeVersionName: "nodejs@22",
+				},
+			},
+		})
+
+	mr := &mockRunner{runResults: []runResult{{}, {}}}
+	restore := OverrideRunnerForTest(mr)
+	defer restore()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "zerops.yaml"),
+		[]byte("zerops:\n  - setup: appstage\n    build:\n      base: nodejs@22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := DeployLocal(context.Background(), mock, "proj-1", localTestAuth(),
+		"appstage", "", dir)
+	if err != nil {
+		t.Fatalf("zerops.yaml file present must be accepted; got: %v", err)
+	}
+	if result.Status != "BUILD_TRIGGERED" {
+		t.Errorf("status = %s, want BUILD_TRIGGERED", result.Status)
+	}
+}
+
+// TestDeployLocal_MissingZeropsYml pins the truthful failure shape:
+// when neither extension is present the error MUST mention both so the
+// agent doesn't spelunk for a file under one name when the tool was
+// looking for another.
 func TestDeployLocal_MissingZeropsYml(t *testing.T) {
 	mock := platform.NewMock().
 		WithServices([]platform.ServiceStack{{ID: "svc-1", Name: "app"}})
@@ -172,6 +214,9 @@ func TestDeployLocal_MissingZeropsYml(t *testing.T) {
 	}
 	if pe.Code != platform.ErrInvalidParameter {
 		t.Errorf("code = %s, want %s", pe.Code, platform.ErrInvalidParameter)
+	}
+	if !strings.Contains(pe.Message, "zerops.yaml") || !strings.Contains(pe.Message, "zerops.yml") {
+		t.Errorf("message must mention BOTH extensions tried (truthful failure); got: %q", pe.Message)
 	}
 }
 

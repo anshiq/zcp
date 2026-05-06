@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/zeropsio/zcp/internal/auth"
@@ -102,14 +103,24 @@ func DeployLocal(
 		workingDir = "."
 	}
 
-	// 4. Validate zerops.yaml.
-	zeropsYmlPath := workingDir + "/zerops.yml"
-	if _, statErr := os.Stat(zeropsYmlPath); statErr != nil {
-		return nil, platform.NewPlatformError(
-			platform.ErrInvalidParameter,
-			fmt.Sprintf("zerops.yaml not found at %s", workingDir),
-			"Create zerops.yaml in your project directory. Use zerops_knowledge for examples.",
-		)
+	// 4. Validate zerops.yaml exists. Try .yaml first (canonical Zerops
+	// convention — what every doc, recipe, and atom uses), fall back to
+	// .yml for repos created before the rename. Mirrors the same
+	// fallback ParseZeropsYml does in deploy_validate.go; the error
+	// must name BOTH extensions so an agent doesn't spelunk for a file
+	// under one name when the tool was looking for another (flow-eval-
+	// local suite 20260506-123002 burned five tool calls on the .yml-
+	// only check + .yaml-named error message disagreement).
+	yamlPath := filepath.Join(workingDir, "zerops.yaml")
+	if _, statErr := os.Stat(yamlPath); statErr != nil {
+		ymlPath := filepath.Join(workingDir, "zerops.yml")
+		if _, statErr := os.Stat(ymlPath); statErr != nil {
+			return nil, platform.NewPlatformError(
+				platform.ErrInvalidParameter,
+				fmt.Sprintf("zerops.yaml not found in %s (also tried zerops.yml)", workingDir),
+				"Create zerops.yaml in your project directory. Use zerops_knowledge for examples.",
+			)
+		}
 	}
 
 	setupName := setup
