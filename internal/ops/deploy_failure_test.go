@@ -132,10 +132,11 @@ func TestClassifyDeployFailure_Prepare(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name         string
-		input        FailureInput
-		wantCategory topology.FailureClass
-		wantSignal   string
+		name                     string
+		input                    FailureInput
+		wantCategory             topology.FailureClass
+		wantSignal               string
+		wantNotInSuggestedAction string
 	}{
 		{
 			name: "missing-sudo",
@@ -182,6 +183,23 @@ func TestClassifyDeployFailure_Prepare(t *testing.T) {
 			wantCategory: topology.FailureClassStart,
 			wantSignal:   "phase:prepare",
 		},
+		// H3a parity: prepare baseline must condition SuggestedAction on
+		// hasLogs same way the build baseline does (commit 410c419f).
+		// Empty BuildLogs → SuggestedAction must NOT direct the agent at
+		// non-existent buildLogs. Codex fresh review surfaced this as the
+		// missed test gap from the original H3a sweep — the production
+		// fix is correct (deploy_failure.go:143-153 already conditions),
+		// just untested. This row regression-locks it.
+		{
+			name: "prepare-baseline-empty-logs",
+			input: FailureInput{
+				Phase:     PhasePrepare,
+				BuildLogs: nil,
+			},
+			wantCategory:             topology.FailureClassStart,
+			wantSignal:               "phase:prepare",
+			wantNotInSuggestedAction: "Read buildLogs",
+		},
 	}
 
 	for _, tc := range cases {
@@ -189,6 +207,11 @@ func TestClassifyDeployFailure_Prepare(t *testing.T) {
 			t.Parallel()
 			got := ClassifyDeployFailure(tc.input)
 			assertClassification(t, got, tc.wantCategory, tc.wantSignal, "")
+			if tc.wantNotInSuggestedAction != "" && got != nil &&
+				strings.Contains(got.SuggestedAction, tc.wantNotInSuggestedAction) {
+				t.Errorf("SuggestedAction %q must not contain %q (logs unavailable)",
+					got.SuggestedAction, tc.wantNotInSuggestedAction)
+			}
 		})
 	}
 }
