@@ -8,6 +8,52 @@ import (
 	"github.com/zeropsio/zcp/internal/ops"
 )
 
+// TestDeployFailedResponseFields_NoBuildLogsContradiction pins H3a: when a
+// build fails before any logs were captured (sub-10s exits), the deploy
+// response carries `suggestion`, `nextActions`, and `failureClassification.
+// suggestedAction` — all three reach the agent. None of them may tell the
+// agent to read buildLogs (they don't exist), or the response is
+// self-contradicting.
+//
+// Surfaced by greenfield-fullstack-multi-runtime in eval suite
+// 20260505-151844: suggestion correctly said "build logs unavailable",
+// nextActions said "check buildLogs in response for build output",
+// classifier baseline.SuggestedAction said "Read buildLogs for the exact
+// stderr". Three fields, two contradictions.
+func TestDeployFailedResponseFields_NoBuildLogsContradiction(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		status string
+	}{
+		{"build-failed", statusBuildFailed},
+		{"prepare-failed", statusPreparingRuntimeFailed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			suggestion := deploySuggestionForStatus(tt.status, false /* hasLogs */)
+			nextAction := deployNextActionForStatus(tt.status, false /* hasLogs */)
+
+			for fieldName, body := range map[string]string{
+				"suggestion":  suggestion,
+				"nextActions": nextAction,
+			} {
+				if strings.Contains(body, "buildLogs") || strings.Contains(strings.ToLower(body), "build logs") {
+					if !strings.Contains(strings.ToLower(body), "unavailable") &&
+						!strings.Contains(strings.ToLower(body), "not captured") &&
+						!strings.Contains(strings.ToLower(body), "no logs") {
+						t.Errorf("%s/%s field references buildLogs without acknowledging absence: %q",
+							tt.name, fieldName, body)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestNextActions_ContainToolNames(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -125,19 +125,33 @@ func ClassifyDeployFailure(in FailureInput) *topology.DeployFailureClassificatio
 func baselineForPhase(in FailureInput) *topology.DeployFailureClassification {
 	switch in.Phase {
 	case PhaseBuild:
-		return &topology.DeployFailureClassification{
-			Category:        topology.FailureClassBuild,
-			LikelyCause:     "Build pipeline failed; no recognized log pattern matched.",
-			SuggestedAction: "Read buildLogs for the exact stderr; fix buildCommands or dependencies in zerops.yaml.",
-			Signals:         []string{"phase:build"},
+		cls := &topology.DeployFailureClassification{
+			Category:    topology.FailureClassBuild,
+			LikelyCause: "Build pipeline failed; no recognized log pattern matched.",
+			Signals:     []string{"phase:build"},
 		}
+		// H3a: when the build container exits before any logs were
+		// captured (sub-10s failures), pointing the agent at buildLogs
+		// they don't have is a self-contradiction with the deploy
+		// response's hasLogs-aware suggestion field.
+		if len(in.BuildLogs) > 0 {
+			cls.SuggestedAction = "Read buildLogs for the exact stderr; fix buildCommands or dependencies in zerops.yaml."
+		} else {
+			cls.SuggestedAction = "Build logs were not captured before the container exited. Re-check zerops.yaml buildCommands syntax + manifests; consider simplifying buildCommands to bisect the failing step."
+		}
+		return cls
 	case PhasePrepare:
-		return &topology.DeployFailureClassification{
-			Category:        topology.FailureClassStart,
-			LikelyCause:     "run.prepareCommands exited non-zero before deploy files arrived.",
-			SuggestedAction: "Read buildLogs for the failing prepare step; check sudo prefix on package installs.",
-			Signals:         []string{"phase:prepare"},
+		cls := &topology.DeployFailureClassification{
+			Category:    topology.FailureClassStart,
+			LikelyCause: "run.prepareCommands exited non-zero before deploy files arrived.",
+			Signals:     []string{"phase:prepare"},
 		}
+		if len(in.BuildLogs) > 0 {
+			cls.SuggestedAction = "Read buildLogs for the failing prepare step; check sudo prefix on package installs."
+		} else {
+			cls.SuggestedAction = "Prepare logs were not captured. Verify sudo prefix on package installs (containers run as zerops user); double-check Alpine package names (e.g. php84-pdo_pgsql for php@8.4)."
+		}
+		return cls
 	case PhaseInit:
 		return &topology.DeployFailureClassification{
 			Category:        topology.FailureClassStart,

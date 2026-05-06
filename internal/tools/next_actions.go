@@ -8,10 +8,11 @@ import (
 
 // NextActions constants provide actionable follow-up instructions for LLMs.
 const (
-	nextActionDeploySuccess   = "Check logs: zerops_logs severity=ERROR since=5m."
-	nextActionDeployBuildFail = "Build failed — check buildLogs in response for build output. Fix and redeploy."
-	nextActionImportSuccess   = "Verify services: zerops_discover. Continue workflow: mount dev, discover env vars, write code, then deploy."
-	nextActionImportPartial   = "Check failed processes: zerops_events. Fix and re-import via zerops_workflow."
+	nextActionDeploySuccess         = "Check logs: zerops_logs severity=ERROR since=5m."
+	nextActionDeployBuildFail       = "Build failed — check buildLogs in response for build output. Fix and redeploy."
+	nextActionDeployBuildFailNoLogs = "Build failed and no logs were captured (sub-10s container exit, common for early-failing buildCommands). Re-check zerops.yaml buildCommands syntax + dependency manifests; if recurring, simplify to bisect the failing step."
+	nextActionImportSuccess         = "Verify services: zerops_discover. Continue workflow: mount dev, discover env vars, write code, then deploy."
+	nextActionImportPartial         = "Check failed processes: zerops_events. Fix and re-import via zerops_workflow."
 	// nextActionEnvSetSuccess + nextActionEnvDeleteSuccess removed — zerops_env
 	// now auto-restarts affected services and crafts its own per-call message
 	// listing what was restarted (see envChangeResult.NextActions).
@@ -70,7 +71,18 @@ func deploySuggestionForStatus(status string, hasLogs bool) string {
 }
 
 // deployNextActionForStatus returns the next-action for a non-ACTIVE status.
-func deployNextActionForStatus(status string) string {
+//
+// `hasLogs` is the same signal threaded into deploySuggestionForStatus —
+// the two response fields populate from the same DeployResult and reach
+// the agent together; one telling them to "check buildLogs in response"
+// while the other says "build logs unavailable" is a self-contradiction
+// that surfaced in greenfield-fullstack-multi-runtime (eval suite
+// 20260505-151844).
+//
+// statusDeployFailed deliberately does NOT branch on hasLogs — runtime
+// stderr requires a separate `zerops_logs` call (runtime container,
+// post-init), the deploy response never carries it.
+func deployNextActionForStatus(status string, hasLogs bool) string {
 	switch status {
 	case statusDeployFailed:
 		return "DEPLOY failed — fix run.initCommands in zerops.yaml (NOT buildCommands). Fetch runtime stderr: zerops_logs serviceHostname={target} severity=ERROR since=5m. If the error mentions /build/source paths, a build-time cache (e.g. config:cache) baked build-container paths into the runtime — move that cache command to run.initCommands."
@@ -80,7 +92,13 @@ func deployNextActionForStatus(status string) string {
 			"(2) Alpine PHP extensions match version: php84-<ext> for php@8.4; " +
 			"(3) prepareCommands run BEFORE deploy files arrive at /var/www — use addToRunPrepare to ship needed files to /home/zerops/."
 	case statusBuildFailed:
+		if hasLogs {
+			return nextActionDeployBuildFail
+		}
+		return nextActionDeployBuildFailNoLogs
+	}
+	if hasLogs {
 		return nextActionDeployBuildFail
 	}
-	return nextActionDeployBuildFail
+	return nextActionDeployBuildFailNoLogs
 }

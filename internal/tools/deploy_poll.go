@@ -102,7 +102,7 @@ func pollDeployBuild(
 		}
 		hasLogs := len(result.BuildLogs) > 0 || len(result.RuntimeLogs) > 0
 		result.Suggestion = deploySuggestionForStatus(event.Status, hasLogs)
-		result.NextActions = deployNextActionForStatus(event.Status)
+		result.NextActions = deployNextActionForStatus(event.Status, hasLogs)
 		// Classifier reads phase + logs and emits a structured next-step.
 		// Best-effort: nil when no signal/baseline matched (won't fire — every
 		// known failure phase has a baseline). Lifecycle: this writes

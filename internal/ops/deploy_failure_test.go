@@ -22,11 +22,12 @@ func TestClassifyDeployFailure_Build(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name         string
-		input        FailureInput
-		wantCategory topology.FailureClass
-		wantSignal   string
-		wantInCause  string
+		name                     string
+		input                    FailureInput
+		wantCategory             topology.FailureClass
+		wantSignal               string
+		wantInCause              string
+		wantNotInSuggestedAction string
 	}{
 		{
 			name: "command-not-found",
@@ -96,6 +97,21 @@ func TestClassifyDeployFailure_Build(t *testing.T) {
 			wantCategory: topology.FailureClassBuild,
 			wantSignal:   "phase:build",
 		},
+		// H3a: when build fails before any logs were captured (sub-10s
+		// exits), baseline must NOT direct the agent to read buildLogs —
+		// they're empty. Eval evidence:
+		// greenfield-fullstack-multi-runtime in suite 20260505-151844.
+		{
+			name: "build-baseline-empty-logs",
+			input: FailureInput{
+				Phase:     PhaseBuild,
+				Status:    platform.BuildStatusBuildFailed,
+				BuildLogs: nil,
+			},
+			wantCategory:             topology.FailureClassBuild,
+			wantSignal:               "phase:build",
+			wantNotInSuggestedAction: "Read buildLogs",
+		},
 	}
 
 	for _, tc := range cases {
@@ -103,6 +119,11 @@ func TestClassifyDeployFailure_Build(t *testing.T) {
 			t.Parallel()
 			got := ClassifyDeployFailure(tc.input)
 			assertClassification(t, got, tc.wantCategory, tc.wantSignal, tc.wantInCause)
+			if tc.wantNotInSuggestedAction != "" && got != nil &&
+				strings.Contains(got.SuggestedAction, tc.wantNotInSuggestedAction) {
+				t.Errorf("SuggestedAction %q must not contain %q (logs unavailable)",
+					got.SuggestedAction, tc.wantNotInSuggestedAction)
+			}
 		})
 	}
 }
