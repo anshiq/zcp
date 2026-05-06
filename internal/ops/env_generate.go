@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/zeropsio/zcp/internal/platform"
@@ -18,11 +19,43 @@ import (
 // blocking: even if probes fail, the .env file still lands. An empty
 // hint means every probed host was reachable (or no probe happened
 // because ServiceStack carried no port info).
+//
+// OmittedPlatformKeys lists project-level keys that the platform-
+// internals denylist filtered out before writing .env (deploy tokens,
+// CDN URLs, runtime placeholders). Surfaced for transparency so an
+// agent can confirm a missing key was filtered intentionally rather
+// than missing from the project. Yaml-defined overrides for the same
+// names still ship to .env and are NOT listed here.
 type EnvDotenvResult struct {
-	Path      string `json:"path"`
-	Services  int    `json:"services"`
-	Variables int    `json:"variables"`
-	VPNHint   string `json:"vpnHint,omitempty"`
+	Path                string   `json:"path"`
+	Services            int      `json:"services"`
+	Variables           int      `json:"variables"`
+	VPNHint             string   `json:"vpnHint,omitempty"`
+	OmittedPlatformKeys []string `json:"omittedPlatformKeys,omitempty"`
+}
+
+// platformInternalKeys is the denylist of project-level keys that ship
+// inside a Zerops project for platform-internal use and have no value
+// for a local .env (deploy tokens, CDN URLs, runtime-only placeholders).
+// A user `git add -A` after generate-dotenv would otherwise publish the
+// deploy token; verified live in suite 20260506-145922.
+//
+// The list is symmetric across container and local — these keys are
+// platform-internal in any environment.
+//
+// NOT denylisted: APP_KEY, APP_SECRET, framework auto-secrets — local
+// apps still need those. The .env remains secret-bearing on purpose;
+// gitignore is the right protection. The denylist only removes keys
+// that would never be read by user code.
+var platformInternalKeys = map[string]bool{
+	"ZCP_API_KEY":           true,
+	"envIsolation":          true,
+	"sshIsolation":          true,
+	"apiCdnUrl":             true,
+	"staticCdnUrl":          true,
+	"storageCdnUrl":         true,
+	"zeropsSubdomainHost":   true,
+	"zeropsSubdomainString": true,
 }
 
 // maxRefExpansionDepth caps recursive expansion regardless of cycle
@@ -260,15 +293,26 @@ func EnvGenerateDotenv(
 	}
 
 	// Append project-level env vars (auto-injected in containers, needed in .env for local dev).
+	// Yaml-defined keys (already in `resolved`) shadow project-level vars
+	// of the same name — including keys on the platform-internals denylist,
+	// because explicit user intent wins. Project-level values that match
+	// the denylist are skipped and surfaced via OmittedPlatformKeys.
 	projectEnvs, err := client.GetProjectEnv(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch project env vars: %w", err)
 	}
+	var omittedPlatformKeys []string
 	for _, pe := range projectEnvs {
-		if _, exists := resolved[pe.Key]; !exists {
-			resolved[pe.Key] = pe.Content
+		if _, exists := resolved[pe.Key]; exists {
+			continue
 		}
+		if platformInternalKeys[pe.Key] {
+			omittedPlatformKeys = append(omittedPlatformKeys, pe.Key)
+			continue
+		}
+		resolved[pe.Key] = pe.Content
 	}
+	sort.Strings(omittedPlatformKeys)
 
 	// Write .env file.
 	var sb strings.Builder
@@ -287,9 +331,10 @@ func EnvGenerateDotenv(
 	}
 
 	result := &EnvDotenvResult{
-		Path:      envPath,
-		Services:  len(serviceEnvCache),
-		Variables: len(resolved),
+		Path:                envPath,
+		Services:            len(serviceEnvCache),
+		Variables:           len(resolved),
+		OmittedPlatformKeys: omittedPlatformKeys,
 	}
 
 	// Best-effort VPN probe. Only runs when we cross-referenced managed

@@ -453,6 +453,147 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 	}
 }
 
+// TestEnvGenerateDotenv_PlatformInternalsFiltered pins that auto-injected
+// platform keys (ZCP_API_KEY deploy token, *CdnUrl, env/ssh isolation,
+// zeropsSubdomain* runtime placeholders) never land in the local .env.
+// The user's typical fat-finger `git add -A` despite .gitignore would
+// publish the deploy token. Verified live in suite 20260506-145922 —
+// the .env contained ZCP_API_KEY pre-fix.
+func TestEnvGenerateDotenv_PlatformInternalsFiltered(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_KEY: base64:secret
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "proj-1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{{
+			ID: "svc-app", Name: "app", ProjectID: "proj-1", Status: "RUNNING",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"},
+		}}).
+		WithProjectEnv([]platform.EnvVar{
+			{ID: "p1", Key: "ZCP_API_KEY", Content: "deploy-token-leak"},
+			{ID: "p2", Key: "envIsolation", Content: "service"},
+			{ID: "p3", Key: "sshIsolation", Content: "service"},
+			{ID: "p4", Key: "apiCdnUrl", Content: "https://api.cdn.zerops.io"},
+			{ID: "p5", Key: "staticCdnUrl", Content: "https://static.cdn.zerops.io"},
+			{ID: "p6", Key: "storageCdnUrl", Content: "https://storage.cdn.zerops.io"},
+			{ID: "p7", Key: "zeropsSubdomainHost", Content: "app-1234"},
+			{ID: "p8", Key: "zeropsSubdomainString", Content: "app-1234.zerops.io"},
+			{ID: "p9", Key: "USER_PROJECT_VAR", Content: "kept"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir)
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+
+	body, err := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	lines := strings.Split(string(body), "\n")
+	denied := []string{
+		"ZCP_API_KEY",
+		"envIsolation",
+		"sshIsolation",
+		"apiCdnUrl",
+		"staticCdnUrl",
+		"storageCdnUrl",
+		"zeropsSubdomainHost",
+		"zeropsSubdomainString",
+	}
+	for _, key := range denied {
+		prefix := key + "="
+		for _, line := range lines {
+			if strings.HasPrefix(line, prefix) {
+				t.Errorf(".env has denylisted line %q (full body:\n%s)", line, string(body))
+			}
+		}
+	}
+	// User-defined yaml var stays.
+	if !strings.Contains(string(body), "APP_KEY=base64:secret") {
+		t.Errorf(".env missing user yaml var APP_KEY; got:\n%s", string(body))
+	}
+	// User project-level var stays.
+	if !strings.Contains(string(body), "USER_PROJECT_VAR=kept") {
+		t.Errorf(".env missing user project var; got:\n%s", string(body))
+	}
+
+	// OmittedPlatformKeys exposes what was filtered for transparency.
+	if len(result.OmittedPlatformKeys) != len(denied) {
+		t.Errorf("OmittedPlatformKeys len = %d, want %d (got %v)", len(result.OmittedPlatformKeys), len(denied), result.OmittedPlatformKeys)
+	}
+	keysSet := make(map[string]bool, len(result.OmittedPlatformKeys))
+	for _, k := range result.OmittedPlatformKeys {
+		keysSet[k] = true
+	}
+	for _, key := range denied {
+		if !keysSet[key] {
+			t.Errorf("OmittedPlatformKeys missing %q (got %v)", key, result.OmittedPlatformKeys)
+		}
+	}
+}
+
+// TestEnvGenerateDotenv_YamlRefOverridesDenylist — when the user defines
+// a denylisted key explicitly in their yaml `run.envVariables` they meant
+// it (e.g. they want a local-only override of a platform-internal name).
+// The denylist filters auto-appended project-level vars only.
+func TestEnvGenerateDotenv_YamlRefOverridesDenylist(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        ZCP_API_KEY: my-explicit-override
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "proj-1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{{
+			ID: "svc-app", Name: "app", ProjectID: "proj-1", Status: "RUNNING",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"},
+		}}).
+		WithProjectEnv([]platform.EnvVar{
+			{ID: "p1", Key: "ZCP_API_KEY", Content: "deploy-token-from-platform"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir)
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	if !strings.Contains(string(body), "ZCP_API_KEY=my-explicit-override") {
+		t.Errorf("yaml override missing; got:\n%s", string(body))
+	}
+	if strings.Contains(string(body), "deploy-token-from-platform") {
+		t.Errorf("project ZCP_API_KEY leaked despite yaml override; got:\n%s", string(body))
+	}
+	// Yaml override means we did NOT filter the project key — it was simply
+	// shadowed. Don't surface it in OmittedPlatformKeys.
+	for _, k := range result.OmittedPlatformKeys {
+		if k == "ZCP_API_KEY" {
+			t.Errorf("OmittedPlatformKeys included %q despite yaml override", k)
+		}
+	}
+}
+
 // TestEnvGenerateDotenv_ListServices_CalledOncePerBatch pins the contract
 // that ref expansion fetches the project's service list once at the start
 // of EnvGenerateDotenv — not lazily per cache miss in the recursive
