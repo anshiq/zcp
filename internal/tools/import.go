@@ -179,7 +179,6 @@ func gateOverrideOnFailedHistory(
 				Action: "fetch",
 				Args: map[string]string{
 					"serviceHostname": failedTargets[0],
-					"facility":        "application",
 					"since":           "15m",
 				},
 			}),

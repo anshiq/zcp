@@ -77,6 +77,44 @@ func TestImport_OverrideOnFailedRequiresAck(t *testing.T) {
 	}
 }
 
+// TestImport_RecoveryHint_NoFacilityArg pins that the recovery hint on
+// a diagnose-before-destruct refusal does not carry a "facility" arg.
+// LogsInput has no Facility field; the MCP layer rejects unknown args
+// and the agent's recovery call would fail before the gate could even
+// help. Pre-fix the hint included `"facility": "application"`.
+func TestImport_RecoveryHint_NoFacilityArg(t *testing.T) {
+	t.Parallel()
+	mock := platform.NewMock().
+		WithServices([]platform.ServiceStack{
+			{ID: "s1", Name: "api", Status: platform.ServiceStatusReadyToDeploy},
+		}).
+		WithAppVersionEvents([]platform.AppVersionEvent{
+			{ID: "av-1", ServiceStackID: "s1", Status: platform.BuildStatusBuildFailed, Created: "2026-05-05T10:00:00Z"},
+		})
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.1"}, nil)
+	RegisterImport(srv, mock, "proj-1", testEngine(t), "", nil)
+
+	yaml := "services:\n  - hostname: api\n    type: nodejs@22\n"
+	result := callTool(t, srv, "zerops_import", map[string]any{
+		"content":  yaml,
+		"override": true,
+	})
+	if !result.IsError {
+		t.Fatalf("expected IsError")
+	}
+	var wire ErrorWire
+	if err := json.Unmarshal([]byte(getTextContent(t, result)), &wire); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if wire.Recovery == nil {
+		t.Fatalf("Recovery missing")
+	}
+	if _, has := wire.Recovery.Args["facility"]; has {
+		t.Errorf("Recovery.Args includes forbidden 'facility' key (LogsInput has no Facility field): %v", wire.Recovery.Args)
+	}
+}
+
 // TestGateOverrideOnFailedHistory_PopulatesEnvVarLoss pins the multi-
 // service path: env vars on every failed target aggregate (dedup-by-key)
 // into wouldDestroy.envVars. Previously the gate built but never

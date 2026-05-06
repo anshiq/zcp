@@ -46,7 +46,7 @@ func envInputSchema() *jsonschema.Schema {
 		},
 		"serviceHostname": {
 			Type:        "string",
-			Description: "Hostname of the service to operate on. Required for get/set/delete unless project=true. Ignored by generate-dotenv (which reads zerops.yaml instead).",
+			Description: "Hostname of the service to operate on. Required for get/set/delete unless project=true. Required by generate-dotenv to identify which setup block in zerops.yaml's run.envVariables to resolve.",
 		},
 		"project": flexBoolSchema("Set to true to operate on project-level env vars instead of service-level. Valid for get/set/delete."),
 		"variables": {

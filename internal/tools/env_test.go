@@ -11,6 +11,30 @@ import (
 	"github.com/zeropsio/zcp/internal/platform"
 )
 
+// TestEnvSchema_ServiceHostname_RequiredDescription pins that the
+// schema documents serviceHostname as required by generate-dotenv (which
+// reads zerops.yaml's run.envVariables for that hostname). The earlier
+// "Ignored by generate-dotenv" wording mismatched the implementation —
+// EnvGenerateDotenv refuses with ErrInvalidParameter when serviceHostname
+// is empty.
+func TestEnvSchema_ServiceHostname_RequiredDescription(t *testing.T) {
+	t.Parallel()
+	schema := envInputSchema()
+	prop, ok := schema.Properties["serviceHostname"]
+	if !ok || prop == nil {
+		t.Fatalf("serviceHostname property missing from envInputSchema")
+	}
+	if strings.Contains(prop.Description, "Ignored by generate-dotenv") {
+		t.Errorf("description still claims generate-dotenv ignores serviceHostname; got: %s", prop.Description)
+	}
+	if !strings.Contains(prop.Description, "generate-dotenv") {
+		t.Errorf("description should explain generate-dotenv usage; got: %s", prop.Description)
+	}
+	if !strings.Contains(prop.Description, "run.envVariables") {
+		t.Errorf("description should name run.envVariables (the canonical schema location); got: %s", prop.Description)
+	}
+}
+
 // TestEnvTool_GetAction_Success is the new happy path for `get` — the
 // action is now first-class, delegating to the same discover path that
 // zerops_discover uses. Before the v7 post-mortem fix, agents tried
