@@ -1,4 +1,4 @@
-.PHONY: help setup test test-short test-race lint lint-fast lint-local vet build install all clean release release-patch catalog-sync e2e-build e2e-deploy e2e-zcp e2e-zcp-fast e2e-zcp-deploy
+.PHONY: help setup test test-short test-race lint lint-fast lint-local vet build install all clean release release-patch catalog-sync e2e-build e2e-deploy e2e-zcp e2e-zcp-fast e2e-zcp-deploy flow-eval-local
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -74,6 +74,10 @@ build: ## Build binary
 
 install: build ## Build + install zcp to /usr/local/bin/zcp (uses sudo on Mac)
 	sudo install -m 0755 bin/zcp /usr/local/bin/zcp
+
+flow-eval-local: install ## Run local-mode behavioral scenario (ID=<scenario-id> required)
+	@test -n "$(ID)" || (echo "ID=<scenario-id> required, e.g.: make flow-eval-local ID=local-auto-adopt-node-postgres-first-deploy" >&2 && exit 1)
+	zcp eval behavioral run-local --id $(ID)
 
 clean: ## Remove build artifacts
 	rm -rf bin/ builds/
