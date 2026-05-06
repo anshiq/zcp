@@ -284,14 +284,32 @@ func (r *Runner) spawnClaudeResumeAppend(ctx context.Context, sessionID, userMsg
 	return r.execClaude(ctx, args, transcriptFile, true)
 }
 
+// claudeEnv builds the env for the spawned `claude` process. nil = inherit
+// os.Environ() (container mode default — agent reads/writes the container's
+// own ephemeral ~/.claude/). When ClaudeHome is set (local mode), returns
+// os.Environ() + HOME override so claude resolves ~/.claude/ inside the
+// sandbox while inheriting ZCP_API_KEY, PATH, and the rest. The append
+// wins because exec uses the LAST occurrence of a duplicate key (Go
+// docs: "If Env contains duplicate environment keys, only the last value
+// in the slice for each duplicate key is used").
+func (r *Runner) claudeEnv() []string {
+	if r.config.ClaudeHome == "" {
+		return nil
+	}
+	return append(os.Environ(), "HOME="+r.config.ClaudeHome)
+}
+
 // execClaude is the shared exec path for spawn variants. Output goes to logFile;
 // when appendMode is true the file is opened O_APPEND so multi-call resumes
-// accumulate in one transcript. cwd respects RunnerConfig.WorkDir.
+// accumulate in one transcript. cwd respects RunnerConfig.WorkDir; HOME is
+// overridden to claudeHome (when set) for sandboxed isolation of the agent's
+// auto-memory, sessions, and CLAUDE.md auto-discovery.
 func (r *Runner) execClaude(ctx context.Context, args []string, logFile string, appendMode bool) error {
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if r.config.WorkDir != "" {
 		cmd.Dir = r.config.WorkDir
 	}
+	cmd.Env = r.claudeEnv()
 	var out *os.File
 	var err error
 	if appendMode {
