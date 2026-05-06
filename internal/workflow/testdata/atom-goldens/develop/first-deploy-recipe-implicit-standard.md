@@ -1,6 +1,6 @@
 ---
 id: develop/first-deploy-recipe-implicit-standard
-atomIds: [develop-first-deploy-intro, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-first-deploy-env-vars, develop-first-deploy-scaffold-yaml, develop-http-diagnostic, develop-implicit-webserver, develop-platform-rules-common, develop-deploy-files-self-deploy, develop-first-deploy-write-app, develop-knowledge-pointers, develop-auto-close-semantics, develop-first-deploy-execute, develop-verify-matrix, develop-first-deploy-asset-pipeline-container, develop-first-deploy-promote-stage, develop-first-deploy-verify, develop-strategy-awareness]
+atomIds: [develop-first-deploy-intro, develop-tool-preload, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-first-deploy-env-vars, develop-first-deploy-scaffold-yaml, develop-http-diagnostic, develop-implicit-webserver, develop-platform-rules-common, develop-deploy-files-self-deploy, develop-first-deploy-write-app, develop-knowledge-pointers, develop-auto-close-semantics, develop-first-deploy-execute, develop-verify-matrix, develop-first-deploy-asset-pipeline-container, develop-first-deploy-promote-stage, develop-first-deploy-verify, develop-strategy-awareness]
 description: "develop-active, mode=standard pair, php-nginx implicit-webserver runtime + db, never-deployed; bootstrap arrived via recipe route."
 ---
 ### You're in the develop first-deploy branch
@@ -38,6 +38,21 @@ The strategy-awareness section of this response covers all three axes
 
 Don't skip to edits before the first deploy lands — HTTP probes
 return errors before any code is delivered.
+
+---
+
+### Pre-load tool schemas in one batch
+
+`zerops_*` tools are deferred — schemas load via `ToolSearch`. If you
+arrived in develop fresh (compaction recovery, or develop without prior
+bootstrap), batch-load before iterating:
+
+```
+ToolSearch query="select:zerops_workflow,zerops_deploy,zerops_verify,zerops_logs,zerops_events,zerops_manage,zerops_env,zerops_discover"
+```
+
+`select:` accepts a comma-separated list and returns all matching
+schemas in one round-trip. Loading sequentially defeats the point.
 
 ---
 

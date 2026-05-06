@@ -23,6 +23,7 @@ Atoms with zero scenarios are flagged `TODO: explicit decision required` — Pha
 | `bootstrap-resume` | 1 | idle/incomplete-resume |
 | `bootstrap-route-options` | 4 | idle/adopt-only, idle/bootstrapped-with-managed, idle/empty, idle/incomplete-resume |
 | `bootstrap-runtime-classes` | 1 | bootstrap/classic/discover-standard-dynamic |
+| `bootstrap-tool-preload` | 4 | bootstrap/adopt/discover-existing-pair, bootstrap/classic/discover-standard-dynamic, bootstrap/recipe/close, bootstrap/recipe/provision |
 | `bootstrap-verify` | 1 | bootstrap/recipe/close |
 | `bootstrap-wait-active` | 1 | bootstrap/classic/provision-local |
 | `develop-auto-close-semantics` | 12 | develop/closed-auto-complete, develop/closed-iteration-cap, develop/failure-tier-3, develop/first-deploy-dev-dynamic-container, develop/first-deploy-recipe-implicit-standard, develop/git-push-configured-webhook, develop/git-push-unconfigured, develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/post-adopt-standard-unset, develop/standard-auto-pair, develop/steady-dev-auto-container |
@@ -75,6 +76,7 @@ Atoms with zero scenarios are flagged `TODO: explicit decision required` — Pha
 | `develop-static-workflow` | 0 | TODO: explicit decision required (scenario or `coverageExempt:` frontmatter) |
 | `develop-strategy-awareness` | 9 | develop/failure-tier-3, develop/first-deploy-dev-dynamic-container, develop/first-deploy-recipe-implicit-standard, develop/git-push-configured-webhook, develop/git-push-unconfigured, develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/standard-auto-pair, develop/steady-dev-auto-container |
 | `develop-strategy-review` | 1 | develop/post-adopt-standard-unset |
+| `develop-tool-preload` | 10 | develop/failure-tier-3, develop/first-deploy-dev-dynamic-container, develop/first-deploy-recipe-implicit-standard, develop/git-push-configured-webhook, develop/git-push-unconfigured, develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/post-adopt-standard-unset, develop/standard-auto-pair, develop/steady-dev-auto-container |
 | `develop-verify-matrix` | 10 | develop/failure-tier-3, develop/first-deploy-dev-dynamic-container, develop/first-deploy-recipe-implicit-standard, develop/git-push-configured-webhook, develop/git-push-unconfigured, develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/post-adopt-standard-unset, develop/standard-auto-pair, develop/steady-dev-auto-container |
 | `export-classify-envs` | 1 | export/classify-prompt |
 | `export-intro` | 7 | export/classify-prompt, export/git-push-setup-required, export/publish-ready, export/scaffold-required, export/scope-prompt, export/validation-failed, export/variant-prompt |

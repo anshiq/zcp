@@ -1,6 +1,6 @@
 ---
 id: develop/mode-expansion-source
-atomIds: [develop-intro, develop-change-drives-deploy, develop-close-mode-auto-deploy-container, develop-deploy-modes, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-checklist-simple-mode, develop-close-mode-auto, develop-close-mode-auto-workflow-simple, develop-deploy-files-self-deploy, develop-knowledge-pointers, develop-auto-close-semantics, develop-verify-matrix, develop-platform-rules-container, develop-strategy-awareness, develop-mode-expansion, develop-close-mode-auto-simple]
+atomIds: [develop-intro, develop-tool-preload, develop-change-drives-deploy, develop-close-mode-auto-deploy-container, develop-deploy-modes, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-checklist-simple-mode, develop-close-mode-auto, develop-close-mode-auto-workflow-simple, develop-deploy-files-self-deploy, develop-knowledge-pointers, develop-auto-close-semantics, develop-verify-matrix, develop-platform-rules-container, develop-strategy-awareness, develop-mode-expansion, develop-close-mode-auto-simple]
 description: "Deployed simple-mode service running close-mode auto — single-slot non-mutating runtime, common starter shape for a worker / API before considering pair expansion. S8 differentiation: ModeSimple (vs steady-dev's ModeDev) covers the simple arm of develop-mode-expansion's modes:[dev,simple] axis."
 ---
 ### Development & Deploy
@@ -8,6 +8,21 @@ description: "Deployed simple-mode service running close-mode auto — single-sl
 Infrastructure is provisioned and at least one runtime already has a
 successful first deploy on record. You're in the edit loop: discover
 the current state, implement the user's request, redeploy, verify.
+
+---
+
+### Pre-load tool schemas in one batch
+
+`zerops_*` tools are deferred — schemas load via `ToolSearch`. If you
+arrived in develop fresh (compaction recovery, or develop without prior
+bootstrap), batch-load before iterating:
+
+```
+ToolSearch query="select:zerops_workflow,zerops_deploy,zerops_verify,zerops_logs,zerops_events,zerops_manage,zerops_env,zerops_discover"
+```
+
+`select:` accepts a comma-separated list and returns all matching
+schemas in one round-trip. Loading sequentially defeats the point.
 
 ---
 

@@ -132,8 +132,11 @@ func TestScenario_S1_NewProjectRecipeMatch(t *testing.T) {
 	// provision step the route is committed and the framing overview is
 	// no longer the relevant content; bootstrap-recipe-import owns the
 	// step-specific imperative.)
+	// bootstrap-tool-preload is also pinned here — it's the first-turn
+	// ToolSearch batching hint for container-env bootstrap sessions.
 	requireAtomIDsContain(t, "S1 bootstrap-active", matchesAfter,
-		"bootstrap-recipe-import")
+		"bootstrap-recipe-import",
+		"bootstrap-tool-preload")
 }
 
 func TestScenario_S5_MixedBootstrappedAndUnmanaged(t *testing.T) {
@@ -295,7 +298,10 @@ func TestScenario_S4_DevelopStrategyReviewAfterFirstDeploy(t *testing.T) {
 	}
 	// develop-strategy-review is the load-bearing atom for the
 	// after-first-deploy / strategy-unset gate.
-	requireAtomIDsContain(t, "S4", matches, "develop-strategy-review")
+	// develop-tool-preload pinned here — fires on every develop-active
+	// container session to recommend ToolSearch batching for compaction
+	// recovery / fresh-develop callers.
+	requireAtomIDsContain(t, "S4", matches, "develop-strategy-review", "develop-tool-preload")
 
 	// Plan routes to deploy as long as no deploy attempt is recorded in the
 	// work session. The strategy-review gate is expressed by the atom layer.

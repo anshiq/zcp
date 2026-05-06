@@ -1,6 +1,6 @@
 ---
 id: bootstrap/recipe/close
-atomIds: [bootstrap-recipe-close, bootstrap-verify, bootstrap-close]
+atomIds: [bootstrap-recipe-close, bootstrap-tool-preload, bootstrap-verify, bootstrap-close]
 description: "Recipe route, close step — bootstrap finishing, agent prompted for handoff to develop."
 ---
 ### Close the recipe bootstrap
@@ -16,6 +16,21 @@ After close, every service the recipe provisioned appears in the envelope with `
 ```
 zerops_workflow action="start" workflow="develop"
 ```
+
+---
+
+### Pre-load tool schemas in one batch
+
+`zerops_*` tools are deferred — schemas load via `ToolSearch`. Loading
+them sequentially burns 2-3 round-trips before the first real action.
+On the first turn, batch-load:
+
+```
+ToolSearch query="select:zerops_workflow,zerops_discover,zerops_import,zerops_deploy,zerops_verify,zerops_logs,zerops_events,zerops_dev_server"
+```
+
+`select:` accepts a comma-separated list and returns all matching
+schemas in one round-trip. Loading sequentially defeats the point.
 
 ---
 

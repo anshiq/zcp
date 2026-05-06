@@ -1,6 +1,6 @@
 ---
 id: develop/post-adopt-standard-unset
-atomIds: [develop-intro, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-strategy-review, develop-deploy-files-self-deploy, develop-dynamic-runtime-start-container, develop-knowledge-pointers, develop-standard-unset-iterate, develop-standard-unset-promote-stage, develop-auto-close-semantics, develop-verify-matrix, develop-platform-rules-container]
+atomIds: [develop-intro, develop-tool-preload, develop-change-drives-deploy, develop-deploy-modes, develop-env-var-channels, develop-http-diagnostic, develop-platform-rules-common, develop-strategy-review, develop-deploy-files-self-deploy, develop-dynamic-runtime-start-container, develop-knowledge-pointers, develop-standard-unset-iterate, develop-standard-unset-promote-stage, develop-auto-close-semantics, develop-verify-matrix, develop-platform-rules-container]
 description: "Adopted standard pair, both halves running, close-mode never picked."
 ---
 ### Development & Deploy
@@ -8,6 +8,21 @@ description: "Adopted standard pair, both halves running, close-mode never picke
 Infrastructure is provisioned and at least one runtime already has a
 successful first deploy on record. You're in the edit loop: discover
 the current state, implement the user's request, redeploy, verify.
+
+---
+
+### Pre-load tool schemas in one batch
+
+`zerops_*` tools are deferred — schemas load via `ToolSearch`. If you
+arrived in develop fresh (compaction recovery, or develop without prior
+bootstrap), batch-load before iterating:
+
+```
+ToolSearch query="select:zerops_workflow,zerops_deploy,zerops_verify,zerops_logs,zerops_events,zerops_manage,zerops_env,zerops_discover"
+```
+
+`select:` accepts a comma-separated list and returns all matching
+schemas in one round-trip. Loading sequentially defeats the point.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: bootstrap/classic/discover-standard-dynamic
-atomIds: [bootstrap-intro, bootstrap-classic-plan-dynamic, bootstrap-classic-plan-static, bootstrap-mode-prompt, bootstrap-runtime-classes]
+atomIds: [bootstrap-intro, bootstrap-tool-preload, bootstrap-classic-plan-dynamic, bootstrap-classic-plan-static, bootstrap-mode-prompt, bootstrap-runtime-classes]
 description: "Classic route, discover step — agent inspecting an empty project for a dynamic runtime in mode=standard."
 ---
 Bootstrap is **infrastructure-only**: create services, mount filesystems, discover env var keys, write the evidence file. No application code, no `zerops.yaml`, no first deploy — those belong to the develop workflow.
@@ -12,6 +12,21 @@ Three routes:
 - **Adopt** — attach `ServiceMeta` to existing non-managed services; no infra change.
 
 Route is chosen at bootstrap start and persists for the session. The 3 steps are `discover → provision → close` in fixed order; follow the step list from `zerops_workflow action="status"`. (This overview fires only at the discover step — once route + plan are committed and you advance to `provision` / `close`, the step-specific atoms own the rendered guidance.)
+
+---
+
+### Pre-load tool schemas in one batch
+
+`zerops_*` tools are deferred — schemas load via `ToolSearch`. Loading
+them sequentially burns 2-3 round-trips before the first real action.
+On the first turn, batch-load:
+
+```
+ToolSearch query="select:zerops_workflow,zerops_discover,zerops_import,zerops_deploy,zerops_verify,zerops_logs,zerops_events,zerops_dev_server"
+```
+
+`select:` accepts a comma-separated list and returns all matching
+schemas in one round-trip. Loading sequentially defeats the point.
 
 ---
 
