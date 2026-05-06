@@ -238,9 +238,9 @@ func TestScenario_S3_AdoptOnlyUnmanaged(t *testing.T) {
 
 	if plan.Primary.Tool != "zerops_workflow" ||
 		plan.Primary.Args["action"] != "start" ||
-		plan.Primary.Args["workflow"] != "develop" ||
-		plan.Primary.Args["intent"] != "adopt" {
-		t.Errorf("S3 only-unmanaged: expected primary=adopt-via-develop, got tool=%q args=%v",
+		plan.Primary.Args["workflow"] != "bootstrap" ||
+		plan.Primary.Args["route"] != "adopt" {
+		t.Errorf("S3 only-unmanaged: expected primary=bootstrap+route=adopt (H2 routing fix), got tool=%q args=%v",
 			plan.Primary.Tool, plan.Primary.Args)
 	}
 	if plan.Primary.Label != "Adopt unmanaged runtimes" {

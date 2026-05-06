@@ -380,10 +380,19 @@ func startDevelopAction() NextAction {
 }
 
 func adoptRuntimesAction() NextAction {
+	// H2 root fix: adoption is a bootstrap route per `route.go:23`
+	// (BootstrapRouteAdopt) and per `router.go:62-69` (FlowOffering for
+	// unmanaged runtimes routes through bootstrap). The previous
+	// emission `workflow=develop intent=adopt` clashed with develop's
+	// own PREREQUISITE_MISSING rejection ("Run bootstrap first... route=
+	// adopt"), forcing every adopt-only scenario through a wasted
+	// develop-rejection round-trip. Eval evidence:
+	// existing-standard-appdev-only-reminders + verify-subdomain-recovery
+	// + recover-failed-buildfromgit-missing-dep in suite 20260505-151844.
 	return NextAction{
 		Label:     "Adopt unmanaged runtimes",
 		Tool:      "zerops_workflow",
-		Args:      map[string]string{"action": "start", "workflow": "develop", "intent": "adopt"},
+		Args:      map[string]string{"action": "start", "workflow": "bootstrap", "route": "adopt"},
 		Rationale: "Existing runtime services have no bootstrap metadata yet.",
 	}
 }

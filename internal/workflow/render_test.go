@@ -23,7 +23,7 @@ func sampleIdlePlan() *Plan {
 			{
 				Label: "Adopt unmanaged runtimes",
 				Tool:  "zerops_workflow",
-				Args:  map[string]string{"action": "start", "workflow": "develop", "intent": "adopt"},
+				Args:  map[string]string{"action": "start", "workflow": "bootstrap", "route": "adopt"},
 			},
 			{
 				Label: "Add more services",

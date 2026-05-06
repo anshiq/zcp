@@ -65,8 +65,8 @@ func TestBuildPlan_IdleWithAdoptableAndBootstrapped(t *testing.T) {
 	if len(plan.Alternatives) != 2 {
 		t.Fatalf("alternatives = %d, want [adopt, add-services]", len(plan.Alternatives))
 	}
-	if plan.Alternatives[0].Args["intent"] != "adopt" {
-		t.Errorf("alt[0] intent = %q, want adopt", plan.Alternatives[0].Args["intent"])
+	if plan.Alternatives[0].Args["workflow"] != "bootstrap" || plan.Alternatives[0].Args["route"] != "adopt" {
+		t.Errorf("alt[0] = %v, want workflow=bootstrap route=adopt (H2 routing fix)", plan.Alternatives[0].Args)
 	}
 }
 
@@ -78,8 +78,8 @@ func TestBuildPlan_IdleOnlyUnmanagedRuntimes(t *testing.T) {
 		{Hostname: "legacy", RuntimeClass: topology.RuntimeDynamic, Bootstrapped: false},
 	}
 	plan := BuildPlan(env)
-	if plan.Primary.Args["intent"] != "adopt" {
-		t.Errorf("primary intent = %q, want adopt", plan.Primary.Args["intent"])
+	if plan.Primary.Args["workflow"] != "bootstrap" || plan.Primary.Args["route"] != "adopt" {
+		t.Errorf("primary = %v, want workflow=bootstrap route=adopt (H2 routing fix)", plan.Primary.Args)
 	}
 }
 
