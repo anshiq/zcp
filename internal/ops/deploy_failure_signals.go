@@ -245,6 +245,26 @@ func buildSignalLibrary() []failureSignal {
 			apiCode:    platform.ErrGitTokenMissing,
 			build:      transportGitTokenMissing,
 		},
+		// H1: zcli's own arg-validation rejects pre-push when a
+		// multi-setup zerops.yaml is deployed without an explicit
+		// --setup. The error reaches us as SSH stderr; pre-fix the
+		// transport baseline emitted "category=network" because no
+		// signal matched. Same defect class as the credential sweep in
+		// commit 821f6113 (zcli-auth → category=credential, not network).
+		{
+			id:            "transport:zcli-setup-mismatch",
+			phases:        []DeployFailurePhase{PhaseTransport},
+			logSubstrings: []string{"Cannot find corresponding setup"},
+			requireLog:    true,
+			build:         transportZCLISetupMismatch,
+		},
+		{
+			id:         "transport:zcli-unknown-runtime",
+			phases:     []DeployFailurePhase{PhaseTransport},
+			logRegex:   regexp.MustCompile(`unknown (?:base|stack) [\w@.\-]+`),
+			requireLog: true,
+			build:      transportZCLIUnknownRuntime,
+		},
 
 		// =================================================================
 		// PREFLIGHT phase
@@ -492,6 +512,24 @@ func transportZCLITTYRequired(_ string) *topology.DeployFailureClassification {
 		LikelyCause:     "zcli prompted for terminal input while running over SSH (no TTY).",
 		SuggestedAction: "ZCP issues this internally — if you see this, file a bug. As a workaround, retry the deploy; transient state in zcli's config can trigger a one-time prompt.",
 		Signals:         []string{"transport:zcli-tty-required"},
+	}
+}
+
+func transportZCLISetupMismatch(_ string) *topology.DeployFailureClassification {
+	return &topology.DeployFailureClassification{
+		Category:        topology.FailureClassConfig,
+		LikelyCause:     "zerops.yaml has multiple setup blocks and the deploy didn't pick one — zcli rejected before pushing.",
+		SuggestedAction: "Pass setup=<block-name> on zerops_deploy. The valid values are the setup keys declared in zerops.yaml (one block per `setup:` line); they name a build/run profile, not the source/target hostname or recipe role. Cross-deploy from a dev runtime to its stage half typically uses setup=prod or setup=<stage-block-name>.",
+		Signals:         []string{"transport:zcli-setup-mismatch"},
+	}
+}
+
+func transportZCLIUnknownRuntime(match string) *topology.DeployFailureClassification {
+	return &topology.DeployFailureClassification{
+		Category:        topology.FailureClassConfig,
+		LikelyCause:     fmt.Sprintf("zerops.yaml references a runtime image zcli doesn't recognize (%q).", match),
+		SuggestedAction: "Verify the base/stack name against `zerops_knowledge` runtime listing. Common traps: php-nginx is run-only — build.base must be `php@<ver>` (build-capable) paired with `run.base: php-nginx@<ver>` (webserver). Static and nginx are run-only too — build.base needs a real builder runtime (nodejs / go / python).",
+		Signals:         []string{"transport:zcli-unknown-runtime"},
 	}
 }
 

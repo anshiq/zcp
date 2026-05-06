@@ -401,6 +401,41 @@ func TestClassifyDeployFailure_Transport(t *testing.T) {
 			wantCategory: topology.FailureClassNetwork,
 			wantSignal:   "phase:transport",
 		},
+		// H1: zcli's local arg validation rejects multi-setup yaml when
+		// --setup is omitted. zcli reaches the platform fine, then refuses
+		// to push because no setup block matches the target. Pre-fix, this
+		// fell through to PhaseTransport baseline → category=network +
+		// "Transport-layer error reaching the platform" — sent agents
+		// chasing connectivity issues for a yaml-config error. Eval
+		// evidence: cross-deploy-stage-promote-from-dev in suite
+		// 20260505-151844. Same defect class as
+		// `transport:zcli-auth-failed` (commit 821f6113 swept that one).
+		{
+			name: "zcli-setup-mismatch",
+			input: FailureInput{
+				Phase: PhaseTransport,
+				TransportErr: &platform.SSHExecError{
+					Hostname: "appdev",
+					Output:   "✓ Parsing zerops.yml\n✗ ERR Cannot find corresponding setup in zerops.yaml, please select with --setup",
+					Err:      errors.New("exit status 1"),
+				},
+			},
+			wantCategory: topology.FailureClassConfig,
+			wantSignal:   "transport:zcli-setup-mismatch",
+		},
+		{
+			name: "zcli-unknown-base",
+			input: FailureInput{
+				Phase: PhaseTransport,
+				TransportErr: &platform.SSHExecError{
+					Hostname: "appdev",
+					Output:   "✗ ERR unknown base php-nginx@8.4 — see zcli stack list",
+					Err:      errors.New("exit status 1"),
+				},
+			},
+			wantCategory: topology.FailureClassConfig,
+			wantSignal:   "transport:zcli-unknown-runtime",
+		},
 		// B13: git identity errors used to fall through to the network
 		// baseline because no signal recognized them. The agent then
 		// chased "Transport-layer error reaching the platform" hints
