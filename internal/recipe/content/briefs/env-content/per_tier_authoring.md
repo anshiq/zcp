@@ -103,6 +103,84 @@ The voice is *"this is the choice; here's the mechanism; you can
 change it for your needs IF X"* — declarative + invitation, never
 hedge.
 
+## Porter signals MUST be reachable within THIS tier's deployment shape
+
+A friendly-authority phrasing names an adapt path — a knob the porter
+turns to handle a different deployment context. The knob must be
+something the porter changes WITHIN this tier's yaml, not a path that
+crosses the tier ladder.
+
+**Within-tier knobs (adapt paths — porter signals OK):**
+
+- `verticalAutoscaling.minRam` / `maxRam` — RAM headroom adjustments
+- `minFreeRamGB` — spike-buffer tuning
+- `objectStorageSize` — storage quota
+- `backup` retention windows
+- `enableSubdomainAccess` toggle
+- `initCommands` script keys (`.v1` → `.v2` re-run lever)
+- Per-service environment-variable values
+
+**Cross-tier moves (NOT adapt paths — DO NOT NAME):**
+
+- `mode: NON_HA` ↔ `mode: HA`
+- `minContainers` jumps that cross the tier ladder's design points
+- `corePackage` tier changes
+- Runtime base swaps (`@22` → newer LTS at a tier rollover)
+- Adding/removing a service from the canonical set
+
+The recipe's tier ladder ALREADY encodes the cross-tier moves — the
+porter graduates by re-importing a higher tier yaml, not by editing
+this one. A comment that says *"Switch mode to HA at tier 5 if X"*
+names a path the porter takes by changing tiers, not by editing this
+yaml; that's tier-promotion narrative, not friendly-authority.
+
+### Worked example — db block at tier 3
+
+**BAD** — names a cross-tier knob as an adapt path:
+
+```yaml
+- hostname: db
+  type: postgresql@18
+  mode: NON_HA
+  # Single instance — restoring means downtime; acceptable at stage.
+  # Switch mode to HA once you need failover without a manual-restore
+  # window.
+  verticalAutoscaling:
+    minRam: 0.25
+    minFreeRamGB: 0.25
+```
+
+The "Switch mode to HA" sentence reaches across the tier ladder — porter
+graduates to tier 5 to get HA, doesn't edit this yaml. Forbidden.
+
+**GOOD** — porter signal stays within-tier:
+
+```yaml
+- hostname: db
+  type: postgresql@18
+  mode: NON_HA
+  # Single instance — restoring means downtime; acceptable at stage.
+  # `minFreeRamGB` headroom prevents swap thrash during rehearsal load
+  # spikes; bump verticalAutoscaling.minRam if QA load runs push the
+  # working set above 0.25 GB.
+  verticalAutoscaling:
+    minRam: 0.25
+    minFreeRamGB: 0.25
+```
+
+The adapt path is `minRam` — a knob the porter changes in THIS yaml.
+Cross-tier mode flips have no porter-signal home in service blocks.
+
+### When the only friendly-authority candidate is cross-tier
+
+Some service blocks at lower tiers genuinely have no within-tier adapt
+path — single-instance redis at tier 2/3 with a fixed RAM target, no
+backup config, no auto-scaling. **One adapt phrasing tied to a real
+within-tier knob is fine** even if it's the only one; if NO within-tier
+knob exists, the block scores 7.0 (mechanism-only) and that's the
+honest outcome. Better to ship 7.0 than to invent a cross-tier
+graduation as fake friendly-authority.
+
 ### Worked example — runtime block (api/worker/app)
 
 **BEFORE** — engineering-spec, 7.0 floor:

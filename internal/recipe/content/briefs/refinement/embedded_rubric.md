@@ -210,9 +210,19 @@ For each phrasing, also assert:
 | Phrasings per surface | Score |
 |---|---|
 | 0 | 7.0 |
-| 1–2 | 8.0 |
-| 3+ with named signals | 8.5 |
-| ≥3 with named signals AND each tied to a real adapt path the porter would actually take | 9.0 |
+| 1–2 within-tier | 8.0 |
+| 3+ within-tier with named signals | 8.5 |
+| ≥3 within-tier with named signals AND each tied to a real adapt path the porter would take by editing THIS yaml | 9.0 |
+
+The `within-tier` qualifier is load-bearing — a phrasing tied to a
+cross-tier graduation (`Switch mode to HA at tier 5`, `Bump
+minContainers at the next tier`, `Outgrow this tier when X`) does NOT
+count toward the score, regardless of how concrete its named signal is.
+Cross-tier moves are encoded by the recipe's tier ladder — the porter
+re-imports a higher tier yaml; they don't edit this one. See
+`briefs/env-content/per_tier_authoring.md §Porter signals MUST be
+reachable within THIS tier's deployment shape` for the full within /
+cross knob lists.
 
 Surfaces where voice is inapplicable (KB, CLAUDE.md, root README,
 codebase intro) are scored `n/a` and excluded from aggregate.
@@ -614,23 +624,38 @@ point of having six criteria.
 
 ---
 
-### Tier-promotion narrative (forbidden per spec §108)
+### Tier-promotion narrative — README extracts AND yaml service-block comments
 
-Tier README extracts must NOT include narratives that frame the
-current tier as a stepping-stone to a higher tier. Concretely,
-fail any extract matching (case-insensitive):
+Tier README extracts AND yaml comments inside service blocks must NOT
+include narratives that frame the current tier as a stepping-stone to
+a higher tier. The forbidden-shape REGEX list (case-insensitive) is the
+TEST signal, not the rule; the rule is "porter signals stay within the
+current tier's deployment shape" (per per_tier_authoring §Porter signals
+MUST be reachable within THIS tier's deployment shape).
+
+This is a refinement-time Notice — the agent ACTs on flagged fragments
+by rewriting per the within-tier scope teaching. Finalize closure does
+NOT block on this regex set.
+
+Concretely, flag any extract OR yaml service-block comment matching
+(case-insensitive):
 - `\bpromote\b.*\btier\b`
 - `\boutgrow\w*`
 - `\bupgrade from tier\b`
 - `\bgraduate (to|out of)\b`
 - `\bmove (up|to) tier\b`
+- `\bswitch (mode|.*)\s+(to|at)\s+.*\b(tier|HA)\b`
+- `\bbump\b.*\b(at|to)\s+tier\s*\d`
 
 Each tier stands on its own merits. Trade-offs go in the intro;
-upgrade narratives don't.
+upgrade narratives don't. yaml service-block comments name within-tier
+adapt paths only (see per_tier_authoring within-tier knob list); cross-
+tier moves are encoded by the tier ladder, not by yaml comments.
 
-When refinement finds a match, hold the surface and rewrite to
-remove the promotion framing — describe what THIS tier is for,
-not what tier it leads to.
+When refinement finds a match, hold the surface and rewrite to remove
+the promotion framing — describe what THIS tier is for, what within-
+tier knob the porter turns to handle different load shapes, NOT what
+tier it leads to.
 
 ---
 

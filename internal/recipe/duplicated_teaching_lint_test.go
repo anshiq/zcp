@@ -113,10 +113,11 @@ var loadBearingRules = []loadBearingRule{
 	{
 		// Run-22 R1-RC-7. Tier-promotion narrative ban (refinement
 		// rubric is the authority). Fingerprint: the H3 heading shape
-		// in embedded_rubric.md.
+		// in embedded_rubric.md. Run-29 Fix #3 broadened the heading to
+		// cover yaml service-block comments AND READMEs.
 		name:          "tier-promotion narrative ban",
 		canonicalAtom: "internal/recipe/content/briefs/refinement/embedded_rubric.md",
-		fingerprintRE: regexp.MustCompile(`(?m)^### Tier-promotion narrative \(forbidden per spec §108\)\s*$`),
+		fingerprintRE: regexp.MustCompile(`(?m)^### Tier-promotion narrative — README extracts AND yaml service-block comments\s*$`),
 	},
 	{
 		// Run-22 R1-RC-2. Same-key shadow trap teaching at scaffold
