@@ -452,6 +452,123 @@ func TestResolveEnvelopeMode(t *testing.T) {
 	}
 }
 
+// TestResolveEnvelopeMode_LocalStage_ProjectsAsModeLocalStage pins the
+// fix for the silent atom-miss: local-stage's stageHostname used to
+// project as ModeStage, so atoms with `modes: [..., local-stage]` (no
+// `stage`) never matched.
+func TestResolveEnvelopeMode_LocalStage_ProjectsAsModeLocalStage(t *testing.T) {
+	t.Parallel()
+	meta := &ServiceMeta{
+		Hostname:      "myproject",
+		StageHostname: "apistage",
+		Mode:          topology.PlanModeLocalStage,
+	}
+	if got := resolveEnvelopeMode(meta, "apistage"); got != topology.ModeLocalStage {
+		t.Errorf("local-stage stage half = %q, want %q", got, topology.ModeLocalStage)
+	}
+}
+
+// TestResolveEnvelopeMode_ContainerStandard_StillProjectsAsModeStage —
+// regression: the fix above only widens projection when meta.Mode is
+// PlanModeLocalStage. Container standard pairs still project the stage
+// half as ModeStage so existing standard atoms keep matching.
+func TestResolveEnvelopeMode_ContainerStandard_StillProjectsAsModeStage(t *testing.T) {
+	t.Parallel()
+	meta := &ServiceMeta{
+		Hostname:      "appdev",
+		StageHostname: "appstage",
+		Mode:          topology.PlanModeStandard,
+	}
+	if got := resolveEnvelopeMode(meta, "appstage"); got != topology.ModeStage {
+		t.Errorf("standard stage half = %q, want %q", got, topology.ModeStage)
+	}
+}
+
+// TestBuildServiceSnapshots_LocalOnly_AppendsSyntheticSnapshot pins that
+// a PlanModeLocalOnly meta produces a project-keyed snapshot even when
+// no live platform service shares its hostname. Without this, atoms
+// with `modes: [..., local-only]` had no service to fire on for an
+// unlinked local-only project (the local CWD has no Zerops-side
+// representation).
+func TestBuildServiceSnapshots_LocalOnly_AppendsSyntheticSnapshot(t *testing.T) {
+	t.Parallel()
+	metas := []*ServiceMeta{
+		{
+			Hostname:        "myproject",
+			Mode:            topology.PlanModeLocalOnly,
+			CloseDeployMode: topology.CloseModeUnset,
+			GitPushState:    topology.GitPushUnconfigured,
+			BootstrappedAt:  fixedTime.Format(time.RFC3339),
+		},
+	}
+	// No platform service for "myproject" — local-only has no Zerops-side
+	// runtime by definition. Synthetic snapshot fills the gap.
+	services := []platform.ServiceStack{
+		{
+			ID: "s1", Name: "db",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "postgresql@16"},
+		},
+	}
+	snaps := buildServiceSnapshots(services, metas, nil, "")
+	var found *ServiceSnapshot
+	for i := range snaps {
+		if snaps[i].Hostname == "myproject" {
+			found = &snaps[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected synthetic snapshot for local-only meta; got %d snapshots: %+v", len(snaps), snaps)
+	}
+	if found.Mode != topology.ModeLocalOnly {
+		t.Errorf("synthetic snapshot Mode = %q, want %q", found.Mode, topology.ModeLocalOnly)
+	}
+	if found.CloseDeployMode != topology.CloseModeUnset {
+		t.Errorf("synthetic snapshot CloseDeployMode = %q, want unset", found.CloseDeployMode)
+	}
+	if found.GitPushState != topology.GitPushUnconfigured {
+		t.Errorf("synthetic snapshot GitPushState = %q, want unconfigured", found.GitPushState)
+	}
+	if found.RuntimeClass != "" {
+		t.Errorf("synthetic snapshot has RuntimeClass = %q; local-only has no linked runtime, want empty", found.RuntimeClass)
+	}
+}
+
+// TestBuildServiceSnapshots_ContainerStandard_NoSynthetic — regression:
+// non-local metas must NOT produce synthetic snapshots. Container
+// standard pairs are platform-keyed; their snapshots come from live
+// services.
+func TestBuildServiceSnapshots_ContainerStandard_NoSynthetic(t *testing.T) {
+	t.Parallel()
+	metas := []*ServiceMeta{
+		{
+			Hostname:       "appdev",
+			Mode:           topology.PlanModeStandard,
+			StageHostname:  "appstage",
+			BootstrappedAt: fixedTime.Format(time.RFC3339),
+		},
+	}
+	services := []platform.ServiceStack{
+		{
+			ID: "s1", Name: "appdev", Status: "ACTIVE",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"},
+		},
+		{
+			ID: "s2", Name: "appstage", Status: "ACTIVE",
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{ServiceStackTypeVersionName: "nodejs@22"},
+		},
+	}
+	snaps := buildServiceSnapshots(services, metas, nil, "")
+	if got := len(snaps); got != 2 {
+		t.Errorf("snapshots = %d, want 2 (live appdev + live appstage); got: %+v", got, snaps)
+	}
+	for _, s := range snaps {
+		if s.Hostname != "appdev" && s.Hostname != "appstage" {
+			t.Errorf("unexpected synthetic snapshot for hostname %q", s.Hostname)
+		}
+	}
+}
+
 func TestComputeEnvelope_PhaseFromWorkSession(t *testing.T) {
 	t.Parallel()
 

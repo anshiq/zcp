@@ -190,6 +190,26 @@ func buildServiceSnapshots(
 		}
 		out = append(out, buildOneSnapshot(svc, metaByHost[svc.Name], ws))
 	}
+	// Synthetic snapshots for local-only metas. Local-only projects have
+	// no Zerops-side runtime to iterate, so without this tail the meta
+	// would never produce a snapshot and atoms with `modes: [...,
+	// local-only]` had no service to fire on. RuntimeClass stays empty
+	// — there's no linked runtime to classify; runtime-gated atoms
+	// intentionally don't match for local-only.
+	for _, m := range metas {
+		if m == nil || m.Mode != topology.PlanModeLocalOnly {
+			continue
+		}
+		out = append(out, ServiceSnapshot{
+			Hostname:         m.Hostname,
+			Mode:             m.Mode,
+			Bootstrapped:     m.IsComplete(),
+			CloseDeployMode:  m.CloseDeployMode,
+			GitPushState:     m.GitPushState,
+			BuildIntegration: m.BuildIntegration,
+			RemoteURL:        m.RemoteURL,
+		})
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Hostname < out[j].Hostname })
 	return out
 }
@@ -284,12 +304,21 @@ func classifyEnvelopeRuntime(typeVersion string) topology.RuntimeClass {
 // single ServiceMeta record. Dev-only services get ModeDev; simple stays
 // ModeSimple. meta.RoleFor already encodes the mode+environment+hostname
 // lookup — we reuse it here instead of duplicating the rules.
+//
+// Local topology asymmetry: a local-stage's stage half lives on a Zerops
+// runtime (DeployRoleStage) but conceptually belongs to ModeLocalStage,
+// not ModeStage. Container atoms with `modes: [..., local-stage]` (no
+// `stage`) need the local-stage projection — without the carve-out below
+// the stage half projects as ModeStage and those atoms silently miss.
 func resolveEnvelopeMode(meta *ServiceMeta, hostname string) topology.Mode {
 	if meta == nil {
 		return ""
 	}
 	switch meta.RoleFor(hostname) {
 	case topology.DeployRoleStage:
+		if meta.Mode == topology.PlanModeLocalStage {
+			return topology.ModeLocalStage
+		}
 		return topology.ModeStage
 	case topology.DeployRoleSimple:
 		return topology.ModeSimple
