@@ -132,23 +132,41 @@ out-of-bounds coordinates. Single-column multi-panel scrolls have
 failed verification before; the layout below avoids that by
 construction.
 
-Canonical layout: a **two-column card grid under a full-width Status
-strip**. Status strip on top; row 1: Items / Cache; row 2: Queue /
-Storage; row 3: Search (full-width). The Status strip + row 1 MUST
-fit within the viewport without scrolling — verify on first render
-that the Items card's CTA is reachable. Card bodies stay compact
-when collapsed (live-state + trigger visible; result display may
-expand on demand). When a card grows on interaction, re-target by
+Canonical layout: a **responsive grid (3-col → 2-col → 1-col by
+viewport) under a full-width Status strip**. Status strip on top;
+cards flow into the grid in the canonical order Items / Cache /
+Queue / Storage / Search. The Status strip + the first row MUST fit
+within the viewport without scrolling — verify on first render that
+the Items card's CTA is reachable. Card bodies stay compact when
+collapsed (live-state + trigger visible; result display may expand
+on demand). When a card grows on interaction, re-target by
 `data-feature` selector after expansion, not by coordinates.
 
-Fallback — single-column accordion when row 2 + row 3 still push the
-active panel below the fold: cards collapse to header + live-state +
-chevron; clicking a header expands and collapses the prior one;
-default-open is Items; Status strip stays uncollapsed. The accordion
-keeps the active panel above the fold by construction — choose it
-when in doubt. Avoid a multi-card single-column scroll: the verifier
-dispatches clicks out-of-bounds and verification takes 2-3× longer
-with partial fact coverage.
+This layout is **normative** for the showcase recipe. Do not switch to tabs, accordions, or single-panel layouts. The dashboard
+deliverable is "every card visible at a glance"; tabs/accordions
+hide cards behind interaction and produce a non-dashboard output.
+If a card is below the fold, scroll-into-view handles that — see
+the browser-verification subsection below.
+
+### Browser verification — scroll below-fold cards into view, do not abandon the layout
+
+`zerops_browser` dispatches clicks at element-center coordinates. If
+the target element is below the fold, your test must explicitly
+scroll it into view BEFORE clicking. The supported pattern is
+`data-feature` selectors paired with
+`element.scrollIntoView({block: 'center'})` invoked before the
+click step:
+
+```js
+// Before each click on a card outside the initial viewport.
+const el = document.querySelector('[data-feature="upload"]');
+el.scrollIntoView({block: 'center'});
+// then dispatch the click via zerops_browser
+```
+
+Do NOT abandon the spec layout to make every element above-fold by
+default; that produces a non-dashboard deliverable. Below-fold
+clicks are a verification-script bug, not a layout-spec issue.
 
 ## Per-card browser-verification
 
