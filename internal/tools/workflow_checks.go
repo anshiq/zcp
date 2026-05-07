@@ -47,7 +47,7 @@ func buildStepChecker(step string, client platform.Client, fetcher platform.LogF
 }
 
 func checkProvision(client platform.Client, fetcher platform.LogFetcher, projectID string, engine *workflow.Engine) workflow.StepChecker {
-	return func(ctx context.Context, plan *workflow.ServicePlan, _ *workflow.BootstrapState) (*workflow.StepCheckResult, error) {
+	return func(ctx context.Context, plan *workflow.ServicePlan, bs *workflow.BootstrapState) (*workflow.StepCheckResult, error) {
 		if plan == nil || len(plan.Targets) == 0 {
 			return nil, nil
 		}
@@ -61,16 +61,30 @@ func checkProvision(client platform.Client, fetcher platform.LogFetcher, project
 			svcMap[svc.Name] = svc
 		}
 
+		// Local-recipe path (Theme 1): the recipe match-derived plan
+		// still names DevHostname (e.g. "appdev") because that's what
+		// the recipe declares. The provision YAML is localized — appdev
+		// is dropped on its way to zerops_import — so the dev runtime
+		// never lands on Zerops, and a check that requires it would
+		// always fail here. Surfaced by flow-eval-local
+		// recipe-nodejs-hello-world suite 20260507-130710. Skip
+		// dev-existence + dev-type checks in this case; stage takes
+		// the type-check responsibility.
+		skipDevCheck := false
+		if engine != nil && engine.Environment() == workflow.EnvLocal {
+			if bs != nil && bs.Route == workflow.BootstrapRouteRecipe {
+				skipDevCheck = true
+			}
+		}
+
 		var checks []workflow.StepCheck
 		allPassed := true
 
 		for _, target := range plan.Targets {
 			// Check dev runtime exists and is RUNNING. Skipped in local-
-			// mode + recipe route: the local-mode transform drops the
-			// appdev runtime (Theme 1 / docs/spec-env-handling §11), and
-			// the agent's CWD replaces the SSH-in dev workspace. Only
-			// the stage runtime + managed deps need verification.
-			if target.Runtime.DevHostname != "" {
+			// mode + recipe route (see skipDevCheck rationale above) and
+			// when DevHostname is empty (other local-mode shapes).
+			if !skipDevCheck && target.Runtime.DevHostname != "" {
 				checks = append(checks, checkServiceRunning(ctx, client, fetcher, projectID, svcMap, target.Runtime.DevHostname)...)
 				checks = append(checks, checkServiceType(svcMap, target.Runtime.DevHostname, target.Runtime.Type)...)
 			}
@@ -80,9 +94,9 @@ func checkProvision(client platform.Client, fetcher platform.LogFetcher, project
 			// Mixed cases (existing dev + new stage) are valid for adoption scenarios.
 			if stage := target.Runtime.StageHostname(); stage != "" {
 				checks = append(checks, checkServiceStatusAny(ctx, client, fetcher, projectID, svcMap, stage, serviceStatusNew, serviceStatusReadyToDeploy, serviceStatusRunning, serviceStatusActive)...)
-				// In local-recipe mode the dev runtime was dropped, so the
-				// stage runtime MUST cover the type-check responsibility.
-				if target.Runtime.DevHostname == "" {
+				// When the dev runtime was skipped (local-recipe) or is
+				// absent, stage MUST carry the type-check responsibility.
+				if skipDevCheck || target.Runtime.DevHostname == "" {
 					checks = append(checks, checkServiceType(svcMap, stage, target.Runtime.Type)...)
 				}
 			}
