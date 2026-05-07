@@ -23,6 +23,9 @@ import (
 type EnvInput struct {
 	Action          string   `json:"action"`
 	ServiceHostname string   `json:"serviceHostname,omitempty"`
+	Setup           string   `json:"setup,omitempty"`
+	Preview         FlexBool `json:"preview,omitempty"`
+	Force           FlexBool `json:"force,omitempty"`
 	Project         FlexBool `json:"project,omitempty"`
 	Variables       []string `json:"variables,omitempty"`
 	SkipRestart     FlexBool `json:"skipRestart,omitempty"`
@@ -46,8 +49,14 @@ func envInputSchema() *jsonschema.Schema {
 		},
 		"serviceHostname": {
 			Type:        "string",
-			Description: "Hostname of the service to operate on. Required for get/set/delete unless project=true. Required by generate-dotenv to identify which setup block in zerops.yaml's run.envVariables to resolve.",
+			Description: "Hostname of the service to operate on. Required for get/set/delete unless project=true. For generate-dotenv: deprecated — prefer the setup parameter (see below). Still accepted as a fallback when setup is empty; emits a deprecation warning in the result.",
 		},
+		"setup": {
+			Type:        "string",
+			Description: "generate-dotenv: name of the zerops.yaml setup block to render. Recipe / multi-setup yaml uses setup names like 'dev', 'prod', 'worker' that are not always service hostnames. Empty + single-block yaml: auto-pick. Empty + multi-block yaml: refuses with the available names. Empty + zero-block yaml: falls back to serviceHostname.",
+		},
+		"preview": flexBoolSchema("generate-dotenv: dry-run. Builds the plan and returns the diff vs current .env without writing. Use to inspect what would change before committing."),
+		"force":   flexBoolSchema("generate-dotenv: bypass the refuse-on-unowned-edits safety gate. By default ZCP refuses to write when the existing .env has keys not produced by any source (project envVariables, zerops.yaml run.envVariables, .env.local) — those are user-direct edits at risk of being discarded. Set force=true after confirming the unowned keys are safe to drop, or move them to .env.local first."),
 		"project": flexBoolSchema("Set to true to operate on project-level env vars instead of service-level. Valid for get/set/delete."),
 		"variables": {
 			Type:        "array",
@@ -128,9 +137,24 @@ func RegisterEnv(srv *mcp.Server, client platform.Client, projectID, selfHostnam
 			applyAutoRestart(ctx, client, projectID, input, selfHostname, &resp, onProgress)
 			return jsonResult(resp), nil, nil
 		case "generate-dotenv":
-			result, err := ops.EnvGenerateDotenv(ctx, client, projectID, input.ServiceHostname, "")
+			// Setup parameter takes precedence; serviceHostname falls
+			// through with a deprecation warning so existing callers
+			// keep working through the migration window.
+			selectedSetup := input.Setup
+			var deprecationWarning string
+			if selectedSetup == "" && input.ServiceHostname != "" {
+				selectedSetup = input.ServiceHostname
+				deprecationWarning = "serviceHostname for generate-dotenv is deprecated; pass setup=<name> instead. Recipe / multi-setup zerops.yaml uses setup names that are not always service hostnames."
+			}
+			result, err := ops.EnvGenerateDotenv(ctx, client, projectID, selectedSetup, "", ops.EnvGenerateDotenvOptions{
+				Preview: input.Preview.Bool(),
+				Force:   input.Force.Bool(),
+			})
 			if err != nil {
 				return convertError(err), nil, nil
+			}
+			if deprecationWarning != "" {
+				result.Warnings = append(result.Warnings, deprecationWarning)
 			}
 			return jsonResult(result), nil, nil
 		case "":

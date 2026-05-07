@@ -16,6 +16,7 @@ type RecipeCandidate struct {
 	Description string   `json:"description,omitempty"`
 	Languages   []string `json:"languages,omitempty"`
 	Frameworks  []string `json:"frameworks,omitempty"`
+	Repo        string   `json:"repo,omitempty"`
 	ImportYAML  string   `json:"-"`
 }
 
@@ -61,6 +62,7 @@ func (s *Store) FindRecipeCandidates(intent string, maxResults int) []RecipeCand
 			Description: doc.Description,
 			Languages:   doc.Languages,
 			Frameworks:  doc.Frameworks,
+			Repo:        doc.Repo,
 			ImportYAML:  doc.ImportYAML,
 		})
 	}

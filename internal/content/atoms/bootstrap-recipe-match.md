@@ -46,4 +46,4 @@ Pair fields (`devHostname`/`stageHostname`/`type`) come from the recipe's `zerop
 
 Unrecovered collision → plan rejected.
 
-Do not write code — `buildFromGit` pulls the app repo at import.
+Do not write code — `buildFromGit` pulls the app repo at import. (Container only; in local mode the recipe repo is cloned into CWD instead.)

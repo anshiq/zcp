@@ -1,0 +1,16 @@
+# Fixture for recipe-nodejs-hello-world scenario.
+#
+# Empty services list — the agent provisions the entire topology
+# itself by submitting the localized recipe import.yml. ZCP's
+# LocalizeRecipeImportYAML drops the appdev runtime and strips
+# buildFromGit from the remaining stage so first deploy must come
+# from the agent's local checkout.
+#
+# Why empty rather than pre-seeded:
+#   - The recipe-route bootstrap path is the surface under test;
+#     pre-seeding services would skip the import step entirely.
+#   - Empty fixture forces the agent to demonstrate the full
+#     recipe-local-flow (match → localize → import → clone → run →
+#     deploy).
+
+services: []

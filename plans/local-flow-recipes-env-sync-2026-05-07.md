@@ -1,245 +1,657 @@
-# Plan: Local-flow recipes + env sync — Recipes-Option-1 + two-region `.env`
+# Plan: Local-flow EnvPlan primitive + recipe local + three-channel env
 
-> **Status**: Proposed.
+> **Status**: Proposed (revision 2 — replaces 2026-05-07 v1).
 > **Date**: 2026-05-07
 > **Predecessor**: `plans/archive/local-flow-fundamentals-2026-05-06.md`
-> (Phases 5-12 shipped; this plan picks up two architectural concerns
-> the retrospective + post-ship review surfaced).
-> **Scope**: Two related local-flow architecture additions.
-> **Scope OUT**: Recipe engine internals (`internal/recipe/`,
-> `workflow_recipe.go`) — Aleš's scope; coordinate, do not edit.
+> (Phases 5-12 shipped; this plan picks up architectural concerns
+> the retrospective + design pass surfaced).
+> **Scope**: Three coupled themes — EnvPlan primitive (foundational),
+> three-channel env model, recipe-route in local-mode. Plus design-only
+> sketch for brownfield-adopt subroute.
+> **Scope OUT**: Brownfield-adopt implementation (separate wave per
+> design-only sketch in Theme 3). Recipe engine internals
+> (`internal/recipe/`, `workflow_recipe.go`) — Aleš's scope.
+
+---
 
 ## Why this plan exists
 
-After the local-flow-fundamentals wave (Phase 5-12) shipped, the user
-surfaced two architectural concerns that the bug-fix wave didn't reach:
+After `local-flow-fundamentals` (Phase 5-12) shipped, two architectural
+concerns surfaced that the bug-fix wave didn't reach:
 
-### Concern 1 — Recipes in local-flow
+1. **Recipe local-flow gap**: container-shape recipe import.yml provisions
+   `appdev` + `appstage` runtimes; in local mode the user's CWD replaces
+   `appdev`, leaving the bootstrap path broken (provisions appdev anyway,
+   or fails the bootstrap check). Spec was silent on the local-mode
+   variant of recipe routing.
+2. **Env update mechanism gap**: ZCP's `generate-dotenv` writes a flat
+   `.env` from resolved sources, but had no contract for *what does the
+   LLM do when env state changes* — three input channels (project env,
+   zerops.yaml, service env) with different timing and propagation, no
+   user-override channel that survives regen, no provenance tracking.
 
-Recipe import YAMLs (`internal/knowledge/recipes/<slug>.import.yml`)
-provision both `<name>dev` (Zerops dev runtime, `zeropsSetup: dev`) and
-`<name>stage` (Zerops stage runtime, `zeropsSetup: prod`). Both come
-with `buildFromGit` so Zerops auto-builds initial code from upstream at
-provision.
+The journey through this plan's design pass (with Codex stress-test)
+revealed that **both gaps share an architectural core**: a typed
+state-convergence function over multiple env source layers, with
+explicit precedence, provenance, and write policy. The same primitive
+also generalizes to brownfield-adopt (scenario C) and will later serve
+container-mode env review, CI export, env-promotion diffs.
 
-In container-mode the agent SSHs into `appdev`, edits the source, and
-cross-deploys to `appstage`. **In local-mode the user's CWD replaces
-`appdev`** — the agent runs `npm run dev` directly on the user's
-machine; no SSH-in dev runtime exists.
+This plan therefore introduces a foundational primitive (Theme 0), uses
+it to implement the three-channel env model (Theme 2) and the recipe
+local-flow (Theme 1), and sketches brownfield-adopt as a subroute under
+local mode (Theme 3, design-only).
 
-The atom contract `bootstrap-discover-local.md` already says
-"no `{name}dev` service on Zerops in local mode", but the recipe-route
-import path consumes the YAML verbatim. So today, a local-mode recipe
-route either provisions `appdev` anyway (defeating local-mode purpose)
-or fails the bootstrap check (`appdev_exists=fail`).
+**Authoritative design**: `docs/spec-env-handling.md` carries the
+mental model, source precedence rules, render policy, edge case
+decisions, alternatives-rejected rationale, and future extension
+points. This plan is the implementation roadmap; the spec is the
+load-bearing design document. Keep them coherent.
 
-**User decision (2026-05-07)**: keep stage exactly as in container-mode
-(with `buildFromGit` + `zeropsSetup: prod`). Just drop the `appdev`
-service. The user clones the recipe repo locally for editing; Zerops
-stage gets initial code from upstream `buildFromGit`; subsequent local
-edits redeploy to stage via `zerops_deploy targetService=appstage
-workingDir=<cwd>`.
+---
 
-This is **Option 1** from the Codex `/tmp/codex-recipes-local-flow.md`
-analysis (minimum-risk, stage stays container-shaped).
+## How it works in practice
 
-### Concern 2 — Env update mechanism for local
+> Read this section to understand *what the user/agent sees and does*.
+> Architectural rationale follows below; phase-level implementation in
+> the Theme sections.
 
-In local-mode the user's app reads a generated `.env` file. ZCP's
-`generate-dotenv` resolves `zerops.yaml run.envVariables` + project env
-+ cross-service `${host_var}` refs and writes the file. Phase 6 added
-the platform-internals denylist.
+### The mental model — three channels, one rendered output
 
-But there's no contract for **what does the LLM do when it wants to
-update an env var**. Three channels exist (yaml, project env, service
-env), each with different timing and propagation. And there's no
-mechanism for **user-static values that ZCP must not clobber on regen**.
+```
+INPUT CHANNELS (sources of env state)                    OUTPUT (sink)
+────────────────────────────────────                     ────────────
+ ┌─ project.envVariables                          ┐
+ │  Zerops project state, cross-service           │
+ │  Lives: import.yml + zerops_env action=set     │
+ │  E.g.: APP_KEY (generated 1×), JWT_SECRET      │
+ │                                                │     ┌──────────┐
+ ├─ zerops.yaml run.envVariables                  ├─→  │  .env    │
+ │  Per-service deployed runtime, in git repo     │     │ (CWD,    │
+ │  E.g.: APP_ENV=production, DATABASE_URL=       │     │ ZCP-     │
+ │       ${db_connectionString}                   │     │ rendered)│
+ │                                                │     └──────────┘
+ └─ .env.local                                    ┘
+    User-authored local-only overlay
+    Lives: CWD, gitignored, ZCP create-once-never-overwrite
+    E.g.: APP_ENV=local, LOG_LEVEL=debug, override DATABASE_URL
+```
 
-**User clarification (2026-05-07)** is more nuanced than my initial
-two-region scheme captured:
+**Ownership rules**:
 
-> "Třeba envu APP_ENV chceme mít v `.env` nastavenou na 'local', ale
-> třeba v `zerops.yaml` nebo project env na 'production'. Na druhou
-> stranu třeba envy pro db budeme chtít umět synchronizovat."
+| Use case | Channel |
+|---|---|
+| Same value local + deployed (secrets, API keys) | `project.envVariables` |
+| Derived from managed service | `zerops.yaml run.envVariables` with `${svc_*}` ref |
+| Deployed-only (prod feature flag, NODE_ENV=production) | `zerops.yaml run.envVariables` hardcoded |
+| Local-only override (APP_ENV=local, debug flags) | `.env.local` |
 
-Translation: APP_ENV should be 'local' in `.env` but 'production' in
-zerops.yaml/project env. DB envs should auto-sync from Zerops. So the
-override semantics are **per-key**: some keys are user-locked, some are
-ZCP-managed-always.
+**`.env` is fully derived**. Re-running `generate-dotenv` reproduces it
+deterministically from the three channels. Delete `.env` → next regen
+restores it. Edit `.env` directly → next regen refuses with dry-run diff,
+asks user to move keys to `.env.local`.
 
-The basic two-region mechanism (one ZCP-managed block + one user
-add-only block) doesn't cover this — it handles ADDING new user vars
-but not OVERRIDING ZCP-managed values selectively. Per-key opt-in/opt-out
-needs design.
+**`.env.local` is the user-override channel**. ZCP creates it ONCE during
+bootstrap/adoption (seeded with detected local-mode flags), then never
+touches it again. User edits freely; values always win at merge.
 
-**User instruction**: ship the two-region basic now, defer the per-key
-override design to the next session.
+### Scenario A — Recipe-driven local
 
-## Foundation: what we verified before writing this plan
+User: "set up nodejs-hello-world recipe in local mode."
 
-1. **Container stage-shape today** — `nodejs-hello-world.import.yml`
-   confirms both appdev and appstage carry `buildFromGit` + `zeropsSetup`.
-   So the simplest local transform is "drop services with
-   `zeropsSetup: dev`" — stage stays untouched.
+```
+1. zerops_workflow workflow="bootstrap" → matches recipe route, env=local
+2. ZCP transforms import.yml:
+   - drops services with zeropsSetup: dev (the would-be appdev)
+   - strips buildFromGit from remaining runtimes (force first local deploy)
+3. zerops_import → creates {appstage in READY_TO_DEPLOY, db}
+4. Atom guides agent: empty-CWD check → git clone <recipe.repo> .
+5. ZCP creates .env.local SEEDED from recipe's dev setup block:
+       # Created by ZCP. Edit freely — ZCP will not overwrite this file.
+       # ZCP merges these values into .env at every generate-dotenv.
+       APP_ENV=local
+       LOG_LEVEL=debug
+6. zerops_env action=generate-dotenv setup=prod
+   → .env rendered: APP_KEY (project) + DATABASE_URL=${db_conn} (zerops.yaml)
+                    + APP_ENV=local + LOG_LEVEL=debug (.env.local overlay)
+7. composer install / npm install (per recipe stack)
+8. Run locally: app starts, connects to db via VPN
+9. zerops_deploy targetService=appstage workingDir=<cwd>
+   → first local deploy — pipeline verified end-to-end, stage URL goes live
+```
 
-2. **No env-aware recipe filtering exists** — Codex traced the
-   recipe-route end-to-end. `RewriteRecipeImportYAML`
-   (`internal/workflow/recipe_override.go`) only does hostname mapping
-   and EXISTS managed-service drops. The function is the right
-   insertion point for env-aware logic.
+Bootstrap result: stage runtime running user's local code, `.env` is
+working artifact, `.env.local` carries developer-specific overrides.
 
-3. **bootstrap-provision-local.md is `routes: [classic]`** — pinned by
-   `synthesize_test.go::TestSynthesize_LocalProvisionAtomIsClassicOnly`
-   as intentional. So no local-specific atom fires for recipe-route
-   provision today; that's the gap.
+### Scenario B — Greenfield, empty CWD
 
-4. **`workflow_checks.go::checkServiceRunning` validates DevHostname
-   unconditionally** — even in local-mode it expects appdev to exist.
-   Loosening this is required when local-mode-recipe lands.
+User: "I want to start a Node + Postgres project in local mode."
 
-5. **`generate-dotenv` indexes by serviceHostname matching `setup:`
-   name** — recipes use `setup: dev`/`prod`, not hostnames. Atom
-   guidance is the lighter fix; explicit `setup` parameter is heavier
-   but more explicit.
+```
+1. ZCP discovers intent (route=classic, env=local), classifies stack
+2. ZCP synthesizes:
+   - import.yml: project + services (app + db) + project.envVariables
+   - zerops.yaml in CWD: build/run blocks + run.envVariables
+   - minimal app skeleton (package.json, src/index.js)
+   - .env.local seeded with NODE_ENV=development
+3. zerops_import → Zerops creates project, generates system vars
+4. zerops_env action=generate-dotenv setup=app
+   → .env: project-env values + resolved zerops.yaml refs + .env.local overlay
+5. npm install && npm run dev
+6. Iterate locally, push to deploy when ready
+```
 
-6. **Recipe markdown frontmatter has `repo:`** but `RecipeMatch`
-   (`internal/workflow/route.go`) doesn't surface it. Need to plumb
-   through for atom-driven `git clone`.
+### Scenario C — Brownfield, existing project + .env (DESIGN-ONLY this wave)
+
+User: "deploy this existing Express app to Zerops in local mode."
+
+```
+1. ZCP reads CWD: existing .env, package.json, framework signals
+2. ZCP runs zerops_env action=classify-dotenv → distribution proposal:
+   {
+     to-project-env:     [JWT_SECRET, STRIPE_API_KEY],
+     to-zerops-yaml:     [DATABASE_URL=${db_conn}, NODE_ENV=production],
+     to-env-local:       [APP_ENV=local, LOG_LEVEL=debug],
+     ambiguous:          [some external URL, requires user confirmation]
+   }
+3. User confirms / corrects classification
+4. ZCP backs up original .env → .zcp/state/backups/dotenv/<ts>.env (0600)
+5. ZCP writes import.yml + zerops.yaml + .env.local from proposal
+6. zerops_import → resolved system vars now available
+7. generate-dotenv → fresh .env rendered
+8. User runs locally, deploys when validated
+```
+
+### Lifecycle events (cross-scenario)
+
+| Event | What changes | Channel | After regen |
+|---|---|---|---|
+| Add shared secret (NEW_API_KEY) | `zerops_env action=set scope=project` | project.envVariables | Appears in `.env` |
+| Add deployed-only var (PROD_FLAG) | edit `zerops.yaml run.envVariables` | zerops.yaml | Appears in `.env` (and deployed on push) |
+| Add local-only override (DEBUG=verbose) | edit `.env.local` | `.env.local` | Appears in `.env`, persists across regens |
+| Override ZCP-managed key locally | put key in `.env.local` (e.g. `DATABASE_URL=postgres://localdev/...`) | `.env.local` | User value wins in `.env` |
+| Add managed service (redis) | `zerops_import` extension + edit `zerops.yaml` (REDIS_URL=${redis_*}) | zerops.yaml | REDIS_URL appears in `.env` |
+| Rotate secret (APP_KEY) | `zerops_env action=set scope=project` | project.envVariables | New value in `.env` (unless `.env.local` masks; warn) |
+| Retake ZCP-managed key | delete from `.env.local` | (release) | Base value resumes |
+| User commits `.env.local` accidentally | (detected) | warn high-severity | "Move shared values to project env or zerops.yaml; document examples in `.env.local.example`" |
+| User edits `.env` directly | (detected on next regen) | refuse | Dry-run diff: "extra keys / changed values present in `.env` that aren't in any source — move to `.env.local` or use `force=true`" |
+| Multi-machine clone | new dev clones repo | (per-developer) | `.env.local` not in git; `.env.local.example` (committed) shows expected keys |
+| VPN down during regen | API resolve fails | refuse | Prior `.env` left intact; clear error: "VPN required for system var resolve, retry after `zcli vpn up`" |
+
+### Edge cases (the non-obvious ones)
+
+- **Multi-setup zerops.yaml** (e.g. monorepo with `app` + `worker` blocks):
+  `generate-dotenv setup=<name>` is mandatory; ZCP refuses bare invocation
+  with "specify --setup; available: app, worker". Optional
+  `--output .env.<setup>` for advanced cases (default writes single
+  `.env` per call).
+- **Framework `.env.local` collision** (Vite, Next, Symfony all natively
+  load `.env.local`): harmless when values match (which they do, ZCP
+  merges `.env.local` into `.env`). ZCP warns hard if `.env.local` is
+  git-tracked — that promotes per-developer state to team state.
+- **Variable interpolation in dotenv** (`URL=${PROTOCOL}://${HOST}`):
+  ZCP preserves raw values; only resolves Zerops `${svc_var}` refs from
+  zerops.yaml. Generic shell-style interpolation passes through verbatim.
+- **Concurrent regen**: advisory lock per output file (released on
+  process exit); atomic rename for write.
+
+### What user/agent does vs what ZCP does
+
+| ZCP does | User/agent does |
+|---|---|
+| Generates `.env` from sources | Edits `.env.local` for local overrides |
+| Creates `.env.local` once during bootstrap (seeded) | Adds new shared secrets via `zerops_env action=set scope=project` |
+| Resolves `${svc_*}` refs | Adds new deployed vars via `Edit zerops.yaml` |
+| Refuses to clobber unowned `.env` edits | Adds new managed services via `zerops_import` extension |
+| Surfaces dry-run diff before write | Reviews dry-run before approving regen |
+| Backs up brownfield `.env` before adoption | Confirms classification proposal in scenario C |
+| Adds `.env`, `.env.local` to `.gitignore` | Maintains `.env.local.example` for team-shared documentation |
+| Warns on git-tracked `.env.local` | Resolves warnings (move to project env, etc.) |
+
+---
+
+## Architectural decisions (locked)
+
+### A1 — Three-channel env model with `.env.local` as ZCP-merge-time overlay
+
+`.env.local` is **NOT a framework-loaded overlay** (which would fail
+for Laravel/Django/plain Go). It's a **ZCP-merge-time source**: ZCP
+reads it during `generate-dotenv` and merges into `.env`, which is the
+single artifact every framework reads. This gives framework-agnostic
+override semantics without inventing per-framework adapters.
+
+### A2 — EnvPlan state-convergence primitive (Theme 0 core)
+
+A typed `EnvPlan` carries each rendered key with metadata:
+
+```go
+type EnvKey struct {
+    Key       string
+    Value     string
+    Source    EnvSource          // project | yaml-setup | local-overlay | brownfield-import
+    Scope     EnvScope           // shared | deployed-runtime | local-override | managed-ref
+    Sinks     []EnvSink          // .env | .env.local | shell-export | zerops-yaml
+    Conflict  ConflictStatus     // clean | shadow | override
+}
+
+type EnvPlan struct {
+    Setup     string             // setup block selected from zerops.yaml
+    Keys      []EnvKey
+    Generated time.Time
+}
+```
+
+Renderers (`.env`, dry-run diff, shell export, future container-mode
+review) are thin formatters over `EnvPlan`. Pinned by `TestEnvPlan_*`
+tests.
+
+### A3 — Recipe local = drop appdev + strip buildFromGit + force first deploy
+
+Local-mode recipe transform produces single-runtime topology where stage
+runtime starts in `READY_TO_DEPLOY` (no upstream auto-seed). First local
+deploy is mandatory in bootstrap flow → pipeline verified end-to-end as
+part of bootstrap, not deferred. Symmetric with classic local-mode shape.
+
+### A4 — `setup` parameter is first-class
+
+`generate-dotenv` takes `setup=<name>` parameter. `serviceHostname` is
+deprecated for env-render entry points (still used elsewhere). Multi-setup
+zerops.yaml refuses bare invocation; lists available setup names.
+
+### A5 — Dry-run mode for safety (replaces manifest-based ownership)
+
+`zerops_env action="generate-dotenv" preview=true` returns the EnvPlan
+diff against existing `.env` without writing. Default write refuses when
+existing `.env` has extra keys or changed values not in any source —
+caller must `force=true` or move keys to `.env.local`. No hidden manifest
+state; everything reconstructable from sources.
+
+### A6 — `.env.local` create-once-never-overwrite
+
+ZCP may create `.env.local` once during explicit bootstrap/adoption,
+seeded with detected local-mode flags (recipe `dev` setup overrides for
+scenario A; framework defaults for scenario B; classified entries for
+scenario C). After creation, ZCP NEVER writes to `.env.local`. The file
+is the user's no-touch zone.
+
+### A7 — Service-level user-defined envVariables wholesale-excluded (provisional)
+
+Until Zerops API surfaces user-vs-system provenance flag, service-level
+envVariables are NOT included in `.env` rendering wholesale. Only project
+envVariables and resolved zerops.yaml refs flow to `.env`. Promotion to
+included-with-shadow-warning waits for API enhancement.
+
+### A8 — VPN-down policy: fail, leave prior `.env` intact
+
+If `${svc_var}` resolution fails (Zerops API down or service not yet
+RUNNING), `generate-dotenv` returns error with VPN/retry hint and does
+NOT write a partial `.env` or placeholder values. Prior `.env` remains
+the operative file.
+
+---
 
 ## How an LLM implementer should approach this plan
 
 1. Read top-to-bottom before starting.
-2. Order: Theme 2 first (smaller, more discrete), then Theme 1.
+2. **Order**: Theme 0 first (foundational primitive, no behavior change
+   for existing callers). Then Theme 2 (uses Theme 0, atoms describe
+   model). Then Theme 1 (recipe local-flow, uses both).
 3. TDD per ZCP convention: RED → GREEN → tests + lint + race → commit.
-4. Container regression non-negotiable: every phase has explicit
-   container-mode test coverage OR provably local-only paths.
-5. Aleš coordination triggers (any of):
+   Pure refactors skip RED.
+4. Container regression non-negotiable: every Theme 0 phase has explicit
+   container-mode test coverage. Existing `generate-dotenv` callers
+   (other than local-mode-bootstrap) must see no behavior change unless
+   the test is explicitly updated.
+5. **Aleš coordination triggers**:
    - Recipe corpus shape changes (parallel `<slug>.local.import.yml`).
    - Recipe synthesizer integration with bootstrap-consumable variants.
-   - Recipe knowledge markdown edits beyond minor cross-references.
-6. **Per-key env override semantics is DEFERRED** — see Theme 2
-   "Deferred design question". Two-region basic ships first.
+   - Recipe markdown edits beyond minor cross-references.
+6. **Theme 3 is design-only this wave**. Brownfield-adopt implementation
+   ships as a separate plan. The architectural decisions A1-A8 are
+   chosen so Theme 3's future implementation doesn't require revisiting
+   Theme 0/1/2.
 
 ---
 
-## Theme 1 — Recipe-route in local-flow (Option 1)
+## Theme 0 — EnvPlan primitive (foundational)
 
-### Architecture
+### Phase 0A — `EnvPlan` type + metadata
 
-```
-Local-mode recipe-route bootstrap, end-to-end:
-
-  1. ZCP detects EnvLocal + route=recipe → uses local-aware path
-  2. ZCP transforms import.yml programmatically:
-     • Drop services with zeropsSetup: dev (appdev)
-     • Keep stage runtime AS IS (zeropsSetup: prod, buildFromGit, all)
-     • Keep all managed services
-  3. ZCP submits transformed YAML to zerops_import
-     → Zerops creates {appstage, db}, builds appstage from buildFromGit
-        (initial code from upstream)
-  4. Atom guides agent: empty-CWD check → git clone <recipe-repo> .
-     Repo URL comes from RecipeMatch.Repo (added in phase 1C)
-  5. Atom guides agent: zerops_env action="generate-dotenv"
-        serviceHostname=<recipe-setup-name>  (e.g. "prod")
-     → .env lands in CWD
-  6. Atom guides agent: develop locally (npm run dev etc.) +
-     redeploy to stage via zerops_deploy targetService=appstage
-        workingDir=<cwd>
-     → first local-driven build replaces upstream-seeded version
-```
-
-**Key invariants:**
-
-- Stage container-shape **unchanged** — buildFromGit retained, zeropsSetup
-  retained, no `startWithoutCode` set. Stage immediately works after
-  provision (initial code from upstream).
-- Local CWD has independent git checkout — user iterates without round-
-  tripping through upstream.
-- zerops.yaml in CWD: as-is from the cloned repo (multi-setup syntax
-  preserved for future monorepo support per user decision). No yaml
-  mutation by ZCP. Atom MAY suggest dropping `setup: dev` as cosmetic
-  cleanup but doesn't enforce.
-
-### Phase 1A — Local recipe import transform
-
-**Why**: Today's recipe import.yml goes to `zerops_import` verbatim.
-Local-mode needs `appdev` stripped before submission.
+**Why**: Current `internal/ops/env_generate.go` returns a flat string
+`map[string]string`. No provenance, no scope, no conflict tracking.
+Renderers can't say "this key came from `.env.local` overlay" or "this
+key is shadowed by a service-level user-defined env."
 
 **What**:
+- New `internal/ops/env_plan.go` with `EnvPlan`, `EnvKey`, `EnvSource`,
+  `EnvScope`, `EnvSink`, `ConflictStatus` types.
+- `BuildEnvPlan(ctx, project, setup, cwd) (*EnvPlan, error)` — gathers
+  sources, applies precedence, produces typed plan.
+- `(*EnvPlan).Render(sink EnvSink) ([]byte, error)` — formats for
+  `.env` / shell-export / dry-run-diff sinks.
+- Stable key ordering: alphabetical within each source, sources merged
+  in precedence order (project → yaml-setup → local-overlay).
 
+**Tests**:
+- `TestBuildEnvPlan_SourcePrecedence`.
+- `TestBuildEnvPlan_OverlayWinsOnConflict`.
+- `TestBuildEnvPlan_StableKeyOrdering`.
+- `TestEnvPlan_RenderDotenv_FormatStability`.
+
+**Size**: ~150 LOC + tests.
+
+### Phase 0B — Refactor `env_generate.go` to use EnvPlan
+
+**Why**: `env_generate.go` currently does flat resolve + write. After 0A
+exists, refactor it to: build EnvPlan via 0A, render via
+`Plan.Render(SinkDotenv)`, atomic write.
+
+**What**:
+- `EnvGenerateDotenv` becomes a thin wrapper over `BuildEnvPlan` +
+  `Render` + `atomicWrite`.
+- All existing tests must still pass (no behavior change for current
+  callers — `setup` parameter defaults to legacy `serviceHostname`
+  matching for backwards compat during migration).
+
+**Tests**:
+- All existing `TestEnvGenerateDotenv_*` stay green.
+- `TestEnvGenerateDotenv_UsesEnvPlanInternally` (asserts call path).
+
+**Size**: ~80 LOC delta + zero new tests (existing tests pin behavior).
+
+### Phase 0C — `setup` parameter (first-class)
+
+**Why**: `serviceHostname` is overloaded — recipe setup names (`dev`,
+`prod`, `worker`) aren't always service hostnames. Multi-setup
+`zerops.yaml` needs explicit selection.
+
+**What**:
+- `zerops_env` action `generate-dotenv` accepts `setup` parameter
+  (string).
+- When `setup` is empty: detect setup blocks in CWD's `zerops.yaml`.
+  - Single block: use that one (no error).
+  - Multiple blocks: refuse with `ErrSetupRequired`, list available
+    setup names.
+  - Zero blocks: legacy fallback to `serviceHostname` matching.
+- Existing `serviceHostname` parameter still accepted (deprecation
+  warning in result for next major).
+
+**Tests**:
+- `TestGenerateDotenv_SetupExplicit_PicksMatchingBlock`.
+- `TestGenerateDotenv_SetupMissing_MultipleBlocks_Refuses`.
+- `TestGenerateDotenv_SetupMissing_SingleBlock_AutoPicks`.
+- `TestGenerateDotenv_LegacyHostname_StillWorks_WithWarning`.
+
+**Size**: ~60 LOC + tests.
+
+### Phase 0D — Dry-run mode
+
+**Why**: Codex's safety recommendation to replace manifest-based
+ownership tracking. Before any write, surface what would change.
+
+**What**:
+- `zerops_env action="generate-dotenv" preview=true` builds EnvPlan,
+  reads existing `.env`, computes diff, returns:
+  ```
+  {
+    plan: EnvPlan,
+    diff: { added: [], modified: [], removed: [], unowned: [] },
+    wouldWrite: bool,
+  }
+  ```
+- `unowned`: keys in existing `.env` not in EnvPlan and not in `.env.local`
+  → user manually edited `.env`.
+- Default write (`preview=false`) refuses when `unowned` non-empty
+  unless `force=true`.
+
+**Tests**:
+- `TestGenerateDotenv_PreviewReturnsDiff`.
+- `TestGenerateDotenv_RefusesUnownedEdits`.
+- `TestGenerateDotenv_ForceOverridesUnowned`.
+
+**Size**: ~70 LOC + tests.
+
+### Phase 0E — Atomic write + advisory lock
+
+**Why**: Concurrent regens race. Atomic rename prevents torn files but
+doesn't serialize the read-modify-write.
+
+**What**:
+- Lock file `.zcp/state/locks/dotenv-<setup>.lock` (flock-style).
+- Acquire on regen entry, release on completion (defer).
+- Lock file gitignored.
+
+**Tests**:
+- `TestGenerateDotenv_ConcurrentInvocations_Serialize`.
+
+**Size**: ~30 LOC + tests.
+
+### Phase 0F — VPN-down / API-resolve-fail policy
+
+**Why**: A6 — don't write placeholder, fail with prior `.env` intact.
+
+**What**:
+- `BuildEnvPlan` distinguishes "ref unresolved (transient)" vs "ref
+  invalid (permanent)".
+- Transient → returns `ErrRefResolveTransient` with VPN hint.
+- Permanent (e.g. ref to non-existent service) → `ErrRefInvalid`.
+- Caller's existing `.env` not touched on either.
+
+**Tests**:
+- `TestBuildEnvPlan_TransientResolveFail_ReturnsErrRefResolveTransient`.
+- `TestGenerateDotenv_VPNDown_LeavesPriorEnvIntact`.
+
+**Size**: ~40 LOC + tests.
+
+### Phase 0G — Brownfield import surface (skeleton for Theme 3)
+
+**Why**: Theme 3 needs `EnvSource: brownfield-import` to slot in. Skeleton
+ensures Theme 0 doesn't have to be revisited later.
+
+**What**:
+- `EnvSource` enum value `SourceBrownfieldImport` defined.
+- `BuildEnvPlan` accepts optional `brownfieldOverrides map[string]string`
+  parameter; merges at appropriate precedence (between project and
+  yaml-setup, since brownfield values were "user's previous truth").
+- Unused this wave; reserved for Theme 3.
+
+**Tests**:
+- `TestBuildEnvPlan_BrownfieldImport_MergesAtCorrectPrecedence`.
+
+**Size**: ~30 LOC + tests.
+
+**Theme 0 total**: ~460 LOC, 7 phases, foundational.
+
+---
+
+## Theme 2 — Three-channel env model + atoms
+
+### Phase 2A — `develop-local-env-channels.md` atom (foundational)
+
+**Why**: Atoms today don't articulate the three-channel model. LLM agents
+guess where to put new vars; failure mode is "added everywhere" or
+"added in wrong channel, doesn't reach consumers."
+
+**What**: New atom `internal/content/atoms/develop-local-env-channels.md`:
+- Filters: `routes: [classic, recipe]`, `environments: [local]`,
+  `phases: [develop-active]`.
+- Content: the three-channel table from "How it works in practice" §
+  "Mental model"; ownership rules; brief decision tree.
+- Cross-ref: `develop-env-var-channels.md` (existing, env-agnostic) gets
+  a local-mode addendum pointing to the new atom.
+
+**Tests**:
+- Axis-filter tests via `atoms_lint`.
+- `TestSynthesize_LocalDevelopEnvChannelsAtomFires`.
+
+**Size**: ~80 LOC content + tests.
+
+### Phase 2B — `.env.local` create-once-never-overwrite mechanism
+
+**Why**: A6 — ZCP creates `.env.local` once during bootstrap, never
+afterwards.
+
+**What**:
+- New `internal/ops/env_local_overlay.go` with:
+  - `EnsureEnvLocal(cwd, seed map[string]string) error` — writes
+    `.env.local` if absent (with header comment + seed entries); returns
+    `ErrAlreadyExists` if present (caller decides if that's an error).
+- Recipe-local bootstrap (Theme 1) calls `EnsureEnvLocal` with extracted
+  dev-setup overrides.
+- Greenfield bootstrap (Theme 2 atom guidance) calls `EnsureEnvLocal`
+  with framework-default flags (NODE_ENV=development for node, etc.).
+- Header is fixed:
+  ```
+  # Created by ZCP. Edit freely — ZCP merges these values into .env at
+  # every generate-dotenv but will not overwrite this file.
+  # Add ".env.local" to .gitignore if not already there.
+  ```
+
+**Tests**:
+- `TestEnsureEnvLocal_CreatesWhenAbsent`.
+- `TestEnsureEnvLocal_RefusesWhenPresent`.
+- `TestEnsureEnvLocal_HeaderStable`.
+
+**Size**: ~50 LOC + tests.
+
+### Phase 2C — Lifecycle event atoms
+
+**Why**: Each lifecycle row in "How it works in practice" needs an atom
+so agents have explicit guidance for the common cases.
+
+**What** (atoms):
+- `develop-local-env-add-shared-secret.md` — agent uses
+  `zerops_env action=set scope=project`, then regen.
+- `develop-local-env-add-deployed-only.md` — edit zerops.yaml run.envVariables,
+  deploy.
+- `develop-local-env-add-local-override.md` — edit `.env.local`, regen.
+- `develop-local-env-add-managed-service.md` — extend project, edit
+  zerops.yaml `${svc_var}` ref, regen.
+- `develop-local-env-rotate-secret.md` — set in project, regen, warn
+  about session invalidation.
+- `develop-local-env-retake-key.md` — delete from `.env.local`, regen.
+
+All filters: `routes: [classic, recipe]`, `environments: [local]`,
+`phases: [develop-active]`.
+
+**Tests**:
+- Axis-filter tests via `atoms_lint`.
+- `TestSynthesize_LifecycleAtoms_FireOnLocalDevelop`.
+
+**Size**: ~250 LOC content + tests.
+
+### Phase 2D — `develop-local-env-troubleshoot.md` atom
+
+**Why**: Edge cases need explicit guidance — committed `.env.local`,
+unowned edits, VPN down, multi-setup confusion. Reactive atom for when
+an error surfaces.
+
+**What**: New atom describing recovery paths for each error in lifecycle
+table edge cases:
+- "ZCP refused write because of unowned `.env` edits" → move keys to
+  `.env.local` or `--force`.
+- "Tracking `.env.local` in git" → move shared values to project env.
+- "VPN down on regen" → `zcli vpn up`, retry.
+- "Multi-setup ambiguity" → specify `--setup`, list of setups in error.
+
+**Tests**:
+- Filter via `atoms_lint`.
+
+**Size**: ~80 LOC content + tests.
+
+### Phase 2E — Status check via EnvPlan dry-run
+
+**Why**: Lifecycle "is `.env` stale?" detection needs a check.
+EnvPlan dry-run is the natural primitive.
+
+**What**:
+- New `internal/tools/workflow_checks_local_env.go::checkLocalDotenvFresh`.
+- Wired into `zerops_workflow action="status"` lifecycle (local mode only).
+- Logic: builds EnvPlan via 0A, compares to existing `.env`, surfaces
+  status:
+  - `fresh` (no diff)
+  - `stale` (yaml or project env changed since `.env` mtime)
+  - `unowned-edits` (`.env` has keys not in plan, not in `.env.local`)
+  - `missing` (`.env` doesn't exist)
+  - `vpn-down` (transient resolve fail)
+- Recovery hint: `tool=zerops_env`, `action=generate-dotenv`,
+  `args.setup=<detected>`, `args.preview=true` for inspection first.
+
+**Tests**:
+- `TestCheckLocalDotenvFresh_*` table.
+
+**Size**: ~80 LOC + tests.
+
+**Theme 2 total**: ~540 LOC, 5 phases.
+
+---
+
+## Theme 1 — Recipe-route in local-flow
+
+### Phase 1A — `LocalizeRecipeImportYAML` (drop dev + strip buildFromGit)
+
+**Why**: Today's recipe import.yml provisions appdev + appstage with
+buildFromGit. Local mode needs single runtime in READY_TO_DEPLOY for
+A3 force-first-deploy semantics.
+
+**What**:
 ```go
 // internal/workflow/recipe_import_local.go (new)
 
-// LocalizeRecipeImportYAML drops services that exist solely for the
-// container-mode SSH-in dev workspace. In local mode the user's CWD
-// replaces these; provisioning them on Zerops would defeat local-mode
-// purpose.
-//
-// Container-mode shape (preserved): every service stays.
-// Local-mode shape: services with zeropsSetup: dev are dropped;
-// stage runtime + managed services pass through unchanged.
+// LocalizeRecipeImportYAML transforms a container-shape recipe import.yml
+// into local-mode shape: drops services with zeropsSetup: dev, strips
+// buildFromGit from remaining runtime services. Uses yaml.Node round-trip
+// to preserve comments and field ordering.
 func LocalizeRecipeImportYAML(yamlContent string) (string, error)
 ```
 
 **Wire-in**:
-- `internal/workflow/bootstrap_guide_assembly.go::formatRecipeImportYAMLForGuide`:
-  when `EnvLocal`, route through `LocalizeRecipeImportYAML` after
-  `RewriteRecipeImportYAML`.
-- `internal/workflow/engine.go::BootstrapCompletePlan`: same.
+- `internal/workflow/bootstrap_guide_assembly.go::formatRecipeImportYAMLForGuide`
+  + `internal/workflow/engine.go::BootstrapCompletePlan`: route through
+  `LocalizeRecipeImportYAML` when `EnvLocal`.
 
 **Tests**:
 - `TestLocalizeRecipeImportYAML_DropsZeropsSetupDev`.
-- `TestLocalizeRecipeImportYAML_PreservesStageAndManaged`.
-- `TestLocalizeRecipeImportYAML_NoOpForRecipesWithoutDev` (e.g.
-  `nextjs-ssr-hello-world` — no dev block to drop).
-- `TestLocalizeRecipeImportYAML_PreservesYAMLNodeOrdering` (YAML
-  comments + ordering matter for the agent's downstream review).
+- `TestLocalizeRecipeImportYAML_StripsBuildFromGit`.
+- `TestLocalizeRecipeImportYAML_PreservesStageZeropsSetupAndManaged`.
+- `TestLocalizeRecipeImportYAML_NoOpForRecipesAlreadyLocalShape` (e.g.
+  `nextjs-ssr-hello-world`).
+- `TestLocalizeRecipeImportYAML_PreservesYAMLNodeOrdering`.
+- `TestRewriteRecipeImportYAML` stays green (container-mode regression).
 
-**Container regression**:
-- `TestRewriteRecipeImportYAML` stays green (non-local paths preserve
-  `zeropsSetup` + `buildFromGit`).
-- `TestBuildGuide_Recipe_ProvisionRewritesYAMLWithPlanHostnames` stays
-  green.
+**Size**: ~100 LOC + tests.
 
-**Size**: ~80 LOC + tests.
+### Phase 1B — Loosen `workflow_checks` + `bootstrap_outputs`
 
-### Phase 1B — Loosen workflow_checks + bootstrap_outputs
-
-**Why**: `checkServiceRunning` expects `DevHostname` to exist; after
-1A it doesn't in local mode. `bootstrap_outputs` writes the plan's
-mode verbatim; local-mode-recipe should write `Mode=local-stage`.
+**Why**: `checkServiceRunning` expects DevHostname; after 1A there isn't
+one. `bootstrap_outputs` should write `Mode=local-stage`.
 
 **What**:
 - `internal/tools/workflow_checks.go::checkServiceRunning`: when
   `EnvLocal` + recipe route, skip DevHostname existence check; only
-  validate stage runtime + managed deps.
-- `internal/workflow/bootstrap_outputs.go`: when `EnvLocal` + the
-  plan has a stage runtime, write `Mode=PlanModeLocalStage` with
-  `StageHostname=<created-runtime>` (mirroring `LocalAutoAdopt` case 1
-  semantics from Phase 9).
+  validate stage runtime in READY_TO_DEPLOY (after 1A) + managed deps.
+- `internal/workflow/bootstrap_outputs.go`: when `EnvLocal` + plan has
+  stage runtime, write `Mode=PlanModeLocalStage` with
+  `StageHostname=<runtime>`.
 
 **Tests**:
 - `TestCheckServiceRunning_LocalRecipe_SkipsDevHostname`.
-- `TestCheckServiceRunning_ContainerRecipe_StillRequiresDev`
-  (regression).
+- `TestCheckServiceRunning_LocalRecipe_AcceptsReadyToDeploy`.
+- `TestCheckServiceRunning_ContainerRecipe_StillRequiresDev` (regression).
 - `TestBootstrapOutputs_LocalRecipe_WritesLocalStageMode`.
-- `TestBootstrapOutputs_ContainerStandard_StillWritesStandardMode`
-  (regression).
 
-**Size**: ~40 LOC + tests.
+**Size**: ~50 LOC + tests.
 
-### Phase 1C — Plumb RecipeMatch.Repo
+### Phase 1C — Plumb `RecipeMatch.Repo`
 
-**Why**: Recipe markdown frontmatter has `repo:` but
-`internal/workflow/route.go::RecipeMatch` drops it. Atom needs the URL
-to interpolate into a `git clone` command.
+**Why**: Recipe markdown frontmatter has `repo:`; `RecipeMatch` drops it.
+Atom needs URL for `git clone`.
 
 **What**:
 - `internal/workflow/route.go`: add `Repo string` field to `RecipeMatch`.
 - `internal/workflow/recipe_corpus_store.go`: read frontmatter `repo:`
-  during corpus load, populate the field on match construction.
-- Bonus: also include `repo` in the `bootstrap-recipe-match.md` atom's
-  template-vars surface so atom can render it.
+  during corpus load, populate.
+- `bootstrap-recipe-match.md` atom template-vars surface includes `repo`.
 
 **Tests**:
 - `TestRecipeCorpusStore_LoadsRepoFromFrontmatter`.
@@ -247,362 +659,257 @@ to interpolate into a `git clone` command.
 
 **Size**: ~30 LOC + tests.
 
-### Phase 1D — Atoms (clone + local-import + match modification)
+### Phase 1D — Atoms (clone + provision + force-deploy + match modification)
 
-**Why**: The local-mode-recipe path needs explicit atom guidance.
-Without it the agent guesses (Codex confirmed this is exactly what
-happens today).
+**Why**: Recipe local-mode flow needs explicit atom guidance. Without it
+agents guess (Codex confirmed this is what happens today).
 
-**What** (three atoms, one modification):
-
-1. **NEW** `internal/content/atoms/bootstrap-recipe-local-clone.md`:
+**What**:
+1. **NEW** `bootstrap-recipe-local-clone.md`:
    - Filters: `routes: [recipe]`, `environments: [local]`,
      `steps: [discover]`.
-   - Shape:
-     - "Local CWD replaces the recipe's appdev runtime."
-     - "Before provisioning, verify CWD is empty
-       (`ls -A` returns empty, or only contains ZCP state)."
-     - "If non-empty: stop and ask. Do NOT clone over user files."
-     - "Clone into CWD: `git clone <recipe.repo> .` (where
-       <recipe.repo> is rendered from RecipeMatch.Repo)."
-     - "Upstream remote stays connected — to use your own remote, run
-       `git remote set-url origin <your-repo>`."
-
-2. **NEW** `internal/content/atoms/bootstrap-recipe-import-local.md`:
+   - Content: empty-CWD verify → `git clone <recipe.repo> .` → upstream
+     remote stays connected (note about `git remote set-url origin`).
+2. **NEW** `bootstrap-recipe-import-local.md`:
    - Filters: `routes: [recipe]`, `environments: [local]`,
      `steps: [provision]`.
-   - Shape:
-     - "Submit the localized YAML (ZCP already dropped the dev runtime)
-       via `zerops_import`. Stage will provision with code from upstream
-       buildFromGit; you don't deploy it yourself this time."
-     - "After services reach RUNNING:
-       (a) `zerops_env action=\"get\" project=true` to surface project env keys.
-       (b) `zerops_env action=\"generate-dotenv\" serviceHostname=\"prod\"` —
-            uses the cloned zerops.yaml's `setup: prod` block.
-       (c) Add `.env` to `.gitignore`.
-       (d) Guide user to run `zcli vpn up <projectId>` for managed-service
-            access from local."
-     - "First app run: `npm install && npm run dev` (or framework
-       equivalent). Subsequent stage deploys:
-       `zerops_deploy targetService=<stage-hostname> workingDir=<cwd>`."
-
-3. **MODIFY** `internal/content/atoms/bootstrap-recipe-match.md`:
-   - Today says "Do not write code — `buildFromGit` pulls the app repo
-     at import." This is container-only.
+   - Content:
+     - "ZCP transformed import.yml: appdev dropped, buildFromGit stripped.
+       Stage starts in READY_TO_DEPLOY. Subdomain URL not live until first
+       local deploy completes."
+     - "After services ready: `zerops_env action=generate-dotenv setup=prod`
+       → `.env`. ZCP also creates `.env.local` seeded with dev-setup
+       overrides (APP_ENV=local, etc.)."
+     - "Run app locally (`composer install && php artisan serve` or
+       framework equivalent). VPN required for managed-service access:
+       `zcli vpn up`."
+     - "**First deploy is mandatory bootstrap step**:
+       `zerops_deploy targetService=<stage> workingDir=<cwd>`. This
+       verifies the build pipeline + runtime + env wiring. Without it,
+       stage subdomain returns 502/503."
+3. **MODIFY** `bootstrap-recipe-match.md`:
    - Add qualifier: "(container only; in local mode you'll clone the
      recipe repo locally — see `bootstrap-recipe-local-clone`)."
 
 **Tests**:
 - `TestSynthesize_LocalRecipeProvisionAtomFires`.
 - `TestSynthesize_ContainerRecipeProvisionUnchanged` (regression).
-- `TestSynthesize_LocalProvisionAtomIsClassicOnly` stays green
-  (the existing local-classic atom is unaffected; the new one is
-  recipe-route specific).
 
-**Size**: ~150 LOC (mostly atom content + axis tests).
+**Size**: ~180 LOC content + tests.
 
 ### Phase 1E — Live verification
 
-**Why**: Codex flagged `Option 1` as needing live verification because
-the recipe → local transform path is new.
+**Why**: A3 (strip + force-deploy) is new behavior. Verify against real
+Zerops.
 
 **What**:
 - New scenario `eval/behavioral/scenarios-local/recipe-nodejs-hello-world.md`:
-  - Pre-seed: empty Zerops project (no services), empty CWD.
+  - Pre-seed: empty Zerops project, empty CWD.
   - Prompt: "Use the nodejs-hello-world recipe to set up a Node + Postgres
     project."
-  - Expected: agent picks recipe route, clones repo, .env generated,
-    `npm install` works, stage deploys via redeploy from local.
-  - Tags: `[local-mode, recipe-route, first-deploy, node, postgres]`.
+  - Expected: agent transforms import.yml, clones repo, ZCP creates
+    `.env.local`, generates `.env`, app runs locally, **agent deploys
+    to stage as bootstrap completion**, stage URL becomes live.
 - Run via `make flow-eval-local ID=recipe-nodejs-hello-world`.
 
 **Tests**: scenario fixture + retrospective surfacing.
 
-**Size**: ~100 LOC scenario + supporting fixtures.
+**Size**: ~120 LOC scenario.
 
-### Phase 1 risk register
-
-- **Stage waits for buildFromGit pull** — Zerops takes 1-2 minutes to
-  clone + build initial code. atom-import-local.md should set agent
-  expectations: provision-then-RUNNING is slower than classic-route's
-  empty-shell provisioning.
-- **Repo authentication** — recipe repos are public; private app repos
-  added later need user-side `git` credential setup. ZCP doesn't own
-  Git credentials.
-- **`.git` retained after clone** — user's first commit will surprise
-  upstream remote unless they `git remote set-url`. Atom warns.
-- **Setup-name vs hostname mismatch in generate-dotenv** — recipe yamls
-  use `setup: prod`/`dev`; atom guides `serviceHostname="prod"` for
-  generate-dotenv. Cosmetic concern; explicit `setup` parameter on env
-  tool is a future ergonomics win, deferred.
+**Theme 1 total**: ~480 LOC, 5 phases.
 
 ---
 
-## Theme 2 — Two-region `.env` (with deferred per-key override)
+## Theme 3 — Brownfield-adopt subroute (DESIGN-ONLY this wave)
 
-### Architecture (basic — ships first)
+### Architectural sketch
 
-`.env` has TWO regions delimited by comment markers:
+Brownfield-adopt is a **subroute under local-mode bootstrap**, sibling to
+recipe-route and classic-greenfield-route. Detected via signal: CWD has
+a non-empty `.env` AND framework signals (package.json, composer.json,
+go.mod, etc.) AND no Zerops integration (no zerops.yaml, no `.zcp/state`).
 
-```bash
-# Generated by ZCP. Below the ZCP-MANAGED block is YOUR space.
-# Values you put after the END marker survive every `generate-dotenv`.
-
-# === ZCP-MANAGED BEGIN ===
-# Auto-synced from zerops.yaml + project env + service refs.
-# Edits inside this block are clobbered on every regen.
-DATABASE_URL=postgresql://db:abc@zcpdb:5432/main
-DB_HOST=zcpdb
-APP_KEY=base64:xyz
-# === ZCP-MANAGED END ===
-
-# Your overrides — preserved across regenerations.
-LOG_LEVEL=debug
-FEATURE_FLAG_X=true
+```
+zerops_workflow workflow="bootstrap" → discover phase:
+  cwd-empty? → classic-greenfield route
+  has-zerops-yaml? → adopt-existing-yaml route (current behavior)
+  has-non-empty-.env + framework-signals? → BROWNFIELD-ADOPT route (new)
+  catalog-match? → recipe route
 ```
 
-**Logic**:
-- On `generate-dotenv` invocation:
-  1. Read existing `.env` if present.
-  2. Find `=== ZCP-MANAGED BEGIN ===` and `=== ZCP-MANAGED END ===`
-     marker lines.
-  3. Three branches:
-     - **Both markers present**: extract content after end marker as
-       user-block; replace managed block with fresh resolution.
-     - **Neither marker** (legacy `.env` from Phase 5/6 era): treat
-       entire content as user-block; prepend fresh managed block.
-       Surface migration warning in result.
-     - **One marker missing or malformed**: refuse + ask for cleanup.
-  4. Compute new managed-block hash + user-block hash for manifest.
-  5. Atomic write `.env.tmp` → rename.
-  6. Update manifest at `.zcp/state/dotenv/<setup>.json`.
+### Adoption transaction protocol
 
-### Phase 2A — Spec + atom
+```
+1. zerops_env action="classify-dotenv" cwd=<dir>
+   → returns ClassificationProposal with per-key suggestions:
+     {
+       toProjectEnv:    [JWT_SECRET, STRIPE_API_KEY],
+       toZeropsYaml:    [{key, value, refType?}],
+       toEnvLocal:      [APP_ENV=local, LOG_LEVEL=debug],
+       requiresService: [{key, suggestedService: postgresql@18}],
+       ambiguous:       [{key, candidates, reasoning}],
+     }
+2. Atom guides agent to surface proposal to user; user confirms / edits.
+3. zerops_env action="adopt-dotenv" cwd=<dir> proposal=<confirmed>
+   → backs up original `.env` to .zcp/state/backups/dotenv/<ts>.env (0600);
+   → writes import.yml + zerops.yaml + .env.local from proposal;
+   → returns next-step: zerops_import.
+4. zerops_import → Zerops creates project + system vars resolve.
+5. generate-dotenv setup=<auto-picked> → fresh .env from new sources.
+6. Agent surfaces backup path so user can recover if classification was off.
+```
 
-**What**:
-- Update `docs/spec-local-dev.md §7` with the two-region scheme.
-- New atom `internal/content/atoms/develop-local-env-sync.md` with the
-  surface→canonical table from Codex output, plus the two-region
-  explanation and atom guidance "after editing zerops.yaml or
-  project env, run `generate-dotenv` to refresh local `.env`".
-- Modify `internal/content/atoms/develop-env-var-channels.md` with a
-  local addendum.
+### Classification heuristics (full library in next-wave plan)
 
-### Phase 2B — Manifest + atomic write
+Per Codex output:
 
-**What**:
-- New `internal/ops/env_dotenv_manifest.go` with manifest read/write.
-- Manifest schema:
-  ```json
-  {
-    "setup": "prod",
-    "yamlSourceHash": "sha256:...",
-    "projectEnvFingerprint": "sha256:...",
-    "serviceEnvFingerprints": {"db": "sha256:..."},
-    "managedBlockHash": "sha256:...",
-    "userBlockHash": "sha256:...",
-    "generated": "2026-05-07T10:00:00Z"
-  }
-  ```
-- `env_generate.go`: switch to atomic write (`.env.tmp` → rename).
+- **Managed-service candidates** (suggest service + ref): URL-scheme
+  match (postgres://, redis://, mongodb://, mysql://, amqp://, nats://);
+  hostname patterns (localhost, db, postgres, redis, cache); standard
+  ports.
+- **Shared app secrets** (project env): `APP_KEY`, `APP_SECRET`, `JWT_*`,
+  `SECRET_*`, `*_KEY`, `*_TOKEN`. Preserve existing values (rotation
+  breaks sessions).
+- **External secrets** (project env): provider prefixes (`STRIPE_*`,
+  `OPENAI_*`, `MAILGUN_*`, etc.).
+- **Mode/local flags** (split: zerops.yaml=production, `.env.local`=local):
+  `NODE_ENV`, `APP_ENV`, `RAILS_ENV`, `ASPNETCORE_ENVIRONMENT`, `DEBUG`.
+- **Local-only** (`.env.local`): `LOG_LEVEL=debug`, `MOCK_*`, `LOCAL_*`,
+  `XDEBUG_*`.
+- **Plain config** (zerops.yaml + optionally `.env.local`): `PORT`,
+  `*_TIMEOUT`, public URLs.
 
-### Phase 2C — Two-region marker logic
+### Confirmation rules
 
-**What**:
-- `env_generate.go`: parse existing `.env` for markers, preserve user
-  block, write managed block + user block in correct order.
-- `EnvDotenvResult` extends with `ManifestPath`, `Migrated bool`,
-  `Freshness string` (`"fresh"|"managed-block-edited"|"yaml-changed"`).
+Auto-distribute only:
+- Mode flags with explicit `local`/`development` value → `.env.local`.
+- `LOG_LEVEL=debug` → `.env.local`.
+- `DATABASE_URL` to `localhost:5432` when user explicitly requested
+  Zerops Postgres and no external DB evidence.
 
-**Tests**:
-- `TestEnvGenerateDotenv_NewFile_WritesBothMarkers`.
-- `TestEnvGenerateDotenv_LegacyFile_WrapsExistingAsUser_Migrated`.
-- `TestEnvGenerateDotenv_PreservesUserBlock`.
-- `TestEnvGenerateDotenv_ClobbersManagedEditWithWarning`.
-- `TestEnvGenerateDotenv_OneMarkerMissing_ReturnsError`.
+Require explicit confirmation:
+- External-looking hostname.
+- Any provider/payment token (sensitivity high).
+- Any app encryption key (rotation risks).
+- Ambiguous URLs (could be local Docker vs external managed DB).
 
-### Phase 2D — Status check
+### Trigger to promote (start the next-wave plan)
 
-**What**:
-- New `internal/tools/workflow_checks_local_env.go::checkLocalDotenvFresh`.
-- Wired into `zerops_workflow action="status"` lifecycle.
-- Recovery hint: `tool=zerops_env`, `action=generate-dotenv`, args
-  carry `serviceHostname`.
-- Detect cases:
-  - yaml mtime > .env mtime → stale → recover.
-  - manifest absent → never generated → recover (Status="missing").
-  - managed-block-hash on disk differs from manifest → drift inside
-    managed (user edited there) → recover with warning.
+- Theme 0/1/2 of THIS plan ship.
+- A flow-eval-local retrospective surfaces brownfield-adopt friction
+  ("user had existing app, ZCP couldn't bootstrap cleanly").
+- A second concrete scenario surfaces beyond Express+Postgres.
 
-### Phase 2E — Edge cases
+### Estimated next-wave size
 
-- **VPN down during regen** — service-env fingerprints unavailable;
-  `.env` still lands with Phase 5 vpnHint; manifest records empty
-  service-fingerprints; status check tolerates this branch.
-- **Multi-target local** (multiple runtime hostnames on Zerops, single
-  CWD) — today `generate-dotenv` writes one `.env` per setup-block in
-  the CWD's zerops.yaml. Multi-target use case is rare; document
-  constraint, defer multi-output enhancement.
-- **Race condition** — atomic rename plus manifest-after-write reduces
-  risk; advisory lock under `.zcp/state/dotenv.lock` is overkill for
-  single-user local dev.
+~300 LOC implementation + ~150 LOC classification heuristics + 4-6 atoms
++ live verify scenario.
 
-### DEFERRED — Per-key override semantics (next session)
-
-The basic two-region scheme handles "user adds vars ZCP doesn't know
-about". It does NOT handle the user's clarification:
-
-> "Třeba envu APP_ENV chceme mít v `.env` nastavenou na 'local', ale
-> třeba v `zerops.yaml` nebo project env na 'production'. Na druhou
-> stranu třeba envy pro db budeme chtít umět synchronizovat."
-
-In this scenario:
-- `APP_ENV` exists in canonical surface (yaml/project) with value
-  `production`. User wants `.env` to show `local` instead.
-- `DB_HOST` exists in canonical surface as cross-service ref. User
-  wants `.env` to always show the live Zerops value.
-
-The basic two-region writes APP_ENV into managed (=production), and
-the user can't override it without entering shadow territory (most
-dotenv loaders are first-wins, so user-block at bottom doesn't win).
-
-**Open mechanism options for next session:**
-
-1. **Per-key annotation in zerops.yaml** — `run.envVariables` entry
-   carries a marker (yaml comment, custom key syntax) saying "local
-   override allowed; emit-only-if-not-overridden".
-   ```yaml
-   run:
-     envVariables:
-       APP_ENV: production # zcp:local-override
-       DATABASE_URL: ${db_connectionString}  # always managed
-   ```
-   At regen: ZCP reads the existing `.env` user-block; if a key is in
-   user-block AND has `zcp:local-override` annotation in yaml, skip
-   emitting it in managed-block (user value wins). DB_HOST without
-   annotation: always emit fresh in managed.
-
-2. **Per-key annotation in `.env` user-block** — user pins certain
-   keys explicitly:
-   ```bash
-   # === ZCP-MANAGED END ===
-   # zcp:lock APP_ENV
-   APP_ENV=local
-   ```
-   At regen: ZCP scans user-block for `# zcp:lock <KEY>` directives;
-   removes those keys from managed-block emission.
-
-3. **Three-region scheme** — managed block + locked-by-user block
-   (suppresses managed emission for these keys) + pure-user-add block.
-   ```bash
-   # === ZCP-MANAGED BEGIN ===
-   DATABASE_URL=...
-   # === ZCP-MANAGED END ===
-
-   # === USER-LOCKED BEGIN === (these suppress same-key managed emission)
-   APP_ENV=local
-   # === USER-LOCKED END ===
-
-   LOG_LEVEL=debug
-   ```
-
-4. **Layered files** — `.env.zerops` (always synced, ZCP-managed) +
-   `.env.local` (user-only, ZCP never touches) + framework-side
-   precedence chain. Requires framework support; not universal.
-
-**Decision criteria for next session:**
-- Discoverability: which mechanism is most obvious to LLM agents on
-  first encounter?
-- Robustness: which survives partial yaml/manifest corruption best?
-- Aleš coordination: option 1 touches yaml syntax (recipe-author
-  scope?) — confirm with Aleš before going there.
-- Test surface: which option has the smallest test matrix?
-
-**Trigger to promote**: any of —
-- A flow-eval-local retrospective surfaces "I wanted `.env` value X but
-  ZCP overwrote it with Y on next regen".
-- User explicitly schedules the next-session improvement.
-- A second concrete use case beyond APP_ENV / DB_HOST emerges.
-
-**This deferral is intentional** per user instruction 2026-05-07:
-"udělám vylepšení v další session". Theme 2 ships with the basic
-two-region; per-key override design pass happens later.
+**This wave: 0 LOC for Theme 3**, just the architectural skeleton in
+Theme 0 (`SourceBrownfieldImport` enum) and the design-doc above.
 
 ---
 
 ## Out of scope — Aleš coordination items
 
-- Recipe corpus shape changes (e.g. parallel `<slug>.local.import.yml`)
-  — recipe-author scope. If `LocalizeRecipeImportYAML` programmatic
-  transform proves brittle, escalate.
-- Recipe markdown content rewrites beyond the `bootstrap-recipe-match`
-  cross-reference. Recipe knowledge files are gitignored (Strapi-synced);
-  `zcp sync push` amplification risk per CLAUDE.local.md.
+- Recipe corpus shape changes (parallel `<slug>.local.import.yml`).
+  Programmatic transform via `LocalizeRecipeImportYAML` is the chosen
+  path; if it proves brittle escalate.
+- Recipe markdown content rewrites beyond the cross-reference. Recipe
+  knowledge files are gitignored (Strapi-synced); `zcp sync push`
+  amplification per CLAUDE.local.md.
 - Recipe synthesizer integration with bootstrap-consumable variants.
-  `internal/recipe/testdata/fixtures/synth-showcase/2 — Local.yaml`
-  shows the desired shape but isn't on the bootstrap-recipe-route path.
-  Long-term unification with `internal/knowledge/recipes/` is Aleš's
-  call.
-- Per-key env override mechanism (see Theme 2 deferred section). If
-  option 1 (yaml annotation) is chosen, it's recipe-author-adjacent;
-  options 2/3/4 are ZCP-only.
+- Brownfield-adopt UI in dashboard / recipe catalog (UX surface, not
+  ZCP scope).
+
+---
+
+## Risk register
+
+1. **Theme 0 blast radius beyond local-mode** — `env_generate.go`
+   refactor affects every caller. Phase 0B explicitly asserts behavior
+   parity for existing tests; Phase 0C deprecation-warning path
+   preserves backwards compat for `serviceHostname` callers.
+
+2. **YAML node round-trip in 1A** — recipe YAMLs carry comments + field
+   ordering. Use `yaml.Node` parse/marshal (preserves structure), mirror
+   `recipe_override.go::RewriteRecipeImportYAML`.
+
+3. **`.env.local` create-once contract leak** — if a code path other than
+   `EnsureEnvLocal` ever writes `.env.local`, the contract breaks.
+   `internal/ops/env_local_overlay.go` is the single writer; lint test
+   (`atoms_lint` extension) forbids `os.WriteFile` calls targeting
+   `.env.local` outside that file.
+
+4. **VPN-down false-positive in CI** — Phase 0F policy fails regen on
+   transient resolve. CI tests use mock client, not real platform; OK.
+   Live e2e tests (`-tags e2e`) need VPN up before running.
+
+5. **Theme 2 atom drift** — six new lifecycle atoms reference each other.
+   `atoms_lint` axis tests catch incoherence; reference graph
+   maintained via `references-atoms` frontmatter field.
+
+6. **First-deploy step not completed by agent in 1E** — A3 mandates
+   first deploy as bootstrap step. If agent skips it, stage subdomain
+   stays 502. Atom guidance MUST be unambiguous; flow-eval-local
+   retrospective surfaces if agent skips.
+
+7. **`.env.local` framework collision (Vite/Next/Symfony)** — when
+   framework also natively loads `.env.local`, double-merge. Same
+   values, harmless. Atom guidance documents this; no code change.
+
+8. **Theme 3 design assumptions** — classification heuristics are the
+   core risk. Mitigated by: (a) Theme 3 is design-only this wave, (b)
+   Theme 0's `SourceBrownfieldImport` enum is the only concrete coupling,
+   (c) Theme 3 can pivot in next-wave plan without revisiting 0/1/2.
 
 ---
 
 ## Hand-off checklist
 
 When starting work in a fresh session:
+
 - Read this plan top-to-bottom.
+- Read `docs/spec-env-handling.md` (authoritative design — mental
+  model, source precedence, render policy, alternatives rejected).
+- Read `docs/spec-local-dev.md` and the existing
+  `internal/ops/env_generate.go`.
 - Confirm preconditions (`git status` clean, full test sweep + lint
   clean, race clean).
-- **Order**: Theme 2 phases 2A-2E first (smaller, more discrete), then
-  Theme 1 phases 1A-1E.
+- **Order**: Theme 0 phases 0A-0G → Theme 2 phases 2A-2E → Theme 1
+  phases 1A-1E.
 - TDD per CLAUDE.md: every phase is RED → GREEN → tests + lint + race
   → commit. Pure refactors skip RED.
-- Container regression: every phase has explicit container-mode test
-  coverage or provably-local-only paths.
-- Live verify after Theme 1 Phase 1E
-  (`make flow-eval-local ID=recipe-nodejs-hello-world`).
-- Live verify after Theme 2 Phase 2C
-  (`go test ./e2e/ -tags e2e -run TestE2E_EnvGenerateDotenv`
-  to confirm two-region scheme works against real Zerops).
+- Container regression: every Theme 0 phase has explicit container-mode
+  test coverage; existing `generate-dotenv` callers keep behavior
+  unless test is explicitly updated.
+- Live verify after Theme 1 Phase 1E: `make flow-eval-local
+  ID=recipe-nodejs-hello-world`.
+- Live verify Theme 0 + Theme 2 via existing
+  `go test ./e2e/ -tags e2e -run TestE2E_EnvGenerateDotenv*` (extended
+  with new EnvPlan tests).
 - Single commit per phase.
-- **DO NOT** start the per-key override design pass — that's deferred
-  to a separate session per user instruction.
+- **DO NOT** start Theme 3 implementation — design-only this wave.
 
-## Risks for implementer
-
-1. **Phase 1A YAML parsing fragility** — recipe YAMLs carry comments,
-   ordering, conditionally-placed fields. Use `yaml.Node` round-trip
-   (preserves structure) not `yaml.Unmarshal/Marshal` (drops comments,
-   reorders). Mirror the approach in
-   `internal/workflow/recipe_override.go::RewriteRecipeImportYAML`.
-
-2. **Phase 1E live verification flakiness** — `flow-eval-local` against
-   eval-zcp with real `git clone` of upstream-recipe repo introduces
-   network dependency. Timeout the clone with reasonable bounds; on
-   network failure surface a clear retry message.
-
-3. **Phase 2A atom drift** — `develop-env-var-channels.md` is referenced
-   from many other atoms via `references-atoms`. Local addendum must
-   not break the existing reference graph. Run
-   `tools/lint/atom_template_vars` after edits.
-
-4. **Phase 2C marker collision** — if the user happens to have lines
-   matching `=== ZCP-MANAGED BEGIN ===` literally in their existing
-   `.env` (unlikely but possible), parse goes wrong. Use a robust
-   marker pattern that won't collide with real env-file content.
-
-5. **Theme 2 deferred design pressure** — basic two-region ships
-   without solving APP_ENV-style override. Eval scenarios that test
-   this case will surface friction; resist the urge to fix it inside
-   this plan. Friction → backlog → next-session design pass.
+---
 
 ## Estimated size
 
-- Theme 1: ~400 LOC + ~6 atom files + 1 e2e scenario.
-- Theme 2 basic: ~250 LOC + 3 atom files + spec doc edits.
-- Total: ~650 LOC across ~20 files, 10 phases.
+- Theme 0: ~460 LOC + tests, 7 phases.
+- Theme 1: ~480 LOC + 3 atom files + 1 e2e scenario, 5 phases.
+- Theme 2: ~540 LOC + 7 atom files, 5 phases.
+- Theme 3: 0 LOC this wave (design-only sketch + Theme 0 enum reservation).
+- **Total: ~1480 LOC across ~30 files, 17 phases**.
 
-For comparison: Phase 5-12 wave shipped ~1100 LOC across 22 files in
-8 phases. This plan is similar in size but split across two themes.
+For comparison: Phase 5-12 wave was ~1100 LOC / 22 files / 8 phases.
+This plan is larger because Theme 0 is a foundational refactor that
+generalizes beyond local-mode (will pay dividends in container-mode
+env review, CI export, env-promotion in future waves).
+
+If size is a concern, an alternative split:
+- **Wave 1**: Theme 0 only (foundational, ~460 LOC, 7 phases).
+- **Wave 2**: Theme 1 + Theme 2 (uses Wave 1 primitive, ~1020 LOC).
+- **Wave 3**: Theme 3 brownfield-adopt (~450 LOC).
+
+Each wave independently shippable; recommended unless single-wave
+verifiability is critical.

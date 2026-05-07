@@ -5,11 +5,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/zeropsio/zcp/internal/platform"
 )
+
+// EnvGenerateDotenvOptions controls preview / force behavior for the
+// generate-dotenv operation.
+//
+// Preview=true builds the plan, computes the diff, and returns both
+// without writing. Used to show "what would change" before committing.
+//
+// Force=true bypasses the refuse-on-unowned safety check (caller has
+// confirmed they want any user-direct .env edits to be discarded).
+type EnvGenerateDotenvOptions struct {
+	Preview bool
+	Force   bool
+}
 
 // EnvDotenvResult contains the result of .env file generation.
 //
@@ -26,12 +38,33 @@ import (
 // agent can confirm a missing key was filtered intentionally rather
 // than missing from the project. Yaml-defined overrides for the same
 // names still ship to .env and are NOT listed here.
+//
+// Setup names the zerops.yaml setup block that was rendered (auto-
+// picked from a single-block yaml, or supplied explicitly).
+//
+// Warnings carries non-fatal advisories (e.g. legacy serviceHostname
+// usage). Empty when nothing notable happened.
+//
+// Diff is populated in two situations:
+//   - Preview mode (caller passed Preview=true): no write occurred,
+//     Diff describes what would change.
+//   - Refused mode (Refused=true): write was refused due to unowned
+//     edits in the existing .env, Diff lists the keys at risk.
+//
+// Refused signals the safety gate fired — caller must either move
+// the unowned keys to .env.local, or retry with Force=true to discard
+// them. The .env file on disk is unchanged when Refused=true.
 type EnvDotenvResult struct {
 	Path                string   `json:"path"`
+	Setup               string   `json:"setup"`
 	Services            int      `json:"services"`
 	Variables           int      `json:"variables"`
 	VPNHint             string   `json:"vpnHint,omitempty"`
 	OmittedPlatformKeys []string `json:"omittedPlatformKeys,omitempty"`
+	Warnings            []string `json:"warnings,omitempty"`
+	Diff                *EnvDiff `json:"diff,omitempty"`
+	Preview             bool     `json:"preview,omitempty"`
+	Refused             bool     `json:"refused,omitempty"`
 }
 
 // platformInternalKeys is the denylist of project-level keys that ship
@@ -170,7 +203,10 @@ func (r *refExpander) expandRefs(ctx context.Context, value, sourceService strin
 			}
 			envs, err := r.client.GetServiceEnv(ctx, svc.ID)
 			if err != nil {
-				return "", 0, fmt.Errorf("fetch env vars for %s: %w", svcHost, err)
+				// Wrap as transient — most fetch failures here are
+				// VPN/API connectivity, not yaml-invalidity. Caller
+				// inspects via errors.As (*RefResolveTransientError).
+				return "", 0, &RefResolveTransientError{Service: svcHost, Cause: err}
 			}
 			r.cache[svcHost] = envs
 		}
@@ -200,24 +236,26 @@ func (r *refExpander) expandRefs(ctx context.Context, value, sourceService strin
 	return sb.String(), unresolved, nil
 }
 
-// EnvGenerateDotenv reads zerops.yaml `run.envVariables` for a service, resolves ${hostname_varName}
-// cross-service references by fetching actual values from managed services, appends project-level
-// env vars, and writes a .env file. The LLM never sees secret values — ZCP resolves internally.
-// `run.envVariables` is the canonical schema location; the JSON schema rejects envVariables at the
-// setup-entry top level (only build.envVariables / run.envVariables are valid).
+// EnvGenerateDotenv builds an EnvPlan for the given setup target,
+// renders it as .env content, and writes the file atomically. It is a
+// thin wrapper over BuildEnvPlan + EnvPlan.Render(SinkDotenv).
+//
+// setup names the zerops.yaml setup block to render. Empty + single-
+// block yaml: auto-pick. Empty + multi-block: returns *SetupRequiredError.
+// Empty + zero-block yaml: error. Non-empty: validate entry + non-empty
+// run.envVariables (back-compat).
+//
+// `run.envVariables` is the canonical schema location; the JSON schema
+// rejects envVariables at the setup-entry top level (only
+// build.envVariables / run.envVariables are valid).
 func EnvGenerateDotenv(
 	ctx context.Context,
 	client platform.Client,
 	projectID string,
-	hostname string,
+	setup string,
 	workingDir string,
+	opts EnvGenerateDotenvOptions,
 ) (*EnvDotenvResult, error) {
-	if hostname == "" {
-		return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
-			"serviceHostname is required for generate-dotenv",
-			"Specify which service's zerops.yaml envVariables to resolve")
-	}
-
 	if workingDir == "" {
 		workingDir = "."
 	}
@@ -227,137 +265,170 @@ func EnvGenerateDotenv(
 		return nil, fmt.Errorf("generate-dotenv: %w", err)
 	}
 
-	entry := doc.FindEntry(hostname)
-	if entry == nil {
-		return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
-			fmt.Sprintf("no setup entry for %q in zerops.yaml", hostname),
-			"Check that zerops.yaml has a setup: entry matching the service hostname")
+	// Auto-pick when caller didn't specify and yaml has a single block.
+	// Multi-block yaml with empty setup falls through to BuildEnvPlan
+	// which returns *SetupRequiredError listing available setups.
+	if setup == "" {
+		setups := doc.SetupNames()
+		if len(setups) == 1 {
+			setup = setups[0]
+		}
 	}
 
-	if len(entry.Run.EnvVariables) == 0 {
-		return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
-			fmt.Sprintf("setup %q has no run.envVariables in zerops.yaml", hostname),
-			"Add run.envVariables to zerops.yaml first")
+	// Back-compat validation: when caller named a setup explicitly,
+	// require the entry to exist and have non-empty run.envVariables.
+	// BuildEnvPlan itself is more permissive (will accept empty
+	// run.envVariables when other channels contribute) — Phase 0D may
+	// relax this in the dry-run preview path; the legacy write path
+	// keeps the strict contract.
+	if setup != "" {
+		entry := doc.FindEntry(setup)
+		if entry == nil {
+			return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
+				fmt.Sprintf("no setup entry for %q in zerops.yaml", setup),
+				"Check that zerops.yaml has a setup: entry matching the supplied name")
+		}
+		if len(entry.Run.EnvVariables) == 0 {
+			return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
+				fmt.Sprintf("setup %q has no run.envVariables in zerops.yaml", setup),
+				"Add run.envVariables to zerops.yaml first")
+		}
 	}
 
-	// One service-list fetch up-front feeds the classifier (longest-
-	// hostname-prefix matching for cross-service refs) AND the index
-	// (hostname → ServiceStack for ID lookup before fetching env vars).
-	// Without this the recursive expander used to call ListServices
-	// once per cache miss — wasteful and inconsistent across ref-rich
-	// yamls.
+	// Single ListServices call powers both the plan builder (for
+	// classifier + index) and the VPN probe (for port info). Without
+	// this, BuildEnvPlan would list once and probe would list again —
+	// pinned by TestEnvGenerateDotenv_ListServices_CalledOncePerBatch.
 	services, err := ListProjectServices(ctx, client, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list services: %w", err)
 	}
-	classifier := NewEnvRefClassifier(services)
-	serviceIndex := make(map[string]platform.ServiceStack, len(services))
-	for _, s := range services {
-		serviceIndex[s.Name] = s
-	}
 
-	// Resolve run.envVariables. The expander handles cross-service refs
-	// (${host_var}) AND recursively resolves through fetched values —
-	// e.g. `${db_connectionString}` resolves to db's connectionString
-	// value, which is itself the template
-	// `postgresql://${user}:${password}@${hostname}:${port}` where the
-	// lone refs are siblings within db's own env. Recursion matches
-	// Zerops's deploy-time semantics so the local .env is equivalent to
-	// what lands inside the runtime container.
-	serviceEnvCache := make(map[string][]platform.EnvVar)
-	expander := &refExpander{
-		client:       client,
-		classifier:   classifier,
-		serviceIndex: serviceIndex,
-		cache:        serviceEnvCache,
-	}
-	resolved := make(map[string]string, len(entry.Run.EnvVariables))
-	var unresolvedKeys []string
-
-	for envName, rawValue := range entry.Run.EnvVariables {
-		expanded, unresolvedCount, expErr := expander.expandRefs(ctx, rawValue, "", map[string]bool{}, 0)
-		if expErr != nil {
-			return nil, expErr
-		}
-		if unresolvedCount > 0 {
-			unresolvedKeys = append(unresolvedKeys, envName)
-		} else {
-			resolved[envName] = expanded
-		}
-	}
-
-	if len(unresolvedKeys) > 0 {
-		return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
-			fmt.Sprintf("could not resolve env vars: %s", strings.Join(unresolvedKeys, ", ")),
-			"Check that referenced services are running and have the expected env var keys")
-	}
-
-	// Append project-level env vars (auto-injected in containers, needed in .env for local dev).
-	// Yaml-defined keys (already in `resolved`) shadow project-level vars
-	// of the same name — including keys on the platform-internals denylist,
-	// because explicit user intent wins. Project-level values that match
-	// the denylist are skipped and surfaced via OmittedPlatformKeys.
-	projectEnvs, err := client.GetProjectEnv(ctx, projectID)
+	plan, err := buildEnvPlanWith(ctx, client, projectID, setup, workingDir, services, nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetch project env vars: %w", err)
-	}
-	var omittedPlatformKeys []string
-	for _, pe := range projectEnvs {
-		if _, exists := resolved[pe.Key]; exists {
-			continue
+		// Translate the BuildEnvPlan ref-resolve error into the legacy
+		// PlatformError shape the existing tests / MCP clients expect.
+		msg := err.Error()
+		if strings.Contains(msg, "unresolved ${} refs in:") {
+			parts := strings.SplitN(msg, "unresolved ${} refs in: ", 2)
+			if len(parts) == 2 {
+				return nil, platform.NewPlatformError(platform.ErrInvalidParameter,
+					fmt.Sprintf("could not resolve env vars: %s", parts[1]),
+					"Check that referenced services are running and have the expected env var keys")
+			}
 		}
-		if platformInternalKeys[pe.Key] {
-			omittedPlatformKeys = append(omittedPlatformKeys, pe.Key)
-			continue
-		}
-		resolved[pe.Key] = pe.Content
-	}
-	sort.Strings(omittedPlatformKeys)
-
-	// Write .env file.
-	var sb strings.Builder
-	sb.WriteString("# Generated by ZCP from zerops.yaml envVariables\n")
-	sb.WriteString("# WARNING: Contains secrets. Do not commit.\n\n")
-	for envName, val := range resolved {
-		sb.WriteString(envName)
-		sb.WriteByte('=')
-		sb.WriteString(val)
-		sb.WriteByte('\n')
+		return nil, err
 	}
 
 	envPath := filepath.Join(workingDir, ".env")
-	if err := os.WriteFile(envPath, []byte(sb.String()), 0600); err != nil {
-		return nil, fmt.Errorf("write .env: %w", err)
+	diff, err := plan.DiffAgainstExisting(envPath)
+	if err != nil {
+		return nil, fmt.Errorf("compute diff: %w", err)
 	}
 
 	result := &EnvDotenvResult{
 		Path:                envPath,
-		Services:            len(serviceEnvCache),
-		Variables:           len(resolved),
-		OmittedPlatformKeys: omittedPlatformKeys,
+		Setup:               plan.Setup,
+		Services:            len(plan.TouchedServiceHostnames),
+		Variables:           len(plan.Keys),
+		OmittedPlatformKeys: plan.OmittedPlatformKeys,
+		Diff:                diff,
 	}
 
-	// Best-effort VPN probe. Only runs when we cross-referenced managed
-	// services (serviceEnvCache has entries); a local .env with only
-	// project-level vars doesn't need VPN to work on dev. Services are
-	// probed via their platform-listed TCP ports. A single unreachable
-	// host triggers the hint — users typically run one `zcli vpn up`
-	// per project, not per service.
-	if len(serviceEnvCache) > 0 {
-		if hint := probeManagedServicesForVPN(ctx, projectID, serviceIndex, serviceEnvCache); hint != "" {
+	// Preview mode: surface plan + diff, do NOT write. Returns before
+	// any I/O so the caller can inspect what would change without
+	// touching the .env on disk.
+	if opts.Preview {
+		result.Preview = true
+		return result, nil
+	}
+
+	// Refuse-on-unowned safety gate (docs/spec-env-handling.md §6.2):
+	// the existing .env contains keys not produced by any source —
+	// those are user-direct edits that would be lost on write. Caller
+	// must either move them to .env.local or set Force=true.
+	if diff.HasUnowned() && !opts.Force {
+		result.Refused = true
+		return result, nil
+	}
+
+	// Advisory lock around the write path (§6.4). Concurrent regens of
+	// the same setup serialize; different setups don't block each
+	// other. Acquired only here (not in preview / refused branches —
+	// those are read-only, no contention).
+	release, err := acquireDotenvLock(workingDir, plan.Setup)
+	if err != nil {
+		return nil, fmt.Errorf("acquire lock: %w", err)
+	}
+	defer release()
+
+	rendered, err := plan.Render(SinkDotenv)
+	if err != nil {
+		return nil, fmt.Errorf("render dotenv: %w", err)
+	}
+	if err := atomicWriteFile(envPath, rendered, 0600); err != nil {
+		return nil, fmt.Errorf("write .env: %w", err)
+	}
+
+	// Best-effort VPN probe. Only runs when cross-service refs were
+	// used (TouchedServiceHostnames non-empty); a .env with only
+	// project-level vars doesn't need VPN to work locally. The probe
+	// reuses the services slice already fetched above.
+	if len(plan.TouchedServiceHostnames) > 0 {
+		if hint := probeTouchedServices(ctx, projectID, services, plan.TouchedServiceHostnames); hint != "" {
 			result.VPNHint = hint
 		}
 	}
 	return result, nil
 }
 
-// probeManagedServicesForVPN attempts one TCP dial per referenced
-// managed service. Returns a hint string when any probe fails, empty
-// when all succeed (or no port info is available to probe against).
-// The serviceIndex is the same map EnvGenerateDotenv already built for
-// the ref expander, so the probe doesn't need a second ListServices.
-func probeManagedServicesForVPN(ctx context.Context, projectID string, serviceIndex map[string]platform.ServiceStack, cache map[string][]platform.EnvVar) string {
-	for host := range cache {
+// atomicWriteFile writes data to path via a temp file + rename. The
+// rename is the atomic step on POSIX filesystems — readers either see
+// the old file or the new one, never a half-written state. Concurrent
+// regens of the same file still race on read-modify-write semantics;
+// Phase 0E adds an advisory lock for serialization.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp.*")
+	if err != nil {
+		return fmt.Errorf("create temp: %w", err)
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpPath) }
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("write temp: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("close temp: %w", err)
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		cleanup()
+		return fmt.Errorf("chmod temp: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		cleanup()
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
+}
+
+// probeTouchedServices attempts one TCP dial per touched managed
+// service. Returns a hint string when any probe fails, empty when
+// all succeed (or no port info is available to probe against). The
+// services slice is reused from the caller's earlier ListServices —
+// pinned by TestEnvGenerateDotenv_ListServices_CalledOncePerBatch.
+func probeTouchedServices(ctx context.Context, projectID string, services []platform.ServiceStack, touchedHosts []string) string {
+	if len(touchedHosts) == 0 {
+		return ""
+	}
+	serviceIndex := make(map[string]platform.ServiceStack, len(services))
+	for _, s := range services {
+		serviceIndex[s.Name] = s
+	}
+	for _, host := range touchedHosts {
 		svc, ok := serviceIndex[host]
 		if !ok || len(svc.Ports) == 0 {
 			continue

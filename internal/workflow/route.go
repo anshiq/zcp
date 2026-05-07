@@ -42,6 +42,12 @@ type RecipeMatch struct {
 	// Mode is the bootstrap mode inferred from ImportYAML (standard, simple,
 	// dev). Empty when the YAML shape is unrecognised or managed-only.
 	Mode topology.Mode `json:"mode,omitempty"`
+	// Repo is the recipe's app-repo URL from frontmatter `repo:`. Used by
+	// local-mode bootstrap to drive `git clone <Repo> .` into the agent's
+	// CWD (since local mode replaces the SSH-in dev runtime — the user's
+	// CWD becomes the source-of-truth checkout, seeded from upstream).
+	// Empty when the recipe markdown declared no repo.
+	Repo string `json:"repo,omitempty"`
 }
 
 // RecipeCorpus abstracts the recipe search surface. Implementations live in

@@ -65,17 +65,26 @@ func checkProvision(client platform.Client, fetcher platform.LogFetcher, project
 		allPassed := true
 
 		for _, target := range plan.Targets {
-			// Check dev runtime exists and is RUNNING.
-			checks = append(checks, checkServiceRunning(ctx, client, fetcher, projectID, svcMap, target.Runtime.DevHostname)...)
-
-			// Cross-check runtime type matches plan.
-			checks = append(checks, checkServiceType(svcMap, target.Runtime.DevHostname, target.Runtime.Type)...)
+			// Check dev runtime exists and is RUNNING. Skipped in local-
+			// mode + recipe route: the local-mode transform drops the
+			// appdev runtime (Theme 1 / docs/spec-env-handling §11), and
+			// the agent's CWD replaces the SSH-in dev workspace. Only
+			// the stage runtime + managed deps need verification.
+			if target.Runtime.DevHostname != "" {
+				checks = append(checks, checkServiceRunning(ctx, client, fetcher, projectID, svcMap, target.Runtime.DevHostname)...)
+				checks = append(checks, checkServiceType(svcMap, target.Runtime.DevHostname, target.Runtime.Type)...)
+			}
 
 			// Check stage runtime exists in any alive status.
 			// Stage may be newly imported (NEW/READY_TO_DEPLOY) or already running (RUNNING/ACTIVE).
 			// Mixed cases (existing dev + new stage) are valid for adoption scenarios.
 			if stage := target.Runtime.StageHostname(); stage != "" {
 				checks = append(checks, checkServiceStatusAny(ctx, client, fetcher, projectID, svcMap, stage, serviceStatusNew, serviceStatusReadyToDeploy, serviceStatusRunning, serviceStatusActive)...)
+				// In local-recipe mode the dev runtime was dropped, so the
+				// stage runtime MUST cover the type-check responsibility.
+				if target.Runtime.DevHostname == "" {
+					checks = append(checks, checkServiceType(svcMap, stage, target.Runtime.Type)...)
+				}
 			}
 
 			// Check dependencies.

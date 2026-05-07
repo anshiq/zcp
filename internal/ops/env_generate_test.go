@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,17 +279,6 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 			wantContains: []string{"SHARED_KEY=custom_value"},
 		},
 		{
-			name: "missing service hostname",
-			zeropsYml: `zerops:
-  - setup: app
-    run:
-      envVariables:
-        DB_HOST: ${db_hostname}
-`,
-			hostname: "",
-			wantErr:  "serviceHostname is required",
-		},
-		{
 			name: "no setup entry for hostname",
 			zeropsYml: `zerops:
   - setup: other
@@ -411,7 +401,7 @@ func TestEnvGenerateDotenv_ResolvesRefs(t *testing.T) {
 				mock = mock.WithProjectEnv(tt.projectEnvs)
 			}
 
-			result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", tt.hostname, tmpDir)
+			result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", tt.hostname, tmpDir, EnvGenerateDotenvOptions{})
 
 			if tt.wantErr != "" {
 				if err == nil {
@@ -491,7 +481,7 @@ func TestEnvGenerateDotenv_PlatformInternalsFiltered(t *testing.T) {
 			{ID: "p9", Key: "USER_PROJECT_VAR", Content: "kept"},
 		})
 
-	result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir)
+	result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir, EnvGenerateDotenvOptions{})
 	if err != nil {
 		t.Fatalf("EnvGenerateDotenv: %v", err)
 	}
@@ -571,7 +561,7 @@ func TestEnvGenerateDotenv_YamlRefOverridesDenylist(t *testing.T) {
 			{ID: "p1", Key: "ZCP_API_KEY", Content: "deploy-token-from-platform"},
 		})
 
-	result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir)
+	result, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir, EnvGenerateDotenvOptions{})
 	if err != nil {
 		t.Fatalf("EnvGenerateDotenv: %v", err)
 	}
@@ -633,11 +623,554 @@ func TestEnvGenerateDotenv_ListServices_CalledOncePerBatch(t *testing.T) {
 		WithServiceEnv("svc-cache", []platform.EnvVar{{ID: "c1", Key: "url", Content: "redis://cache:6379"}}).
 		WithServiceEnv("svc-queue", []platform.EnvVar{{ID: "q1", Key: "url", Content: "nats://queue:4222"}})
 
-	if _, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir); err != nil {
+	if _, err := EnvGenerateDotenv(context.Background(), mock, "proj-1", "app", tmpDir, EnvGenerateDotenvOptions{}); err != nil {
 		t.Fatalf("EnvGenerateDotenv: %v", err)
 	}
 
 	if got := mock.CallCounts["ListServices"]; got != 1 {
 		t.Errorf("ListServices called %d times, want exactly 1 per batch", got)
+	}
+}
+
+// TestGenerateDotenv_SetupExplicit_PicksMatchingBlock pins that an
+// explicit setup name selects the corresponding zerops.yaml block.
+// This is Phase 0C's primary semantic — setup is the canonical
+// selector for env generation, distinct from service hostname.
+func TestGenerateDotenv_SetupExplicit_PicksMatchingBlock(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        WHICH_SETUP: app-block
+  - setup: worker
+    run:
+      envVariables:
+        WHICH_SETUP: worker-block
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "p1", "worker", tmpDir, EnvGenerateDotenvOptions{})
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	if result.Setup != "worker" {
+		t.Errorf("result.Setup = %q, want %q", result.Setup, "worker")
+	}
+	body, _ := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if !strings.Contains(string(body), "WHICH_SETUP=worker-block") {
+		t.Errorf(".env should reflect worker-block; got:\n%s", string(body))
+	}
+}
+
+// TestGenerateDotenv_SetupMissing_SingleBlock_AutoPicks pins that
+// empty setup against a single-block yaml auto-picks the only setup.
+// Removes friction: agents with single-app projects don't need to
+// know the setup name.
+func TestGenerateDotenv_SetupMissing_SingleBlock_AutoPicks(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: only-block
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "p1", "", tmpDir, EnvGenerateDotenvOptions{})
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	if result.Setup != "app" {
+		t.Errorf("result.Setup = %q, want %q (auto-picked)", result.Setup, "app")
+	}
+}
+
+// TestGenerateDotenv_SetupMissing_MultipleBlocks_Refuses pins that
+// empty setup against a multi-block yaml errors with the available
+// setup names. Auto-picking would silently select the wrong setup;
+// refusing forces the agent to disambiguate.
+func TestGenerateDotenv_SetupMissing_MultipleBlocks_Refuses(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: app-block
+  - setup: worker
+    run:
+      envVariables:
+        APP_NAME: worker-block
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	_, err := EnvGenerateDotenv(context.Background(), mock, "p1", "", tmpDir, EnvGenerateDotenvOptions{})
+	if err == nil {
+		t.Fatal("expected SetupRequiredError, got nil")
+	}
+	var setupErr *SetupRequiredError
+	if !errors.As(err, &setupErr) {
+		t.Fatalf("error type = %T, want *SetupRequiredError: %v", err, err)
+	}
+	if len(setupErr.Available) != 2 {
+		t.Errorf("Available setups = %v, want 2 entries", setupErr.Available)
+	}
+}
+
+// TestGenerateDotenv_LegacyHostname_StillWorks_WithWarning pins that
+// legacy callers passing setup-name-via-positional argument keep
+// working. The deprecation warning lives at the tool layer
+// (TestEnv_GenerateDotenv_LegacyHostname_AddsWarning); ops level
+// just verifies the value is accepted as setup.
+func TestGenerateDotenv_LegacyHostname_StillWorks_WithWarning(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: legacy-call-site
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	// Legacy callers pass the setup name via the same positional arg
+	// that used to be `hostname`. After Phase 0C the parameter is
+	// `setup`; back-compat is preserved because the meaning matched
+	// in the common case (recipe / classic single-runtime where the
+	// hostname IS the setup name).
+	result, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{})
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	if result.Setup != "app" {
+		t.Errorf("result.Setup = %q, want %q", result.Setup, "app")
+	}
+}
+
+// TestEnvGenerateDotenv_UsesEnvPlanInternally pins the Phase 0B
+// refactor: EnvGenerateDotenv routes through BuildEnvPlan, so a
+// .env.local overlay in CWD must merge into the rendered .env. Before
+// 0B, EnvGenerateDotenv only resolved yaml + project envs — overlay
+// support is the BuildEnvPlan-level behavior the wrapper now inherits.
+func TestEnvGenerateDotenv_UsesEnvPlanInternally(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_ENV: production
+        DB_HOST: ${db_hostname}
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+	const overlay = `# user override
+APP_ENV=local
+LOG_LEVEL=debug
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env.local"), []byte(overlay), 0600); err != nil {
+		t.Fatalf("write .env.local: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+			{ID: "svc-db", Name: "db", ProjectID: "p1", Status: "RUNNING"},
+		}).
+		WithServiceEnv("svc-db", []platform.EnvVar{
+			{ID: "e1", Key: "hostname", Content: "db"},
+		})
+
+	if _, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{}); err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+
+	body, err := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	got := string(body)
+
+	// Overlay wins for APP_ENV.
+	if !strings.Contains(got, "APP_ENV=local") {
+		t.Errorf(".env should contain APP_ENV=local (overlay wins); got:\n%s", got)
+	}
+	if strings.Contains(got, "APP_ENV=production") {
+		t.Errorf(".env should NOT contain APP_ENV=production after overlay merge; got:\n%s", got)
+	}
+	// Overlay-only key lands.
+	if !strings.Contains(got, "LOG_LEVEL=debug") {
+		t.Errorf(".env should contain LOG_LEVEL=debug from overlay; got:\n%s", got)
+	}
+	// Yaml-resolved cross-service ref still works.
+	if !strings.Contains(got, "DB_HOST=db") {
+		t.Errorf(".env should contain DB_HOST=db (yaml ref resolved); got:\n%s", got)
+	}
+	// New render header naming the three sources.
+	if !strings.Contains(got, "project envVariables, zerops.yaml setup app") {
+		t.Errorf(".env header should reference EnvPlan source list; got:\n%s", got)
+	}
+}
+
+// TestGenerateDotenv_PreviewReturnsDiff pins Phase 0D's preview mode:
+// Preview=true returns the plan + diff without writing. The .env on
+// disk must remain untouched.
+func TestGenerateDotenv_PreviewReturnsDiff(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: from-yaml
+        DB_HOST: ${db_hostname}
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+	// Pre-existing .env so the diff has Modified entries to surface.
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("APP_NAME=outdated\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+			{ID: "svc-db", Name: "db", ProjectID: "p1", Status: "RUNNING"},
+		}).
+		WithServiceEnv("svc-db", []platform.EnvVar{
+			{ID: "e1", Key: "hostname", Content: "db"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{Preview: true})
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	if !result.Preview {
+		t.Errorf("result.Preview = false, want true")
+	}
+	if result.Diff == nil {
+		t.Fatal("result.Diff is nil; preview must surface the diff")
+	}
+	if len(result.Diff.Added) == 0 {
+		t.Errorf("Diff.Added should include DB_HOST (new in plan); got %v", result.Diff.Added)
+	}
+	if len(result.Diff.Modified) == 0 {
+		t.Errorf("Diff.Modified should include APP_NAME (value changed); got %v", result.Diff.Modified)
+	}
+
+	// Critical: .env on disk is unchanged.
+	got, _ := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if string(got) != "APP_NAME=outdated\n" {
+		t.Errorf("preview should NOT write .env; got:\n%s", string(got))
+	}
+}
+
+// TestGenerateDotenv_RefusesUnownedEdits pins the safety gate: when
+// the existing .env contains keys not produced by any source (user
+// manually edited), default write refuses and returns the diff with
+// those keys in Unowned. .env stays unchanged. Caller must move them
+// to .env.local or pass Force=true.
+func TestGenerateDotenv_RefusesUnownedEdits(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: from-yaml
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+	const existingEnv = `APP_NAME=from-yaml
+USER_MANUAL_EDIT=should-not-be-clobbered
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env"), []byte(existingEnv), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{})
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	if !result.Refused {
+		t.Errorf("result.Refused = false, want true (unowned edits should refuse)")
+	}
+	if result.Diff == nil || len(result.Diff.Unowned) == 0 {
+		t.Fatalf("Diff.Unowned should list USER_MANUAL_EDIT; got %v", result.Diff)
+	}
+	foundUnowned := false
+	for _, k := range result.Diff.Unowned {
+		if k == "USER_MANUAL_EDIT" {
+			foundUnowned = true
+		}
+	}
+	if !foundUnowned {
+		t.Errorf("Diff.Unowned should include USER_MANUAL_EDIT; got %v", result.Diff.Unowned)
+	}
+
+	// .env unchanged on disk.
+	got, _ := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if string(got) != existingEnv {
+		t.Errorf("refused write should NOT modify .env; got:\n%s", string(got))
+	}
+}
+
+// TestGenerateDotenv_ForceOverridesUnowned pins that Force=true
+// bypasses the unowned-edit safety gate. The user-direct edits are
+// silently dropped on write. Caller has explicitly confirmed they
+// know what they're doing.
+func TestGenerateDotenv_ForceOverridesUnowned(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: from-yaml
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("APP_NAME=outdated\nUSER_MANUAL=will-be-dropped\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{Force: true})
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	if result.Refused {
+		t.Errorf("result.Refused = true with Force; force should bypass safety gate")
+	}
+
+	got, _ := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	body := string(got)
+	if !strings.Contains(body, "APP_NAME=from-yaml") {
+		t.Errorf(".env should contain new APP_NAME after force; got:\n%s", body)
+	}
+	if strings.Contains(body, "USER_MANUAL=will-be-dropped") {
+		t.Errorf(".env should NOT contain unowned key after force; got:\n%s", body)
+	}
+}
+
+// TestGenerateDotenv_PreviewWithUnowned_DoesNotRefuse pins that
+// preview mode surfaces unowned edits via the diff but does NOT mark
+// the result as refused — preview is read-only by design, so the
+// safety gate doesn't apply. Caller inspects the diff and decides
+// whether to run with Force=true or move keys to .env.local.
+func TestGenerateDotenv_PreviewWithUnowned_DoesNotRefuse(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: from-yaml
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("APP_NAME=from-yaml\nUSER_MANUAL=foo\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	result, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{Preview: true})
+	if err != nil {
+		t.Fatalf("EnvGenerateDotenv: %v", err)
+	}
+	if !result.Preview {
+		t.Errorf("result.Preview = false, want true")
+	}
+	if result.Refused {
+		t.Errorf("preview must not set Refused — preview is read-only")
+	}
+	if result.Diff == nil || len(result.Diff.Unowned) != 1 || result.Diff.Unowned[0] != "USER_MANUAL" {
+		t.Errorf("Diff.Unowned = %v, want [USER_MANUAL]", result.Diff)
+	}
+}
+
+// TestEnvPlan_DiffAgainstExisting_AbsentFile pins that diff against
+// a non-existent .env treats every plan key as Added (no error).
+// First-time generation flows depend on this — the absence of .env
+// is the signal "fresh write", not a failure.
+func TestEnvPlan_DiffAgainstExisting_AbsentFile(t *testing.T) {
+	t.Parallel()
+	plan := &EnvPlan{
+		Setup: "app",
+		Keys: []EnvKey{
+			{Key: "FOO", Value: "1"},
+			{Key: "BAR", Value: "2"},
+		},
+	}
+	tmpDir := t.TempDir()
+	diff, err := plan.DiffAgainstExisting(filepath.Join(tmpDir, ".env"))
+	if err != nil {
+		t.Fatalf("DiffAgainstExisting: %v", err)
+	}
+	if len(diff.Added) != 2 {
+		t.Errorf("Added = %v, want both keys", diff.Added)
+	}
+	if len(diff.Modified) != 0 || len(diff.Unowned) != 0 {
+		t.Errorf("Modified/Unowned should be empty; got %v", diff)
+	}
+}
+
+// TestGenerateDotenv_VPNDown_LeavesPriorEnvIntact pins the Phase 0F
+// invariant: when a ${svc_var} ref cannot resolve (mock returns an
+// error from GetServiceEnv), generate-dotenv fails AND the existing
+// .env stays untouched. The user's working .env is more valuable
+// than a placeholder write.
+func TestGenerateDotenv_VPNDown_LeavesPriorEnvIntact(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        DB_HOST: ${db_hostname}
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+	const priorContent = "DB_HOST=prior-value\nAPP_ENV=local\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env"), []byte(priorContent), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	// Mock returns ServiceEnv error (simulates VPN-down / API failure).
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+			{ID: "svc-db", Name: "db", ProjectID: "p1", Status: "RUNNING"},
+		}).
+		WithError("GetServiceEnv", errors.New("connection refused (VPN down?)"))
+
+	_, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{})
+	if err == nil {
+		t.Fatal("expected error from VPN-down resolve, got nil")
+	}
+
+	// Critical: .env on disk is unchanged.
+	got, _ := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if string(got) != priorContent {
+		t.Errorf("prior .env should be untouched on resolve failure; got:\n%s", string(got))
+	}
+}
+
+// TestGenerateDotenv_ConcurrentInvocations_Serialize pins the Phase 0E
+// advisory lock: two concurrent generate-dotenv calls for the same
+// setup serialize, neither corrupting the other's write. The lock is
+// fairness-best-effort; the contract is "no torn writes, no
+// race-induced data loss".
+func TestGenerateDotenv_ConcurrentInvocations_Serialize(t *testing.T) {
+	t.Parallel()
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: concurrent-test
+`
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: "RUNNING"},
+		})
+
+	const N = 4
+	errs := make(chan error, N)
+	for range N {
+		go func() {
+			_, err := EnvGenerateDotenv(context.Background(), mock, "p1", "app", tmpDir, EnvGenerateDotenvOptions{})
+			errs <- err
+		}()
+	}
+	for i := range N {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent invocation %d: %v", i, err)
+		}
+	}
+
+	// Final .env should be intact (not torn / partial).
+	body, err := os.ReadFile(filepath.Join(tmpDir, ".env"))
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	if !strings.Contains(string(body), "APP_NAME=concurrent-test") {
+		t.Errorf(".env should contain expected value after concurrent writes; got:\n%s", string(body))
 	}
 }

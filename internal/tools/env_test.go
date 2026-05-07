@@ -4,6 +4,8 @@ package tools
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,27 +13,40 @@ import (
 	"github.com/zeropsio/zcp/internal/platform"
 )
 
-// TestEnvSchema_ServiceHostname_RequiredDescription pins that the
-// schema documents serviceHostname as required by generate-dotenv (which
-// reads zerops.yaml's run.envVariables for that hostname). The earlier
-// "Ignored by generate-dotenv" wording mismatched the implementation —
-// EnvGenerateDotenv refuses with ErrInvalidParameter when serviceHostname
-// is empty.
-func TestEnvSchema_ServiceHostname_RequiredDescription(t *testing.T) {
+// TestEnvSchema_GenerateDotenv_PrefersSetupOverHostname pins the
+// Phase 0C documentation contract: serviceHostname is deprecated for
+// generate-dotenv (description steers callers to setup), and the
+// setup property names zerops.yaml run.envVariables as the canonical
+// schema location. The earlier "Ignored by generate-dotenv" wording
+// pre-dated the run.envVariables resolution path; agents got
+// non-actionable schema errors.
+func TestEnvSchema_GenerateDotenv_PrefersSetupOverHostname(t *testing.T) {
 	t.Parallel()
 	schema := envInputSchema()
-	prop, ok := schema.Properties["serviceHostname"]
-	if !ok || prop == nil {
+
+	hostnameProp, ok := schema.Properties["serviceHostname"]
+	if !ok || hostnameProp == nil {
 		t.Fatalf("serviceHostname property missing from envInputSchema")
 	}
-	if strings.Contains(prop.Description, "Ignored by generate-dotenv") {
-		t.Errorf("description still claims generate-dotenv ignores serviceHostname; got: %s", prop.Description)
+	if strings.Contains(hostnameProp.Description, "Ignored by generate-dotenv") {
+		t.Errorf("description still claims generate-dotenv ignores serviceHostname; got: %s", hostnameProp.Description)
 	}
-	if !strings.Contains(prop.Description, "generate-dotenv") {
-		t.Errorf("description should explain generate-dotenv usage; got: %s", prop.Description)
+	if !strings.Contains(hostnameProp.Description, "deprecated") {
+		t.Errorf("serviceHostname description should mark deprecated for generate-dotenv; got: %s", hostnameProp.Description)
 	}
-	if !strings.Contains(prop.Description, "run.envVariables") {
-		t.Errorf("description should name run.envVariables (the canonical schema location); got: %s", prop.Description)
+	if !strings.Contains(hostnameProp.Description, "setup") {
+		t.Errorf("serviceHostname description should steer callers to setup parameter; got: %s", hostnameProp.Description)
+	}
+
+	setupProp, ok := schema.Properties["setup"]
+	if !ok || setupProp == nil {
+		t.Fatalf("setup property missing from envInputSchema")
+	}
+	if !strings.Contains(setupProp.Description, "zerops.yaml") {
+		t.Errorf("setup description should name zerops.yaml; got: %s", setupProp.Description)
+	}
+	if !strings.Contains(setupProp.Description, "auto-pick") {
+		t.Errorf("setup description should explain single-block auto-pick behavior; got: %s", setupProp.Description)
 	}
 }
 
@@ -257,5 +272,105 @@ func TestEnvTool_InvalidAction(t *testing.T) {
 		if !strings.Contains(msg, wanted) {
 			t.Errorf("error should list valid action %q, got: %v", wanted, err)
 		}
+	}
+}
+
+// TestEnvTool_GenerateDotenv_LegacyHostname_AddsDeprecationWarning pins
+// the Phase 0C deprecation path: when an MCP caller passes the legacy
+// serviceHostname for generate-dotenv, the result MUST carry a
+// deprecation warning steering the caller to the setup parameter.
+// Recipe / multi-setup yaml uses setup names that aren't always
+// service hostnames; the warning is the migration signal.
+func TestEnvTool_GenerateDotenv_LegacyHostname_AddsDeprecationWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: legacy-via-hostname
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: statusActive},
+		})
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.1"}, nil)
+	RegisterEnv(srv, mock, "p1", "")
+
+	result := callTool(t, srv, "zerops_env", map[string]any{
+		"action":          "generate-dotenv",
+		"serviceHostname": "app",
+	})
+	if result.IsError {
+		t.Fatalf("unexpected IsError: %s", getTextContent(t, result))
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(getTextContent(t, result)), &parsed); err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	warnings, _ := parsed["warnings"].([]any)
+	if len(warnings) == 0 {
+		t.Fatalf("expected deprecation warning in result.warnings, got: %v", parsed)
+	}
+	first, _ := warnings[0].(string)
+	for _, want := range []string{"deprecated", "setup"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("warning should mention %q; got: %s", want, first)
+		}
+	}
+}
+
+// TestEnvTool_GenerateDotenv_SetupParam_NoWarning pins the new happy
+// path: when caller passes setup explicitly, no deprecation warning
+// is emitted (the call site is correct). Companion to the legacy
+// test above.
+func TestEnvTool_GenerateDotenv_SetupParam_NoWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	const yaml = `zerops:
+  - setup: app
+    run:
+      envVariables:
+        APP_NAME: setup-param
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "zerops.yaml"), []byte(yaml), 0644); err != nil {
+		t.Fatalf("write zerops.yaml: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithProject(&platform.Project{ID: "p1", Name: "test", Status: statusActive}).
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-app", Name: "app", ProjectID: "p1", Status: statusActive},
+		})
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.1"}, nil)
+	RegisterEnv(srv, mock, "p1", "")
+
+	result := callTool(t, srv, "zerops_env", map[string]any{
+		"action": "generate-dotenv",
+		"setup":  "app",
+	})
+	if result.IsError {
+		t.Fatalf("unexpected IsError: %s", getTextContent(t, result))
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(getTextContent(t, result)), &parsed); err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if warnings, ok := parsed["warnings"].([]any); ok && len(warnings) > 0 {
+		t.Errorf("setup parameter should not trigger deprecation warning, got: %v", warnings)
+	}
+	if got, _ := parsed["setup"].(string); got != "app" {
+		t.Errorf("result.setup = %v, want %q", parsed["setup"], "app")
 	}
 }
