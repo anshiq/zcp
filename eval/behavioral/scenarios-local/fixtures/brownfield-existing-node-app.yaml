@@ -1,0 +1,9 @@
+# Fixture for brownfield-existing-node-app scenario.
+#
+# Empty services list — brownfield-adopt synthesizes the topology
+# from the existing app's `.env` (preseed creates the app +
+# populated `.env`). The eval observes whether the agent classifies
+# entries correctly, proposes a managed Postgres for the localhost
+# DATABASE_URL, and preserves shared secrets across the new channels.
+
+services: []

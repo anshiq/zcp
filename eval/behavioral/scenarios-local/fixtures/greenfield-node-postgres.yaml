@@ -1,0 +1,10 @@
+# Fixture for greenfield-node-postgres scenario.
+#
+# Empty services list — greenfield bootstrap synthesizes the entire
+# topology (runtime + managed db) from the user's intent. The eval
+# observes whether the agent submits an import.yml with a sensible
+# shape (single runtime + postgres + project envVariables for shared
+# secrets) and whether it follows up with the local-side artefacts
+# (zerops.yaml in CWD + initial code skeleton + .env / .env.local).
+
+services: []
