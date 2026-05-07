@@ -17,7 +17,7 @@ description: |
   next-wave Theme 3 implementation plan.
 seed: empty
 fixture: fixtures/brownfield-existing-node-app.yaml
-preseed: preseed/brownfield-existing-node-app.sh
+preseedScript: preseed/brownfield-existing-node-app.sh
 tags: [local-mode, adopt-route, brownfield, env-classify, env-channels, node, postgres]
 area: local-mode
 retrospective:

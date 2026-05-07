@@ -10,7 +10,7 @@ description: |
   step. Stage subdomain is dead until step (f) lands code.
 seed: empty
 fixture: fixtures/recipe-nodejs-hello-world.yaml
-preseed: preseed/recipe-nodejs-hello-world.sh
+preseedScript: preseed/recipe-nodejs-hello-world.sh
 tags: [local-mode, recipe-route, first-deploy, node, postgres, env-bridge]
 area: local-mode
 retrospective:

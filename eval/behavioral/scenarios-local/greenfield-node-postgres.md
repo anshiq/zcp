@@ -16,7 +16,7 @@ description: |
   the eval observes whether atom guidance steers correctly.
 seed: empty
 fixture: fixtures/greenfield-node-postgres.yaml
-preseed: preseed/greenfield-node-postgres.sh
+preseedScript: preseed/greenfield-node-postgres.sh
 tags: [local-mode, classic-route, greenfield, env-channels, first-deploy, node, postgres]
 area: local-mode
 retrospective:
