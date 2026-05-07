@@ -3,7 +3,6 @@ package platform
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/zeropsio/zerops-go/dto/input/body"
 	"github.com/zeropsio/zerops-go/types"
@@ -106,23 +105,22 @@ func (z *ZeropsClient) ValidateZeropsYaml(ctx context.Context, in ValidateZerops
 // wrong" from "Zerops is down" by Code alone — no string-sniffing of
 // APICode. Non-matching errors (network, auth, server-side 5xx) pass
 // through untouched so the original classification wins.
+//
+// Suggestion is left untouched: mapAPIError already produced the
+// inline-actionable text via formatAPIMetaActionable ("Field 'X' (reason)
+// rejected. Fix in YAML and retry.") for meta-bearing errors and the
+// "API rejected the request (code: ...)" template for no-meta errors.
+// Both are self-evident at the point of failure — see commit e2ec3651
+// where the parallel `develop-api-error-meta` defense atom and the
+// pointer-style "see apiMeta..." suggestion were retired together.
+// Overwriting Suggestion here would re-introduce the pointer pattern
+// the inline-expansion migration replaced.
 func reclassifyValidationError(err error) error {
 	var pe *PlatformError
 	if !errors.As(err, &pe) || !isValidationErrorCode(pe.APICode) {
 		return err
 	}
 	pe.Code = ErrInvalidZeropsYml
-	if len(pe.APIMeta) > 0 {
-		pe.Suggestion = fmt.Sprintf(
-			"Platform validator rejected zerops.yaml (code: %s) — read apiMeta for each field's failure reason, fix, and retry.",
-			pe.APICode,
-		)
-	} else {
-		pe.Suggestion = fmt.Sprintf(
-			"Platform validator rejected zerops.yaml (code: %s). %s",
-			pe.APICode, pe.Message,
-		)
-	}
 	return pe
 }
 

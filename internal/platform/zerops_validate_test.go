@@ -75,6 +75,16 @@ func TestReclassifyValidationError(t *testing.T) {
 			t.Fatalf("mapAPIError did not return *PlatformError")
 		}
 		pe.APIMeta = meta // stand in for live API meta
+		// In production, apiErr.Meta carries the same items so mapAPIError's
+		// 4xx-with-meta branch runs formatAPIMetaActionable and sets Suggestion
+		// inline. The test fixture builds apiErr without Meta (the SDK shape
+		// requires JsonRawMessage; populating it round-trips through JSON
+		// unmarshal which adds noise to every test row), so apply the inline
+		// expansion here to keep parity with what reclassifyValidationError
+		// sees in production after the e2ec3651 migration.
+		if len(meta) > 0 {
+			pe.Suggestion = formatAPIMetaActionable(meta)
+		}
 		return pe
 	}
 
@@ -100,8 +110,23 @@ func TestReclassifyValidationError(t *testing.T) {
 		if pe.APICode != "zeropsYamlInvalidParameter" {
 			t.Errorf("APICode = %q, want zeropsYamlInvalidParameter", pe.APICode)
 		}
-		if !strings.Contains(pe.Suggestion, "apiMeta") {
-			t.Errorf("Suggestion = %q, want mention of apiMeta", pe.Suggestion)
+		// Suggestion preserves mapAPIError's inline expansion via
+		// formatAPIMetaActionable. Pre-e2ec3651 reclassify overwrote
+		// Suggestion with a "read apiMeta" pointer that depended on the
+		// develop-api-error-meta defense atom (now retired). The
+		// actionable inline shape replaces both — reclassify no longer
+		// touches Suggestion.
+		if strings.Contains(pe.Suggestion, "read apiMeta") {
+			t.Errorf("Suggestion still uses pre-e2ec3651 pointer text: %q", pe.Suggestion)
+		}
+		if !strings.Contains(pe.Suggestion, "build.base") {
+			t.Errorf("Suggestion missing inline field path: %q", pe.Suggestion)
+		}
+		if !strings.Contains(pe.Suggestion, "unknown base nodejs@99") {
+			t.Errorf("Suggestion missing inline failure reason: %q", pe.Suggestion)
+		}
+		if !strings.Contains(pe.Suggestion, "Fix in YAML") {
+			t.Errorf("Suggestion missing actionable retry hint: %q", pe.Suggestion)
 		}
 		// Meta must survive reclassification.
 		wantMeta := []APIMetaItem{
@@ -132,6 +157,13 @@ func TestReclassifyValidationError(t *testing.T) {
 		if len(pe.APIMeta) != 2 {
 			t.Errorf("len(APIMeta) = %d, want 2", len(pe.APIMeta))
 		}
+		// Multi-field inline expansion preserved from mapAPIError.
+		if !strings.Contains(pe.Suggestion, "build.base") || !strings.Contains(pe.Suggestion, "run.base") {
+			t.Errorf("Suggestion missing inline multi-field detail: %q", pe.Suggestion)
+		}
+		if strings.Contains(pe.Suggestion, "read apiMeta") {
+			t.Errorf("Suggestion still uses pre-e2ec3651 pointer text: %q", pe.Suggestion)
+		}
 	})
 
 	t.Run("yamlValidationInvalidYaml_line_error", func(t *testing.T) {
@@ -149,6 +181,12 @@ func TestReclassifyValidationError(t *testing.T) {
 		if pe.Code != ErrInvalidZeropsYml {
 			t.Errorf("Code = %q, want %q", pe.Code, ErrInvalidZeropsYml)
 		}
+		// Inline expansion surfaces the parser's line-error reason
+		// directly in the suggestion (pre-fix it was lost behind the
+		// "read apiMeta" pointer).
+		if !strings.Contains(pe.Suggestion, "yaml: line 2") {
+			t.Errorf("Suggestion missing inline parser detail: %q", pe.Suggestion)
+		}
 	})
 
 	t.Run("zeropsYamlSetupNotFound", func(t *testing.T) {
@@ -159,9 +197,15 @@ func TestReclassifyValidationError(t *testing.T) {
 		if pe.Code != ErrInvalidZeropsYml {
 			t.Errorf("Code = %q, want %q", pe.Code, ErrInvalidZeropsYml)
 		}
-		// No meta → suggestion should include the bare message, not "see apiMeta".
-		if strings.Contains(pe.Suggestion, "read apiMeta") {
-			t.Errorf("Suggestion = %q, should not point to apiMeta when none present", pe.Suggestion)
+		// No meta → mapAPIError's no-meta template ("API rejected the
+		// request (code: <APICode>) — check the input parameters") flows
+		// through unchanged. Both the "read apiMeta" pointer pattern and
+		// the older "see apiMeta" wording are gone since e2ec3651.
+		if strings.Contains(pe.Suggestion, "apiMeta") {
+			t.Errorf("Suggestion = %q, must not point to apiMeta (no meta on this error)", pe.Suggestion)
+		}
+		if !strings.Contains(pe.Suggestion, "zeropsYamlSetupNotFound") {
+			t.Errorf("Suggestion = %q, want APICode in the no-meta template", pe.Suggestion)
 		}
 	})
 
