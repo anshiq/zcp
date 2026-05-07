@@ -90,10 +90,17 @@ func TestCodebaseContentBrief_EmbedsParentMD_WhenParentAbsent_ShowcaseSlug(t *te
 	if !slices.Contains(brief.Parts, "embedded_parent_baseline") {
 		t.Errorf("codebase-content brief Parts missing embedded_parent_baseline (got %v)", brief.Parts)
 	}
-	// The embedded nestjs-minimal.md teaches `setup: prod`. Match that
-	// substring to confirm the actual baseline content reached the brief.
-	if !strings.Contains(brief.Body, "setup: prod") {
-		t.Errorf("codebase-content brief embedded-parent block missing expected `setup: prod` content from nestjs-minimal.md")
+	// Run-30 Fix #1 PARTIAL — assert against content that lives WITHIN
+	// the 1000-byte excerpt window. The prior assertion checked
+	// `setup: prod` which is at byte 1695 of nestjs-minimal.md (well
+	// outside the excerpt); the test only "passed" because `setup: prod`
+	// also appeared inline in `cross-service-urls.md` which loads
+	// elsewhere in the brief. Run-30 deferred that atom to a
+	// fetch-on-demand pointer (Read-tool token-ceiling fix), exposing
+	// the false-positive. The "No `.env` files on Zerops" gotcha is
+	// unique to nestjs-minimal.md and lives within the first 700 bytes.
+	if !strings.Contains(brief.Body, "No `.env` files on Zerops") {
+		t.Errorf("codebase-content brief embedded-parent block missing expected nestjs-minimal.md gotcha content")
 	}
 	// Run-22 fixup F-6 (Opus review) — framing must carry a concrete
 	// cross-reference shape string so an agent identifying parent-

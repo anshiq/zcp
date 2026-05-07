@@ -18,7 +18,7 @@ panel into the UI:
    curl -s -o /tmp/items.json -w '%{http_code}\n' \
      https://apistage-${zeropsSubdomainHost}.prg1.zerops.app/api/items
    ```
-3. Confirm the curl response matches the contract's `payloadShape`. If
+3. Confirm the curl response matches the contract's `payloadSchema`. If
    it does, wire the panel. If it doesn't, see "cross-codebase edit
    authority" below.
 
@@ -89,6 +89,35 @@ zerops_deploy slot=apistage
 
 Without redeploy, your edit is dev-only and the next session walks the
 old contract.
+
+## Capture a final-state screenshot before close
+
+Accessibility-tree snapshots + `get text` assertions catch wiring
+regressions but miss visual defects (oval status-dots, missing card
+backgrounds, broken grid, FOUC mid-render). Run this after the final cross-deploy + browser-walk verify on
+appstage, when every card
+is populated, every status dot reads green, and every counter delta
+has held. ONE full-page screenshot lands at
+`<outputRoot>/screenshots/dashboard-close.png`. Add it as the LAST
+inner command in the close-step `zerops_browser` batch:
+
+```json
+{
+  "url": "https://app-${zeropsSubdomainHost}.prg1.zerops.app/",
+  "commands": [
+    ["wait", "[data-test='items-count']"],
+    ["screenshot", "--full", "<outputRoot>/screenshots/dashboard-close.png"]
+  ]
+}
+```
+
+Substitute `<outputRoot>` with the absolute path from `zerops_recipe
+action=status` and `mkdir -p <outputRoot>/screenshots` first. The
+`--full` flag captures the entire scroll height, not just the
+headless-Chrome viewport — Storage and Search usually sit below the
+fold. Record a `browser_verification` fact naming the screenshot path
+in `why` so post-run analysis can locate the artifact. ONE screenshot
+per close; iteration walks would record half-wired states.
 
 ## What NOT to do
 

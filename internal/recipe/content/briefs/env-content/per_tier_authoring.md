@@ -222,6 +222,86 @@ has HA — they read the tier table in the root README and re-import the
 higher tier yaml when they want failover. The yaml comment owns
 within-tier knobs only.
 
+### Worked example — closure-of-expectation phrasings (no-move framing)
+
+The forbidden shape isn't only the imperative ("Switch ...") or the
+parenthetical-narrative ("arrives at tier N"). Closure-of-expectation
+phrasings — "no HA mode at any tier", "stays single-shape across every
+tier", "holds at NON_HA even at this tier", "no replica option exists
+in the family" — assert that NO move is available. They don't name a
+move the porter could take. They still pull the porter's attention to
+the cross-tier scope ladder; the porter reads "every tier" and does
+the cross-tier comparison the brief tells them not to do. The
+service-family invariant (no HA mode for this family) is a research /
+IG-level concern; the service-block comment owns within-tier knobs
+only.
+
+**BAD** — closure-of-expectation tail at tier 4 search block:
+
+```yaml
+- hostname: search
+  type: meilisearch@1.20
+  mode: NON_HA
+  # Single-node Meilisearch — meilisearch on Zerops has no HA mode at
+  # any tier. Bump verticalAutoscaling.minRam if production search
+  # latency correlates with index growth.
+  verticalAutoscaling:
+    minRam: 0.5
+```
+
+The within-tier `minRam` adapt path is correct; the "no HA mode at any
+tier" tail asserts a service-family invariant that pulls the porter
+across the tier ladder. Forbidden.
+
+**BAD** — closure-of-expectation tail at tier 5 storage block:
+
+```yaml
+- hostname: storage
+  type: object-storage
+  # Object storage stays single-shape across every tier — there is no
+  # `mode` field on this service type. Bump objectStorageSize when
+  # uploads outgrow the current quota.
+  objectStorageSize: 5
+```
+
+"Stays single-shape across every tier" is the same anti-shape with
+calmer vocabulary. Forbidden.
+
+**BAD** — closure-of-expectation tail at tier 5 search block:
+
+```yaml
+- hostname: search
+  type: meilisearch@1.20
+  mode: NON_HA
+  # Meilisearch holds at NON_HA even at this tier — the platform has
+  # no HA mode for this service family. Bump verticalAutoscaling.minRam
+  # if working-set growth pushes latency past your SLO.
+  verticalAutoscaling:
+    minRam: 1
+```
+
+"Holds at NON_HA even at this tier" smuggles the cross-tier scope into
+the comment. Forbidden.
+
+**GOOD** — within-tier knob only:
+
+```yaml
+- hostname: search
+  type: meilisearch@1.20
+  mode: NON_HA
+  # Single-node Meilisearch — bump verticalAutoscaling.minRam if production
+  # search latency correlates with index growth past the 0.25 GB ceiling.
+  verticalAutoscaling:
+    minRam: 0.25
+```
+
+The comment names ONLY a within-tier knob (`verticalAutoscaling.minRam`)
+tied to a porter signal (search latency vs. index growth). No
+service-family assertion, no cross-tier comparative tail. The
+service-family invariant ("no HA mode for meilisearch") lives in
+research / IG and in the service-family HOLD list further down this
+brief — it is not the service-block comment's job to restate it.
+
 ### When the only friendly-authority candidate is cross-tier
 
 Some service blocks at lower tiers genuinely have no within-tier adapt

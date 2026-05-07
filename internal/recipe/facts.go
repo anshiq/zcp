@@ -73,12 +73,20 @@ type FactRecord struct {
 	TierContext string `json:"tierContext,omitempty"`
 
 	// Contract (Kind=contract):
-	Publishers    []string `json:"publishers,omitempty"`
-	Subscribers   []string `json:"subscribers,omitempty"`
-	Subject       string   `json:"subject,omitempty"`
-	QueueGroups   []string `json:"queueGroups,omitempty"`
-	PayloadSchema string   `json:"payloadSchema,omitempty"`
-	Purpose       string   `json:"purpose,omitempty"`
+	Publishers  []string `json:"publishers,omitempty"`
+	Subscribers []string `json:"subscribers,omitempty"`
+	Subject     string   `json:"subject,omitempty"`
+	QueueGroups []string `json:"queueGroups,omitempty"`
+	// PayloadSchema (json tag `payloadSchema`) — keep brief teaching in
+	// `briefs/feature/contract_authoring.md` aligned with this tag. Run-30
+	// F-44 surfaced a brief-vs-schema drift where the worked example used
+	// `"payloadShape"` and the MCP framework rejected 5 consecutive
+	// record-fact calls with `unexpected additional properties
+	// ["payloadShape"]`. The MCP go-sdk auto-generates the input schema
+	// from these struct tags with `additionalProperties: false`; the brief
+	// must teach the exact tag name.
+	PayloadSchema string `json:"payloadSchema,omitempty"`
+	Purpose       string `json:"purpose,omitempty"`
 }
 
 // Fact Kind discriminator values. Empty Kind preserves the legacy

@@ -111,9 +111,18 @@ import (
 // pushed worst-case frontend-pass over the prior 32 KB cap. The
 // added bytes are not slack; trimming them re-opens the loopholes
 // codex code review flagged.
+//
+// Run-30 Fix #4 raised FeatureBriefCap 40 → 44 KB after the
+// final-state screenshot teaching landed in
+// `briefs/feature/integration_validator.md` (~1.3 KB once trimmed).
+// Closes the run-30 ANALYSIS gap where the showcase verification path
+// caught wiring regressions but missed visual defects (oval status-
+// dots, missing card backgrounds, FOUC mid-render). The screenshot is
+// captured at close on the wired-stage URL via `zerops_browser` →
+// `["screenshot", "--full", "<outputRoot>/screenshots/dashboard-close.png"]`.
 const (
 	ScaffoldBriefCap = 48 * 1024
-	FeatureBriefCap  = 40 * 1024
+	FeatureBriefCap  = 44 * 1024
 )
 
 // BriefKind identifies a sub-agent role. Scaffold + feature have
@@ -193,11 +202,73 @@ const (
 // NATS BAD/GOOD worked example (~1.5 KB). Cap bumped 72 → 76 KB. Same
 // disk-fallback note applies — this is sanity-check headroom, not
 // delivery-channel constraint.
+//
+// Run-30 Fix #1 PARTIAL — caps re-pinned against the Read-tool 25K-token
+// ceiling, not raw bytes. v9.71.0 bumped CodebaseContentBriefCap 72→76
+// KB in BYTES; with markdown-dense briefs at the empirically observed
+// ~2.5 chars/token, 76 KB encodes to ~30K real tokens — over the
+// Read-tool ceiling. Run-30 sub-agents (cc-api 35427 tokens / cc-worker
+// 35014 / refinement 32297) tripped the ceiling on first Read of the
+// disk-stored brief. Cap shrunk 76 → 66 KB for codebase-content;
+// EnvContentBriefCap held at 56 KB (already comfortably under).
+//
+// Run-30 Fix #1 follow-up Fix 2 — the per-byte estimator was migrated
+// from len/3 to len/2 after the 3.0 cpt assumption was contradicted by
+// observed 2.51 cpt worst-case (see charsPerTokenEstimate doc below).
+// The token-ceiling test was re-derived against the Read-tool 25K real
+// cap — `ReadToolTokenCeiling` is now 33000 (estimated tokens at len/2
+// = ~62.5 KB bytes = ~25K real tokens at observed 2.5 cpt). The byte
+// caps below were NOT shrunk in this fix because they remain composer-
+// side sanity guards that prevent unbounded growth; the token-ceiling
+// test is now the authoritative Read-tool guard.
+//
+// The `TestBrief_StaysUnderReadToolTokenCeiling` test runs against a
+// real-slug plan so the embedded-parent fallback exercises the
+// production load shape that bloated run-30 briefs past the ceiling.
 const (
-	CodebaseContentBriefCap = 76 * 1024
+	CodebaseContentBriefCap = 66 * 1024
 	EnvContentBriefCap      = 56 * 1024
 	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )
+
+// charsPerTokenEstimate is a conservative chars-per-token proxy used by
+// EstimateTokens. Run-30 sub-agents reported real Read-tool token
+// counts of 35427 / 35014 / 32297 against on-disk briefs of 88844 /
+// 88004 / 83447 bytes — i.e. ~2.51 / 2.51 / 2.58 chars/token at worst.
+// English markdown averages 3.5–4.0 cpt, but markdown-dense briefs with
+// code fences, JSON examples, and yaml blocks compress to ~2.5 cpt.
+// We use 2 (rounded down from 2.51 for safety margin) as a pessimistic
+// floor that beats the observed worst case. No real tokenizer
+// dependency — the estimator is a guard against the Read-tool ceiling,
+// not a precise count. Run-30 follow-up Fix 2 changed this 3 → 2 after
+// /3 silently passed the cap when real Read-tool blew the 25K ceiling.
+const charsPerTokenEstimate = 2
+
+// ReadToolTokenCeiling is the conservative upper bound we hold composed
+// briefs under so a sub-agent can `Read` the disk-stored brief in one
+// shot. Read-tool's hard cap is 25K tokens (the value reported in
+// run-30 errors).
+//
+// Run-30 follow-up Fix 2 changed the estimator from len/3 to len/2
+// after empirical evidence (88 KB briefs → 35K real tokens, i.e. ~2.5
+// cpt — far below the 3.0 cpt that len/3 assumes). Under len/2 the
+// estimator is intentionally pessimistic (~25% overshoot vs 2.5 cpt
+// reality), so the ceiling we cap on is the ESTIMATED value, not the
+// real value. Translation: we want REAL tokens ≤ 25000 (Read-tool
+// hard cap); at 2.5 cpt that's bytes ≤ 62500; under len/2 estimator
+// those bytes encode to ≤ 31250 estimated tokens. We round up to
+// 33000 to leave a small ~1.4 KB byte-headroom for inputs that
+// compress slightly differently. Pinned by
+// `TestBrief_StaysUnderReadToolTokenCeiling`.
+const ReadToolTokenCeiling = 33000
+
+// EstimateTokens returns a conservative token count for s using
+// charsPerTokenEstimate. The estimate is intentionally pessimistic
+// (overstates) so brief-cap checks fail loud rather than trip the real
+// Read-tool ceiling silently.
+func EstimateTokens(s string) int {
+	return len(s) / charsPerTokenEstimate
+}
 
 // BriefDiskFallbackThreshold is the body-size cutoff above which
 // build-subagent-prompt persists the composed brief to

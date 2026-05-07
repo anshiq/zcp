@@ -36,110 +36,7 @@ func BuildCodebaseContentBrief(plan *Plan, cb Codebase, parent *ParentRecipe, fa
 	parts := []string{}
 	var b strings.Builder
 
-	// Phase entry atom — voice + dispatch shape teaching.
-	if atom, err := readAtom("phase_entry/codebase-content.md"); err == nil {
-		b.WriteString(atom)
-		b.WriteString("\n\n")
-		parts = append(parts, "phase_entry/codebase-content.md")
-	}
-
-	// Synthesis workflow atom — how to read facts, group into IG items,
-	// dedup against KB, author zerops.yaml comments per block.
-	if atom, err := readAtom("briefs/codebase-content/synthesis_workflow.md"); err == nil {
-		b.WriteString(atom)
-		b.WriteString("\n\n")
-		parts = append(parts, "briefs/codebase-content/synthesis_workflow.md")
-
-		// Run-17 §6.4 — thread the citation-guide list right after the
-		// synthesis_workflow.md atom so the agent can resolve "the X
-		// guide" cite-by-name pattern against the actual CitationMap.
-		// citationGuides() reads from the package-global CitationMap and
-		// returns deterministic-sorted unique guide ids.
-		if guides := citationGuides(); len(guides) > 0 {
-			b.WriteString("### Citation guides for this recipe\n\n")
-			for _, g := range guides {
-				fmt.Fprintf(&b, "- `%s`\n", g)
-			}
-			b.WriteString("\n")
-			parts = append(parts, "citation-guides")
-		}
-	}
-
-	// Run-17 §6.5 + run-22 followup F-5 — showcase tier worker codebases
-	// get an extra atom teaching the multi-replica gotchas (queue-group /
-	// SIGTERM drain) that MUST appear in the worker KB. F-5 split the
-	// previous `showcase_tier_supplements.md` into two atoms — the code-
-	// shape contract moved to the feature brief
-	// (`briefs/feature/worker_subscription_shape.md`) where worker source
-	// is actually authored, and only the KB-content shape (how to phrase
-	// the gotcha for porter readers) remains here.
-	if plan.Tier == tierShowcase && cb.IsWorker {
-		if atom, err := readAtom("briefs/codebase-content/worker_kb_supplements.md"); err == nil {
-			b.WriteString(atom)
-			b.WriteString("\n\n")
-			parts = append(parts, "briefs/codebase-content/worker_kb_supplements.md")
-		}
-	}
-
-	// Platform principles — universal Zerops mechanics referenced by the
-	// IG/KB authoring decisions.
-	if atom, err := readAtom("briefs/scaffold/platform_principles.md"); err == nil {
-		b.WriteString(atom)
-		b.WriteString("\n\n")
-		parts = append(parts, "briefs/scaffold/platform_principles.md")
-	}
-
-	// Run-21 R2-2 — NATS messaging-shape teaching now filtered by
-	// per-codebase consumption. Pre-fix, every codebase (including
-	// SPAs that don't speak NATS) carried this atom unconditionally.
-	// Frontend codebases drop it; other roles keep it only when they
-	// consume a nats-typed service. Falls back to load-everything when
-	// ConsumesServices is nil (sim path that skipped scaffold).
-	if shouldLoadNATSShapes(plan, cb) {
-		if atom, err := readAtom("principles/nats-shapes.md"); err == nil {
-			b.WriteString(atom)
-			b.WriteString("\n\n")
-			parts = append(parts, "principles/nats-shapes.md")
-		}
-	}
-
-	// Run-21 R2-2 — workspace dual-runtime URL teaching filtered by
-	// per-codebase consumption. Pre-fix, every codebase carried this
-	// atom even when it consumes nothing managed (and therefore has no
-	// URL bake to author). Loaded only when the codebase consumes any
-	// managed service (URL pattern is the bridge), or when
-	// ConsumesServices is nil (sim fallback).
-	if shouldLoadCrossServiceURLs(cb) {
-		if atom, err := readAtom("principles/cross-service-urls.md"); err == nil {
-			b.WriteString(atom)
-			b.WriteString("\n\n")
-			parts = append(parts, "principles/cross-service-urls.md")
-		}
-	}
-
-	// Run-20 (post sub-agent C verification) — Zerops platform claim
-	// attestation. Closes the corePackage / mode / httpSupport /
-	// ${zeropsSubdomain*} fabrication class that surfaced in the first
-	// sim verification. TEACH-side: positive shape teaching + named
-	// attractor topics + zerops_knowledge query-first rule. Replaces the
-	// catalog-drift instinct (one validator per fabricated string).
-	if atom, err := readAtom("principles/zerops-knowledge-attestation.md"); err == nil {
-		b.WriteString(atom)
-		b.WriteString("\n\n")
-		parts = append(parts, "principles/zerops-knowledge-attestation.md")
-	}
-
-	// Run-20 (post sub-agent C verification) — sharpened
-	// yaml-comment-style atom carries explicit GOOD/BAD examples
-	// showing multi-line wrap vs one-long-line anti-pattern. The
-	// codebase-content sub-agent authors the zerops.yaml comments,
-	// so the rule has to land here too (the scaffold brief already
-	// loads it for source-comment shape).
-	if atom, err := readAtom("principles/yaml-comment-style.md"); err == nil {
-		b.WriteString(atom)
-		b.WriteString("\n\n")
-		parts = append(parts, "principles/yaml-comment-style.md")
-	}
+	parts = appendCodebaseContentAtoms(&b, parts, plan, cb)
 
 	// Codebase metadata block — what this dispatch is for.
 	b.WriteString("## Codebase\n\n")
@@ -559,6 +456,86 @@ func ifEmpty(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+// appendCodebaseContentAtoms loads the static + conditional atoms for
+// the codebase-content brief in canonical order. Run-30 Fix #1 PARTIAL
+// extracted this from BuildCodebaseContentBrief to keep the parent
+// function's cyclomatic complexity / maintainability index inside the
+// linter threshold after the cross-service-urls + worker_kb_supplements
+// trim landed. Returns the updated parts slice.
+func appendCodebaseContentAtoms(b *strings.Builder, parts []string, plan *Plan, cb Codebase) []string {
+	parts = appendAtomIfFound(b, parts, "phase_entry/codebase-content.md")
+	parts = appendSynthesisWorkflowBlock(b, parts)
+	if plan.Tier == tierShowcase && cb.IsWorker {
+		writeWorkerKBSupplementsPointer(b)
+		parts = append(parts, "worker_kb_supplements (deferred)")
+	}
+	parts = appendAtomIfFound(b, parts, "briefs/scaffold/platform_principles.md")
+	if shouldLoadNATSShapes(plan, cb) {
+		parts = appendAtomIfFound(b, parts, "principles/nats-shapes.md")
+	}
+	if shouldLoadCrossServiceURLs(cb) {
+		parts = appendAtomIfFound(b, parts, "principles/cross-service-urls-summary.md")
+	}
+	parts = appendAtomIfFound(b, parts, "principles/zerops-knowledge-attestation.md")
+	parts = appendAtomIfFound(b, parts, "principles/yaml-comment-style.md")
+	return parts
+}
+
+// appendAtomIfFound writes the named atom (with trailing newline pair)
+// to b and appends the atom path to parts when readAtom returns a body
+// without error. Missing atoms are silently skipped — composer parts
+// list reflects only successfully-loaded atoms.
+func appendAtomIfFound(b *strings.Builder, parts []string, atomPath string) []string {
+	atom, err := readAtom(atomPath)
+	if err != nil {
+		return parts
+	}
+	b.WriteString(atom)
+	b.WriteString("\n\n")
+	return append(parts, atomPath)
+}
+
+// appendSynthesisWorkflowBlock loads the codebase-content synthesis
+// workflow atom plus the citation-guides list that anchors the agent's
+// cite-by-name pattern. Run-17 §6.4 — citation guides land right after
+// synthesis_workflow.md so the agent can resolve "the X guide" inline.
+func appendSynthesisWorkflowBlock(b *strings.Builder, parts []string) []string {
+	atom, err := readAtom("briefs/codebase-content/synthesis_workflow.md")
+	if err != nil {
+		return parts
+	}
+	b.WriteString(atom)
+	b.WriteString("\n\n")
+	parts = append(parts, "briefs/codebase-content/synthesis_workflow.md")
+	guides := citationGuides()
+	if len(guides) == 0 {
+		return parts
+	}
+	b.WriteString("### Citation guides for this recipe\n\n")
+	for _, g := range guides {
+		fmt.Fprintf(b, "- `%s`\n", g)
+	}
+	b.WriteString("\n")
+	return append(parts, "citation-guides")
+}
+
+// writeWorkerKBSupplementsPointer emits the worker codebase-content
+// reminder for the two MANDATORY worker-KB gotchas (queue-group +
+// SIGTERM drain). Run-30 Fix #1 PARTIAL — the 3.6 KB inline atom moved
+// off the codebase-content brief to keep the worker variant under the
+// Read-tool 22K-token target. The matching code-shape teaching at
+// `briefs/feature/worker_subscription_shape.md` already covers the
+// mechanism for the feature pass; this pointer tells the KB-author to
+// phrase the same two traps for the worker KB.
+func writeWorkerKBSupplementsPointer(b *strings.Builder) {
+	b.WriteString("### Worker KB — two mandatory gotchas (showcase + worker codebase)\n\n")
+	b.WriteString("This codebase ships at `minContainers ≥ 2` from tier 4 onwards. The worker KB MUST author two symptom-first stems naming the multi-replica failure modes:\n\n")
+	b.WriteString("1. **Queue-group / consumer-group semantics under multi-replica** — name the broker, the term \"queue group\" (or library equivalent), and \"per-replica\" or \"exactly-once\". Body shows the client option that sets the group (e.g. NATS `queue: 'workers'`).\n")
+	b.WriteString("2. **Graceful SIGTERM drain** — name SIGTERM or \"drain\" or \"graceful shutdown\". Body shows the catch → `await sub.drain()` (NOT `unsubscribe()`) → exit sequence.\n\n")
+	b.WriteString("Both items cite the rolling-deploys topic. The matching SOURCE-CODE shape (`{queue: 'workers'}` + `await sub.drain()` on shutdown) was authored at the feature pass per `briefs/feature/worker_subscription_shape.md` and is enforced at codebase-content `complete-phase` by `gateWorkerSubscription`. Your job here is the KB prose only.\n\n")
+	b.WriteString("Skip these only when (a) the worker shares a codebase with api/monolith or (b) the recipe explicitly downscales `minContainers` to 1 even at showcase tier (rare).\n\n")
 }
 
 // Run-22 followup F-6 — embedded-parent fallback framing strings.

@@ -123,6 +123,79 @@ func TestPerTierAuthoringAtom_ArrivesAtTierBadExample_Present(t *testing.T) {
 	}
 }
 
+// TestPerTierAuthoringAtom_ClosureOfExpectationBadExample_Present —
+// Run-30 F-33 PARTIAL. Run-29 closed the "arrives at tier N" BAD-example
+// shape, but run-30 sub-agents discovered closure-of-expectation
+// workarounds at tier 4/5 service-block comments:
+//
+//   - "stays single-shape across every tier" (tier 5 storage)
+//   - "no HA mode at any tier" (tier 4 search)
+//   - "holds at NON_HA even at this tier" (tier 5 search)
+//
+// These don't NAME a cross-tier MOVE but pull the porter's attention to
+// the cross-tier scope ladder, which the per_tier_authoring brief's
+// spirit prohibits. Atom carries a third BAD example covering
+// closure-of-expectation phrasings with the matching GOOD revision (keep
+// the within-tier knob, drop the cross-tier scope tail entirely —
+// service-family invariants are research/IG concerns, not service-block-
+// comment concerns).
+func TestPerTierAuthoringAtom_ClosureOfExpectationBadExample_Present(t *testing.T) {
+	t.Parallel()
+	body, err := readAtom("briefs/env-content/per_tier_authoring.md")
+	if err != nil {
+		t.Fatalf("read per_tier_authoring.md: %v", err)
+	}
+	for _, want := range []string{
+		"no HA mode at any tier",
+		"stays single-shape across every tier",
+		"holds at NON_HA even at this tier",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("per_tier_authoring.md missing closure-of-expectation BAD example anchor %q", want)
+		}
+	}
+	// GOOD revision must drop the cross-scope tail and keep the within-
+	// tier knob — verticalAutoscaling.minRam tied to a porter signal.
+	// The GOOD revision must NOT itself contain cross-scope vocabulary
+	// (the rule's spirit: service-family invariants are research/IG
+	// concerns, NOT service-block-comment concerns). The "no replica
+	// option on this service family" tail in the original GOOD revision
+	// self-contradicted the section's rule — it asserted a service-
+	// family invariant inside the comment the section forbids it from.
+	goodHeader := "**GOOD** — within-tier knob only:"
+	goodIdx := strings.Index(body, goodHeader)
+	if goodIdx < 0 {
+		t.Fatalf("per_tier_authoring.md missing closure-of-expectation GOOD-revision header %q", goodHeader)
+	}
+	rest := body[goodIdx:]
+	end := strings.Index(rest, "\n```\n")
+	if end < 0 {
+		t.Fatal("closure-of-expectation GOOD revision yaml fence has no closing ```")
+	}
+	// Find end of fenced yaml — closing ``` line.
+	closeFence := strings.Index(rest[end+5:], "```")
+	if closeFence < 0 {
+		t.Fatal("closure-of-expectation GOOD revision yaml fence not closed")
+	}
+	goodBlock := rest[:end+5+closeFence+3]
+	if !strings.Contains(strings.ToLower(goodBlock), "bump verticalautoscaling.minram if") {
+		t.Errorf("closure-of-expectation GOOD revision missing within-tier adapt path %q", "bump verticalAutoscaling.minRam if")
+	}
+	if !strings.Contains(goodBlock, "Single-node Meilisearch") {
+		t.Errorf("closure-of-expectation GOOD revision missing within-tier descriptor %q", "Single-node Meilisearch")
+	}
+	for _, forbid := range []string{
+		"no replica option on this service family",
+		"service family",
+		"across every tier",
+		"at any tier",
+	} {
+		if strings.Contains(goodBlock, forbid) {
+			t.Errorf("closure-of-expectation GOOD revision must NOT contain cross-scope vocabulary %q (rule's spirit: service-family invariants live in research/IG, not the service-block comment)", forbid)
+		}
+	}
+}
+
 func TestEmbeddedRubric_RubricAnchor_ReferencesWithinTier(t *testing.T) {
 	t.Parallel()
 	body, err := readAtom("briefs/refinement/embedded_rubric.md")

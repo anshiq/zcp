@@ -17,7 +17,7 @@ For every HTTP route and every queue subject you scaffold, record a
   "purpose": "Lists items for the SPA grid panel; supports pagination via ?page=, ?limit=",
   "publishers": ["apidev"],
   "subscribers": ["appdev"],
-  "payloadShape": "{ items: Item[], total: number, page: number }"
+  "payloadSchema": "{ items: Item[], total: number, page: number }"
 }
 ```
 
@@ -32,7 +32,7 @@ Worked example for a queue subject:
   "publishers": ["apidev"],
   "subscribers": ["workerdev"],
   "queueGroups": ["workers"],
-  "payloadShape": "{ jobId: string, payload: object }"
+  "payloadSchema": "{ jobId: string, payload: object }"
 }
 ```
 

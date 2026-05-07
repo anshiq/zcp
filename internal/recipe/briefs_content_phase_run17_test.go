@@ -136,7 +136,11 @@ func TestBuildCodebaseContentBrief_ShowcaseWorkerInjectsSupplement(t *testing.T)
 	if err != nil {
 		t.Fatalf("BuildCodebaseContentBrief: %v", err)
 	}
-	if !strings.Contains(brief.Body, "Required worker KB gotchas") {
+	// Run-30 Fix #1 PARTIAL — inline atom replaced with pointer that still
+	// names the two mandatory gotchas + cites the matching feature-pass
+	// source teaching. The KB-content shape (queue-group, SIGTERM drain)
+	// stays load-bearing in the brief as section anchors.
+	if !strings.Contains(brief.Body, "two mandatory gotchas") {
 		t.Error("showcase tier worker brief missing required worker KB gotchas section")
 	}
 	if !strings.Contains(brief.Body, "Queue-group") {
