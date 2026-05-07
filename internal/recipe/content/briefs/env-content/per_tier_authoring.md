@@ -171,6 +171,57 @@ graduates to tier 5 to get HA, doesn't edit this yaml. Forbidden.
 The adapt path is `minRam` — a knob the porter changes in THIS yaml.
 Cross-tier mode flips have no porter-signal home in service blocks.
 
+### Worked example — db block at tier 4 (parenthetical cross-tier slip)
+
+The forbidden phrasing isn't only the imperative verb shape ("Switch ...
+to HA"). Cross-tier references slip in as parenthetical narrative too —
+"arrives at tier N", "available at tier N", "comes online at tier N",
+"unlocks at tier N". The verb is calmer, the slot is parenthetical, the
+porter signal in the same comment looks within-tier; the cross-tier
+reference still smuggles the tier-ladder narrative into the service
+block.
+
+**BAD** — parenthetical "arrives at tier N" cross-tier reference:
+
+```yaml
+- hostname: db
+  type: postgresql@18
+  mode: NON_HA
+  # Still single-instance NON_HA — restoring from snapshot means
+  # downtime, the small-prod tradeoff (true failover arrives at
+  # tier 5 with `mode: HA`). The `minFreeRamGB: 0.25` headroom
+  # absorbs production load spikes; bump verticalAutoscaling.minRam
+  # when monitoring shows query latency creeping up.
+  verticalAutoscaling:
+    minRam: 0.5
+    minFreeRamGB: 0.25
+```
+
+The within-tier `minRam` adapt path is correct; the parenthetical "true
+failover arrives at tier 5" reaches across the tier ladder. Forbidden.
+
+**GOOD** — elide the cross-tier reference entirely; the tier table in
+the root README is where the porter learns tier 5's shape:
+
+```yaml
+- hostname: db
+  type: postgresql@18
+  mode: NON_HA
+  # Single-instance NON_HA — restoring from snapshot means downtime,
+  # the small-prod tradeoff. The `minFreeRamGB: 0.25` headroom absorbs
+  # production load spikes; bump verticalAutoscaling.minRam when
+  # monitoring shows query latency creeping up under steady-state
+  # working set.
+  verticalAutoscaling:
+    minRam: 0.5
+    minFreeRamGB: 0.25
+```
+
+The porter doesn't need the service-block comment to tell them tier 5
+has HA — they read the tier table in the root README and re-import the
+higher tier yaml when they want failover. The yaml comment owns
+within-tier knobs only.
+
 ### When the only friendly-authority candidate is cross-tier
 
 Some service blocks at lower tiers genuinely have no within-tier adapt

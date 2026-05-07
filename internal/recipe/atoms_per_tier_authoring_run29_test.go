@@ -94,6 +94,35 @@ func TestPerTierAuthoringAtom_BadGoodExamples_BothPresent(t *testing.T) {
 	}
 }
 
+// TestPerTierAuthoringAtom_ArrivesAtTierBadExample_Present — F-33.
+// Run-29 dogfood evidence: tier 4 db block at runs/29/environments/
+// "4 — Small Production"/import.yaml:62-63 shipped "true failover
+// arrives at tier 5 with `mode: HA`" — a cross-tier reference the
+// existing BAD example (which uses "Switch mode to HA") didn't preempt
+// because the agent's verb ("arrives") fell outside the BAD example's
+// vocabulary. Atom now carries a second BAD example using the verb
+// shapes that slipped past in run-29 ("arrives at tier N" / "available
+// at tier N" / "comes online at tier N") with the matching GOOD
+// revision: elide the cross-tier reference entirely (the tier table in
+// the root README is where the porter learns tier 5 has HA).
+func TestPerTierAuthoringAtom_ArrivesAtTierBadExample_Present(t *testing.T) {
+	t.Parallel()
+	body, err := readAtom("briefs/env-content/per_tier_authoring.md")
+	if err != nil {
+		t.Fatalf("read per_tier_authoring.md: %v", err)
+	}
+	for _, want := range []string{
+		"arrives at tier",
+		"available at tier",
+		"comes online at tier",
+		"unlocks at tier",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("per_tier_authoring.md missing arrives-at-tier-N BAD example anchor %q", want)
+		}
+	}
+}
+
 func TestEmbeddedRubric_RubricAnchor_ReferencesWithinTier(t *testing.T) {
 	t.Parallel()
 	body, err := readAtom("briefs/refinement/embedded_rubric.md")
