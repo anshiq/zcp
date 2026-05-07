@@ -75,6 +75,33 @@ func TestSynthesisWorkflowAtom_BadGoodExamples_BothPresent(t *testing.T) {
 	}
 }
 
+// TestSynthesisWorkflowAtom_CrossReferenceNotALicenseToRestate_Present —
+// F-34. Run-29 dogfood evidence: workerdev/zerops.yaml NATS Pattern A
+// block (lines 49-62 in runs/29) cross-referenced IG #4 + KB at the end
+// AND still restated the Pattern B failure mode (nats.js hostPort()
+// parse + Authorization Violation) that KB #3 owns. Refinement HELD on
+// the borderline because the surface-ownership atom forbids mechanism
+// duplication generally but didn't explicitly call out the "cross-
+// reference-then-still-restate" failure mode. Atom now carries an
+// explicit rule: a cross-reference is not a license to restate the
+// referenced surface's mechanism prose; the yaml comment body must stay
+// field-adjacent after the reference.
+func TestSynthesisWorkflowAtom_CrossReferenceNotALicenseToRestate_Present(t *testing.T) {
+	t.Parallel()
+	body, err := readAtom("briefs/codebase-content/synthesis_workflow.md")
+	if err != nil {
+		t.Fatalf("read synthesis_workflow.md: %v", err)
+	}
+	for _, want := range []string{
+		"### Cross-reference is not a license to restate",
+		"stay field-adjacent after the reference",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("synthesis_workflow.md missing cross-reference-then-restate forbid anchor %q", want)
+		}
+	}
+}
+
 func TestSynthesisWorkflowAtom_IG1EngineStampedNote_Present(t *testing.T) {
 	t.Parallel()
 	body, err := readAtom("briefs/codebase-content/synthesis_workflow.md")

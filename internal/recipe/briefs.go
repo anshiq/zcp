@@ -188,8 +188,13 @@ const (
 // > 40 KB lands on disk regardless. CodebaseContentBriefCap is now a
 // construction-side sanity check that protects the composer from
 // unbounded growth, not a delivery-channel constraint.
+// Run-29 Fix #4 follow-up F-34 — synthesis_workflow.md gained the
+// "Cross-reference is not a license to restate" section with workerdev
+// NATS BAD/GOOD worked example (~1.5 KB). Cap bumped 72 → 76 KB. Same
+// disk-fallback note applies — this is sanity-check headroom, not
+// delivery-channel constraint.
 const (
-	CodebaseContentBriefCap = 72 * 1024
+	CodebaseContentBriefCap = 76 * 1024
 	EnvContentBriefCap      = 56 * 1024
 	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )

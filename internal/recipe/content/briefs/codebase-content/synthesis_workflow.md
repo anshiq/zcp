@@ -171,6 +171,67 @@ reason cross-referencing IG:
 The mechanism lives on IG (Surface 4). The yaml comment owns the
 WHY-choice for THIS specific alias name.
 
+### Cross-reference is not a license to restate
+
+A yaml comment that ends with *"see IG #N for the mechanism"* doesn't
+buy the right to teach the mechanism in the body above the reference.
+The cross-reference IS the surface-ownership transfer — the body must
+stay field-adjacent after the reference, not before-and-after it.
+
+If the yaml comment runs more than ~6 lines after a cross-reference,
+the body has over-reached. Trim the body to the field-adjacent
+WHY-this-name-here / WHY-this-value-here, and let the cross-reference
+do the mechanism work.
+
+**BAD** — yaml comment cross-references but still restates mechanism
+prose KB owns (workerdev NATS pattern from run-29 dogfood evidence):
+
+```yaml
+- hostname: worker
+  envVariables:
+    # NATS Pattern A — separate host/port/user/pass aliases of the
+    # platform's auto-injects. Pattern B (single
+    # ${broker_connectionString}) works on the server side, but
+    # the recipe's NATS client (nats.js) has a hostPort() parser
+    # that misparses auto-generated passwords with `:` characters,
+    # so Pattern A sidesteps that by passing creds as connect
+    # options. Hand-composed `nats://user:pass@host:port` is also
+    # rejected — the NATS server returns Authorization Violation
+    # on first CONNECT because most clients double-auth (URL parse
+    # + SASL). The own-key-alias mechanism is in the Integration
+    # Guide; the Knowledge Base entry on the Authorization
+    # Violation crash covers the trap.
+    NATS_HOST: ${broker_hostname}
+    NATS_PORT: ${broker_port}
+    NATS_USER: ${broker_user}
+    NATS_PASS: ${broker_password}
+```
+
+The comment cross-references IG + KB at the end, but the body above
+restates the Pattern B failure mode prose KB owns AND the Authorization
+Violation cause prose KB also owns. Surface 7 violation: the cross-
+reference ran out of work three lines in; the next ten lines were
+mechanism teaching that KB and IG together already deliver.
+
+**GOOD** — short field-adjacent reason; cross-references do the work:
+
+```yaml
+- hostname: worker
+  envVariables:
+    # NATS Pattern A — host / port / user / pass passed as separate
+    # alias keys (own-key naming per IG; the connection-string
+    # alternative is rejected by this recipe per the Authorization
+    # Violation KB entry).
+    NATS_HOST: ${broker_hostname}
+    NATS_PORT: ${broker_port}
+    NATS_USER: ${broker_user}
+    NATS_PASS: ${broker_password}
+```
+
+The yaml comment owns "Pattern A is the alias shape, here are the four
+keys"; IG owns the alias mechanism; KB owns the Authorization Violation
+crash story. Each surface earns its keep.
+
 ### Special case — IG #1 is engine-stamped
 
 IG #1 contains the verbatim zerops.yaml block. The fenced yaml block
