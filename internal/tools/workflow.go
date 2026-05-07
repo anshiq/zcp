@@ -849,6 +849,12 @@ func handleListSessions(engine *workflow.Engine) (*mcp.CallToolResult, any, erro
 // atoms) → BuildPlan (typed NextActions) → RenderStatus (markdown). A loader
 // error on the atom corpus is fatal — the atoms ship embedded so a failure
 // here means a malformed build, not a runtime condition.
+//
+// Local-mode addendum: when running on a developer machine (rt is not in
+// a Zerops container), the lifecycle status also runs the dotenv-freshness
+// check and surfaces non-fresh / non-skipped results as a guidance line
+// so agents notice when `.env` has drifted from sources without having
+// to invoke generate-dotenv preview manually.
 func handleLifecycleStatus(ctx context.Context, engine *workflow.Engine, client platform.Client, projectID string, rt runtime.Info) (*mcp.CallToolResult, any, error) {
 	envelope, err := workflow.ComputeEnvelope(ctx, client, engine.StateDir(), projectID, rt, time.Now())
 	if err != nil {
@@ -863,11 +869,68 @@ func handleLifecycleStatus(ctx context.Context, engine *workflow.Engine, client 
 		return convertError(wrapStageErr("Synthesize guidance", err), WithRecoveryStatus()), nil, nil
 	}
 	plan := workflow.BuildPlan(envelope)
+	guidance := workflow.BodiesOf(matches)
+	if !rt.InContainer && projectID != "" {
+		if extra := localDotenvGuidanceAddendum(ctx, client, projectID); extra != "" {
+			guidance = append(guidance, extra)
+		}
+	}
 	return textResult(workflow.RenderStatus(workflow.Response{
 		Envelope: envelope,
-		Guidance: workflow.BodiesOf(matches),
+		Guidance: guidance,
 		Plan:     &plan,
 	})), nil, nil
+}
+
+// localDotenvGuidanceAddendum runs checkLocalDotenvFresh against the
+// caller's CWD and returns a guidance-block string when the dotenv is
+// non-fresh and non-skipped. Empty string when fresh (or not
+// applicable). Errors are swallowed silently — the dotenv check is a
+// best-effort UX surface, not a status correctness gate.
+func localDotenvGuidanceAddendum(ctx context.Context, client platform.Client, projectID string) string {
+	cwd, err := os.Getwd()
+	if err != nil || cwd == "" {
+		return ""
+	}
+	res := checkLocalDotenvFresh(ctx, client, projectID, "", cwd)
+	switch res.Status {
+	case LocalDotenvFresh, LocalDotenvSkipped:
+		return ""
+	case LocalDotenvStale, LocalDotenvUnownedEdits, LocalDotenvMissing, LocalDotenvVPNDown:
+		return formatLocalDotenvGuidance(res)
+	default:
+		return ""
+	}
+}
+
+// formatLocalDotenvGuidance renders a LocalDotenvCheckResult into a
+// status-friendly markdown block. Stable phrasing — agents key on the
+// "Local .env" heading to attribute the line.
+func formatLocalDotenvGuidance(res LocalDotenvCheckResult) string {
+	var b strings.Builder
+	b.WriteString("### Local .env state — ")
+	b.WriteString(string(res.Status))
+	b.WriteString("\n\n")
+	b.WriteString(res.Detail)
+	b.WriteString("\n")
+	if res.RecoveryHint != nil {
+		b.WriteString("\nRecovery: `")
+		b.WriteString(res.RecoveryHint.Tool)
+		b.WriteString(" action=\"")
+		b.WriteString(res.RecoveryHint.Action)
+		b.WriteByte('"')
+		for k, v := range res.RecoveryHint.Args {
+			b.WriteByte(' ')
+			b.WriteString(k)
+			b.WriteString("=\"")
+			b.WriteString(v)
+			b.WriteByte('"')
+		}
+		b.WriteString("` — ")
+		b.WriteString(res.RecoveryHint.Comment)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // handleWorkSessionClose closes the current-PID work session. Always

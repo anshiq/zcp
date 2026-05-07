@@ -68,10 +68,6 @@ type LocalDotenvRecovery struct {
 // setup may be empty: a single-block zerops.yaml auto-picks; a
 // multi-block yaml without setup returns Skipped (caller passes
 // the setup explicitly when known).
-//
-// (test-only) callers; status-handler wiring will diversify them.
-//
-//nolint:unparam // projectID + setup are fixed across current
 func checkLocalDotenvFresh(
 	ctx context.Context,
 	client platform.Client,

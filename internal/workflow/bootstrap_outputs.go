@@ -34,6 +34,17 @@ func (e *Engine) writeBootstrapOutputs(state *WorkflowState) {
 		metaHostname := target.Runtime.DevHostname
 		stageHostname := target.Runtime.StageHostname()
 
+		// Local-recipe path (Theme 1): the dev runtime is dropped from
+		// the import (LocalizeRecipeImportYAML), so DevHostname is
+		// empty and the agent's CWD takes its place. Re-tag mode as
+		// PlanModeLocalStage and key the meta by the stage hostname so
+		// the workflow surface still has a stable identifier — the
+		// stage IS the only Zerops-side runtime in this shape.
+		if e.environment == EnvLocal && metaHostname == "" && stageHostname != "" {
+			mode = topology.PlanModeLocalStage
+			metaHostname = stageHostname
+		}
+
 		// Adopted services (isExisting=true) get empty BootstrapSession
 		// to signal adoption rather than fresh bootstrap.
 		bootstrapSession := state.SessionID
@@ -94,6 +105,15 @@ func (e *Engine) writeProvisionMetas(state *WorkflowState) {
 	for _, target := range state.Bootstrap.Plan.Targets {
 		metaHostname := target.Runtime.DevHostname
 		stageHostname := target.Runtime.StageHostname()
+		mode := target.Runtime.EffectiveMode()
+
+		// Local-recipe path (Theme 1) — see writeBootstrapOutputs for
+		// the rationale. Same fallback applies here: stage is the
+		// stable identifier when dev was dropped.
+		if e.environment == EnvLocal && metaHostname == "" && stageHostname != "" {
+			mode = topology.PlanModeLocalStage
+			metaHostname = stageHostname
+		}
 
 		// Adopted services (isExisting=true) get empty BootstrapSession.
 		bootstrapSession := state.SessionID
@@ -103,7 +123,7 @@ func (e *Engine) writeProvisionMetas(state *WorkflowState) {
 
 		meta := &ServiceMeta{
 			Hostname:         metaHostname,
-			Mode:             target.Runtime.EffectiveMode(),
+			Mode:             mode,
 			StageHostname:    stageHostname,
 			CloseDeployMode:  topology.CloseModeUnset,
 			GitPushState:     topology.GitPushUnconfigured,
