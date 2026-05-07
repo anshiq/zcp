@@ -206,8 +206,16 @@ func calcBuildDuration(event *platform.AppVersionEvent) string {
 // branch on these so the empty-meta path falls through to a generic
 // next-action pointer rather than asserting incorrect topology.
 //
-// Same shape used by `deploy_subdomain.go::maybeAutoEnableSubdomain` to
-// gate the L7 HTTP-readiness probe on `topology.IsDeferredStart`.
+// Mode is target-relative via ServiceMeta.ModeFor — for a standard
+// pair (m.Mode = ModeStandard, m.StageHostname populated), a deploy
+// targeting the stage hostname projects as ModeStage even though the
+// pair meta carries ModeStandard. Reading m.Mode directly here would
+// read the dev-half's deferred-start semantics onto the stage runtime
+// (which runs run.start), and the post-deploy next-action handler
+// would emit a "start dev server" hint on a runtime where that tool
+// doesn't apply. Same shape applies to `deploy_subdomain.go::
+// maybeAutoEnableSubdomain` and `subdomain.go::skipDeferredStartProbe`,
+// which now use ModeFor for the same reason.
 func resolveDeployTargetTopology(stateDir, target, typeVersion string) (topology.Mode, topology.RuntimeClass) {
 	if stateDir == "" || target == "" {
 		return "", ""
@@ -217,5 +225,5 @@ func resolveDeployTargetTopology(stateDir, target, typeVersion string) (topology
 		return "", ""
 	}
 	class := topology.RuntimeClassFor(typeVersion)
-	return meta.Mode, class
+	return meta.ModeFor(target), class
 }

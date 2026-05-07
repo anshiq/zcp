@@ -593,7 +593,7 @@ func fixSnapBootstrappedNeverDeployed(hostname, typeVersion string, rc topology.
 // platform.ServiceStack. The dev half carries StageHostname (per
 // buildOneSnapshot:217-219) — the stage half does not. Mode resolves
 // to ModeStandard for the dev half and ModeStage for the stage half
-// (per resolveEnvelopeMode).
+// (per ServiceMeta.ModeFor).
 func fixSnapBootstrappedNeverDeployedPair(devHost, stageHost, typeVersion string, rc topology.RuntimeClass) []ServiceSnapshot {
 	return []ServiceSnapshot{
 		{

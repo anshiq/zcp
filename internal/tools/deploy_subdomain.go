@@ -116,7 +116,15 @@ func maybeAutoEnableSubdomain(
 	deferredStart := false
 	if svc != nil && meta != nil {
 		runtimeClass := topology.RuntimeClassFor(svc.ServiceStackTypeInfo.ServiceStackTypeVersionName)
-		deferredStart = topology.IsDeferredStart(meta.Mode, runtimeClass)
+		// Target-relative mode projection (ServiceMeta.ModeFor) — for a
+		// standard pair (m.Mode = ModeStandard, m.StageHostname populated),
+		// auto-enabling subdomain on the stage hostname must NOT skip the
+		// HTTP probe. The stage runtime runs run.start (HTTP-shaped from
+		// boot); only the dev half is zsc-noop deferred-start. Reading
+		// meta.Mode directly would treat both halves as deferred and
+		// silently swallow legitimate "subdomain not HTTP-ready" warnings
+		// for stage deploys.
+		deferredStart = topology.IsDeferredStart(meta.ModeFor(targetService), runtimeClass)
 	}
 
 	skipProbe := (subRes.Status == ops.SubdomainStatusAlreadyEnabled && meta != nil) || deferredStart

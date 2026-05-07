@@ -657,3 +657,81 @@ func TestSubdomainTool_Enable_DeferredStart_StaticStillProbes(t *testing.T) {
 		t.Errorf("static runtime in dev mode must still probe and warn on persistent 502; got %v", sr.Warnings)
 	}
 }
+
+// TestSubdomainTool_Enable_StandardPairStageHalf_StillProbes pins the
+// target-relative mode projection in skipDeferredStartProbe. A standard-
+// pair ServiceMeta carries Mode=ModeStandard for both halves; reading
+// m.Mode directly when hostname is the stage half previously matched
+// IsDeferredStart and silenced the L7 probe — silently dropping
+// legitimate "subdomain not HTTP-ready" warnings on stage subdomains.
+// ServiceMeta.ModeFor(stageHostname) projects as ModeStage so the probe
+// runs as expected. Persistent 502 on stage IS a real problem (stage
+// runs run.start; 502 means the app crashed or never started).
+func TestSubdomainTool_Enable_StandardPairStageHalf_StillProbes(t *testing.T) {
+	// t.Parallel omitted — OverrideHTTPReadyConfigForTest mutates package state.
+	restore := ops.OverrideHTTPReadyConfigForTest(1*time.Millisecond, 10*time.Millisecond)
+	defer restore()
+
+	dir := t.TempDir()
+	// Pair-keyed meta: dev-keyed entry covers both halves (per E8 invariant).
+	if err := workflow.WriteServiceMeta(dir, &workflow.ServiceMeta{
+		Hostname:         "appdev",
+		StageHostname:    "appstage",
+		Mode:             topology.PlanModeStandard,
+		BootstrapSession: "sess1",
+		BootstrappedAt:   "2026-04-22",
+	}); err != nil {
+		t.Fatalf("WriteServiceMeta: %v", err)
+	}
+
+	mock := platform.NewMock().
+		WithServices([]platform.ServiceStack{
+			{ID: "svc-stage", Name: "appstage",
+				Ports: []platform.Port{{Port: 3000, Protocol: "tcp"}},
+				ServiceStackTypeInfo: platform.ServiceTypeInfo{
+					ServiceStackTypeVersionName: "nodejs@22",
+				}},
+		}).
+		WithService(&platform.ServiceStack{
+			ID: "svc-stage", Name: "appstage",
+			Ports: []platform.Port{{Port: 3000, Protocol: "tcp"}},
+			ServiceStackTypeInfo: platform.ServiceTypeInfo{
+				ServiceStackTypeVersionName: "nodejs@22",
+			},
+		}).
+		WithProject(&platform.Project{
+			ID: "proj-1", Name: "myproject", Status: statusActive,
+			SubdomainHost: "abc1.prg1.zerops.app",
+		}).
+		WithProcess(&platform.Process{
+			ID:     "proc-subdomain-enable-svc-stage",
+			Status: statusFinished,
+		})
+
+	stub := &sequencingHTTPFor500{remaining5xx: 999}
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.1"}, nil)
+	RegisterSubdomain(srv, mock, stub, "proj-1", dir)
+
+	result := callTool(t, srv, "zerops_subdomain", map[string]any{
+		"serviceHostname": "appstage", "action": "enable",
+	})
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", getTextContent(t, result))
+	}
+
+	var sr ops.SubdomainResult
+	if err := json.Unmarshal([]byte(getTextContent(t, result)), &sr); err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	found := false
+	for _, w := range sr.Warnings {
+		if strings.Contains(w, "not HTTP-ready") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("standard-pair stage half must still probe and warn on persistent 502 (stage runs run.start, not zsc-noop); got %v", sr.Warnings)
+	}
+}

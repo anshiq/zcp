@@ -206,6 +206,74 @@ func (m *ServiceMeta) RoleFor(hostname string) topology.Mode {
 	return ""
 }
 
+// ModeFor returns the envelope-Mode of `hostname` projected through this
+// pair-keyed meta. Lifts the role returned by RoleFor into the Mode
+// vocabulary (see topology/aliases.go) so callers feeding mode-sensitive
+// predicates — topology.IsDeferredStart, atom modes:[...] gates, etc. —
+// read the correct half of a pair-keyed meta.
+//
+// Why this is distinct from m.Mode: a standard-pair ServiceMeta carries
+// Mode=ModeStandard for both halves; reading m.Mode directly when
+// hostname is the stage half projects dev-half semantics (zsc-noop,
+// deferred-start) onto a stage runtime that runs run.start. Three
+// deploy/subdomain sites previously misread pair-keyed metas this way
+// (deploy_poll.go::resolveDeployTargetTopology,
+// deploy_subdomain.go::maybeAutoEnableSubdomain,
+// subdomain.go::skipDeferredStartProbe) — every mode-sensitive next-
+// action / probe-skip decision on the stage half. The compute_envelope
+// path already had this projection (formerly a private
+// resolveEnvelopeMode helper); promoting it to a method here unifies
+// the contract across the envelope and deploy/subdomain surfaces.
+//
+// Returns "" when hostname is unrelated to this meta. Local-stage's
+// stage half projects as ModeLocalStage (not ModeStage) so atoms /
+// predicates that key on local-* keep matching when target is the
+// stage hostname of a local-stage pair.
+func (m *ServiceMeta) ModeFor(hostname string) topology.Mode {
+	if m == nil {
+		return ""
+	}
+	// Local topologies are project-keyed: m.Hostname is the project name,
+	// not a deployable runtime. Asking for the Mode of the project name on
+	// a local-only / local-stage meta is meaningless — no runtime to
+	// project. RoleFor falls through to PrimaryRole which returns
+	// DeployRoleDev as a defensive fallback (so non-Mode-aware callers
+	// don't see ""), but that fallback is misleading at this layer:
+	// callers feeding mode-sensitive predicates need "" so they branch
+	// through the "no meta available" path instead of treating the
+	// project name as a dev runtime. Stage hostname targets on a
+	// local-stage meta still project correctly via the Stage branch
+	// below — only the project-name case is short-circuited here.
+	if hostname == m.Hostname &&
+		(m.Mode == topology.PlanModeLocalOnly || m.Mode == topology.PlanModeLocalStage) {
+		return ""
+	}
+	// RoleFor's contract narrows the return surface to DeployRoleStage /
+	// Simple / Dev / "" — the remaining topology.Mode enum values
+	// (PlanModeStandard, PlanModeLocalStage, PlanModeLocalOnly) are
+	// never returned. They're listed alongside DeployRoleDev below to
+	// keep the exhaustive linter coverage explicit; the m.Mode check
+	// inside the branch handles the only reachable input (DeployRoleDev).
+	switch m.RoleFor(hostname) {
+	case topology.DeployRoleStage:
+		if m.Mode == topology.PlanModeLocalStage {
+			return topology.ModeLocalStage
+		}
+		return topology.ModeStage
+	case topology.DeployRoleSimple:
+		return topology.ModeSimple
+	case topology.DeployRoleDev,
+		topology.PlanModeStandard,
+		topology.PlanModeLocalStage,
+		topology.PlanModeLocalOnly:
+		if m.Mode == topology.PlanModeStandard {
+			return topology.ModeStandard
+		}
+		return topology.ModeDev
+	}
+	return ""
+}
+
 // PushSourceCheckFor classifies whether hostname is a source-of-push within
 // this meta's pair scope, returning the discriminating reason so callers can
 // render reason-specific remediation. Replaced the boolean IsPushSourceFor
@@ -217,9 +285,12 @@ func (m *ServiceMeta) RoleFor(hostname string) topology.Mode {
 //
 // Reads meta.Mode directly (PlanMode values alias topology.Mode values, so
 // topology.IsPushSource classifies them correctly) rather than going through
-// resolveEnvelopeMode — the envelope projection collapses local-* meta modes
-// onto ModeDev for atom-rendering purposes, which loses the push-source
-// information needed here. Stage-hostname check is the explicit pair-half
+// ModeFor — that projection answers "what mode is THIS hostname relative
+// to the pair?" and short-circuits to "" for project-name targets on
+// local-* metas (no deployable runtime there). PushSourceCheckFor needs
+// the meta-level mode regardless of which hostname the caller is asking
+// about, so reading m.Mode straight is the correct shape here.
+// Stage-hostname check is the explicit pair-half
 // carve-out.
 //
 // Used by handleGitPush + handleGitPushSetup to reject targetService that

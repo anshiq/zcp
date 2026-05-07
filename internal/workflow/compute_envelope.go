@@ -225,7 +225,7 @@ func buildOneSnapshot(svc platform.ServiceStack, meta *ServiceMeta, ws *WorkSess
 	if meta != nil && meta.IsComplete() {
 		snap.Bootstrapped = true
 		snap.Deployed = DeriveDeployed(svc.Name, svc.Status, meta, ws)
-		snap.Mode = resolveEnvelopeMode(meta, svc.Name)
+		snap.Mode = meta.ModeFor(svc.Name)
 		snap.CloseDeployMode = meta.CloseDeployMode
 		if snap.CloseDeployMode == "" {
 			snap.CloseDeployMode = topology.CloseModeUnset
@@ -296,43 +296,6 @@ func DeriveDeployed(hostname, status string, meta *ServiceMeta, ws *WorkSession)
 // class for check-dispatch, while the envelope collapses worker/dynamic.
 func classifyEnvelopeRuntime(typeVersion string) topology.RuntimeClass {
 	return topology.RuntimeClassFor(typeVersion)
-}
-
-// resolveEnvelopeMode maps a service's (meta, hostname) pair to the envelope
-// Mode enum. Role-based so the dev half and stage half of a standard pair
-// get distinct modes (ModeStandard vs ModeStage) even though they share a
-// single ServiceMeta record. Dev-only services get ModeDev; simple stays
-// ModeSimple. meta.RoleFor already encodes the mode+environment+hostname
-// lookup — we reuse it here instead of duplicating the rules.
-//
-// Local topology asymmetry: a local-stage's stage half lives on a Zerops
-// runtime (DeployRoleStage) but conceptually belongs to ModeLocalStage,
-// not ModeStage. Container atoms with `modes: [..., local-stage]` (no
-// `stage`) need the local-stage projection — without the carve-out below
-// the stage half projects as ModeStage and those atoms silently miss.
-func resolveEnvelopeMode(meta *ServiceMeta, hostname string) topology.Mode {
-	if meta == nil {
-		return ""
-	}
-	switch meta.RoleFor(hostname) {
-	case topology.DeployRoleStage:
-		if meta.Mode == topology.PlanModeLocalStage {
-			return topology.ModeLocalStage
-		}
-		return topology.ModeStage
-	case topology.DeployRoleSimple:
-		return topology.ModeSimple
-	case topology.DeployRoleDev, topology.PlanModeStandard, topology.PlanModeLocalStage, topology.PlanModeLocalOnly:
-		// PrimaryRole returns Dev for both PlanModeDev (standalone dev) and
-		// PlanModeStandard's dev half. Split them here so standard-only atoms
-		// don't fire for dev-only services and vice versa. Local topologies
-		// carry their own Mode values that project unchanged.
-		if meta.Mode == topology.PlanModeStandard {
-			return topology.ModeStandard
-		}
-		return topology.ModeDev
-	}
-	return ""
 }
 
 // buildWorkSessionSummary adapts the persisted WorkSession into its envelope

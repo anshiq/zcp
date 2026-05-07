@@ -400,7 +400,7 @@ func developCoverageFixtures() []coverageFixture {
 		},
 		{
 			// Local+standard close-mode=auto: the snapshot's Mode=ModeStage
-			// (per resolveEnvelopeMode). close-mode-auto-local must still fire.
+			// (per ServiceMeta.ModeFor). close-mode-auto-local must still fire.
 			Name: "develop_close_local_standard",
 			Envelope: StateEnvelope{
 				Phase:       PhaseDevelopActive,

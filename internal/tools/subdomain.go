@@ -110,14 +110,22 @@ func RegisterSubdomain(srv *mcp.Server, client platform.Client, httpClient ops.H
 // (Mode source) with a platform service lookup (RuntimeClass source) and
 // runs them through topology.IsDeferredStart.
 //
+// Mode is target-relative via ServiceMeta.ModeFor — for a standard pair
+// (m.Mode = ModeStandard, m.StageHostname populated), an explicit
+// `zerops_subdomain action=enable` on the stage hostname must NOT skip
+// the probe. The stage runtime runs run.start; only the dev half is
+// zsc-noop. Reading meta.Mode directly previously treated both halves
+// as deferred and silenced legitimate 502 warnings on stage subdomains.
+//
 // Returns false when:
 //   - stateDir is empty (no Work Session — recipe-authoring scaffold path).
 //   - ServiceMeta is missing (service not bootstrapped under the current
 //     session — explicit enable on an unrelated service).
 //   - LookupService fails (transient platform failure — fail closed, probe
 //     runs and any genuine 502 still surfaces).
-//   - The (mode, class) pair is not deferred-start (stage / simple modes,
-//     static / implicit-webserver classes — the probe is meaningful there).
+//   - The (target-relative mode, class) pair is not deferred-start
+//     (stage / simple / local-stage modes, static / implicit-webserver
+//     classes — the probe is meaningful there).
 //
 // Lookup errors are intentionally swallowed: this is a probe-gating
 // helper, not an error path. A failed lookup degrades to "probe runs"
@@ -136,5 +144,5 @@ func skipDeferredStartProbe(ctx context.Context, client platform.Client, project
 		return false
 	}
 	class := topology.RuntimeClassFor(svc.ServiceStackTypeInfo.ServiceStackTypeVersionName)
-	return topology.IsDeferredStart(meta.Mode, class)
+	return topology.IsDeferredStart(meta.ModeFor(hostname), class)
 }

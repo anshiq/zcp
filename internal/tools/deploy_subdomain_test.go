@@ -583,21 +583,43 @@ func TestMaybeAutoEnable_DevModePHPNginx_StillProbes(t *testing.T) {
 	}
 }
 
+// TestMaybeAutoEnable_StageDynamic_StillProbes pins the stage-half rule:
+// stage runtime runs run.start, so a 502 IS a real problem and the probe
+// must run. The fixture mirrors production shape — pair-keyed standard
+// meta (Hostname=dev half, StageHostname=stage half), targetService is
+// the stage hostname (= autoEnableTestHostname here, to reuse the
+// shared mock fixture). ServiceMeta.ModeFor projects target=StageHostname
+// as ModeStage even though m.Mode is ModeStandard; IsDeferredStart
+// returns false for stage; probe runs.
+//
+// Pre-ModeFor wiring this case worked only with synthetic "Mode=ModeStage
+// as primary" fixtures that never exist in production (stage is always
+// the stage half of a Standard pair). The realistic fixture pinned here
+// would have failed before the resolveDeployTargetTopology /
+// maybeAutoEnableSubdomain ModeFor wiring landed.
 func TestMaybeAutoEnable_StageDynamic_StillProbes(t *testing.T) {
 	restore := ops.OverrideHTTPReadyConfigForTest(1*time.Millisecond, 50*time.Millisecond)
 	defer restore()
 
 	dir := t.TempDir()
-	writeMeta(t, dir, topology.ModeStage)
+	if err := workflow.WriteServiceMeta(dir, &workflow.ServiceMeta{
+		Hostname:         "appdev",               // dev half (pair primary key)
+		StageHostname:    autoEnableTestHostname, // stage half — the deploy target below
+		Mode:             topology.PlanModeStandard,
+		BootstrapSession: "sess1",
+		BootstrappedAt:   "2026-04-22",
+	}); err != nil {
+		t.Fatalf("WriteServiceMeta: %v", err)
+	}
 
 	mock := autoEnableTestMockWithType(t, false, "nodejs@22")
 	doer := &countingDoer{status: 200}
-	result := &ops.DeployResult{TargetService: "app", TargetServiceID: "svc-1"}
+	result := &ops.DeployResult{TargetService: autoEnableTestHostname, TargetServiceID: "svc-1"}
 
-	maybeAutoEnableSubdomain(context.Background(), mock, doer, "proj-1", dir, "app", result)
+	maybeAutoEnableSubdomain(context.Background(), mock, doer, "proj-1", dir, autoEnableTestHostname, result)
 
 	if doer.calls == 0 {
-		t.Error("stage mode must still probe — run.start runs the real app; 502 means the deploy is broken")
+		t.Error("stage half of a standard pair must still probe — run.start runs the real app; 502 means the deploy is broken")
 	}
 }
 

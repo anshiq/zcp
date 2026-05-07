@@ -963,6 +963,112 @@ func TestServiceMeta_RoleFor(t *testing.T) {
 	}
 }
 
+// TestServiceMeta_ModeFor pins the target-relative envelope-Mode projection
+// that lifts RoleFor's role into the Mode vocabulary. Replaces the prior
+// private resolveEnvelopeMode (whose unit tests lived in
+// compute_envelope_test.go); promoted to a method so deploy_poll +
+// deploy_subdomain + subdomain (which previously read meta.Mode directly
+// and misclassified pair-keyed metas on the stage half) share one source
+// of truth with the envelope projection.
+func TestServiceMeta_ModeFor(t *testing.T) {
+	t.Parallel()
+
+	standardPair := &ServiceMeta{
+		Hostname: "appdev", StageHostname: "appstage", Mode: topology.PlanModeStandard,
+	}
+	localStagePair := &ServiceMeta{
+		Hostname: "myproject", StageHostname: "apistage", Mode: topology.PlanModeLocalStage,
+	}
+	devOnly := &ServiceMeta{Hostname: "appdev", Mode: topology.PlanModeDev}
+	simple := &ServiceMeta{Hostname: "app", Mode: topology.PlanModeSimple}
+	localOnly := &ServiceMeta{Hostname: "myproject", Mode: topology.PlanModeLocalOnly}
+
+	tests := []struct {
+		name     string
+		meta     *ServiceMeta
+		hostname string
+		want     topology.Mode
+	}{
+		// Standard pair — both halves project distinctly so deploy/subdomain
+		// surfaces don't read the dev-half's deferred-start onto the stage
+		// half (the bug fixed by promoting this projection).
+		{"standard_dev_half", standardPair, "appdev", topology.ModeStandard},
+		{"standard_stage_half", standardPair, "appstage", topology.ModeStage},
+
+		// Local-stage pair — stage half MUST stay ModeLocalStage (not
+		// ModeStage) so atoms / predicates that key on local-* keep
+		// matching when target is the local-stage pair's stage hostname.
+		// The project-name "host" of a local-stage meta is not a deployable
+		// target and projects as "" (no role).
+		{"local_stage_pair_stage_half", localStagePair, "apistage", topology.ModeLocalStage},
+		{"local_stage_pair_project_name_no_role", localStagePair, "myproject", ""},
+
+		// Single-runtime metas — no stage half; PrimaryRole drives the
+		// projection and m.Mode passes through.
+		{"dev_only", devOnly, "appdev", topology.ModeDev},
+		{"simple", simple, "app", topology.ModeSimple},
+
+		// Local-only — project-keyed; m.Hostname is the project name, no
+		// per-service role. Deploy doesn't apply but the helper must
+		// gracefully return "" rather than synthesizing a misleading mode.
+		{"local_only_project_name_no_role", localOnly, "myproject", ""},
+
+		// Unrelated host + nil meta — both must return "" so callers fall
+		// through to the generic "no meta available" branch (e.g.
+		// resolveDeployTargetTopology's empty-tuple return).
+		{"unrelated_hostname", standardPair, "other", ""},
+		{"empty_hostname", standardPair, "", ""},
+		{"nil_meta", nil, "appdev", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.meta.ModeFor(tt.hostname); got != tt.want {
+				t.Errorf("ModeFor(%+v, %q) = %q, want %q", tt.meta, tt.hostname, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestServiceMeta_ModeFor_StandardPairStageHalf_NotDeferredStart pins the
+// regression that motivated promoting this method: a standard pair stage
+// deploy with a dynamic runtime previously read meta.Mode == ModeStandard
+// and matched topology.IsDeferredStart, producing a misleading "start dev
+// server" next-action on a runtime that runs run.start. ModeFor returns
+// ModeStage so IsDeferredStart returns false — the canonical "verify"
+// pointer applies.
+func TestServiceMeta_ModeFor_StandardPairStageHalf_NotDeferredStart(t *testing.T) {
+	t.Parallel()
+	meta := &ServiceMeta{
+		Hostname: "appdev", StageHostname: "appstage", Mode: topology.PlanModeStandard,
+	}
+	got := meta.ModeFor("appstage")
+	if got != topology.ModeStage {
+		t.Fatalf("standard-pair stage half ModeFor = %q, want %q", got, topology.ModeStage)
+	}
+	if topology.IsDeferredStart(got, topology.RuntimeDynamic) {
+		t.Errorf("IsDeferredStart(%q, RuntimeDynamic) = true, want false (stage runs run.start, not zsc-noop)",
+			got)
+	}
+}
+
+// TestServiceMeta_ModeFor_StandardPairDevHalf_StillDeferredStart guards the
+// dev half — its semantics did not change. Standard pair dev half + dynamic
+// runtime IS deferred-start (zsc-noop until zerops_dev_server start).
+func TestServiceMeta_ModeFor_StandardPairDevHalf_StillDeferredStart(t *testing.T) {
+	t.Parallel()
+	meta := &ServiceMeta{
+		Hostname: "appdev", StageHostname: "appstage", Mode: topology.PlanModeStandard,
+	}
+	got := meta.ModeFor("appdev")
+	if got != topology.ModeStandard {
+		t.Fatalf("standard-pair dev half ModeFor = %q, want %q", got, topology.ModeStandard)
+	}
+	if !topology.IsDeferredStart(got, topology.RuntimeDynamic) {
+		t.Errorf("IsDeferredStart(%q, RuntimeDynamic) = false, want true (dev half is zsc-noop)", got)
+	}
+}
+
 func TestServiceMeta_Hostnames(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
