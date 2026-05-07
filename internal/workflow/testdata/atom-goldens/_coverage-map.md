@@ -19,6 +19,8 @@ Atoms with zero scenarios are flagged `TODO: explicit decision required` — Pha
 | `bootstrap-provision-rules` | 1 | bootstrap/classic/provision-local |
 | `bootstrap-recipe-close` | 1 | bootstrap/recipe/close |
 | `bootstrap-recipe-import` | 1 | bootstrap/recipe/provision |
+| `bootstrap-recipe-import-local` | 0 | TODO: explicit decision required (scenario or `coverageExempt:` frontmatter) |
+| `bootstrap-recipe-local-clone` | 0 | TODO: explicit decision required (scenario or `coverageExempt:` frontmatter) |
 | `bootstrap-recipe-match` | 0 | TODO: explicit decision required (scenario or `coverageExempt:` frontmatter) |
 | `bootstrap-resume` | 1 | idle/incomplete-resume |
 | `bootstrap-route-options` | 4 | idle/adopt-only, idle/bootstrapped-with-managed, idle/empty, idle/incomplete-resume |
@@ -64,6 +66,8 @@ Atoms with zero scenarios are flagged `TODO: explicit decision required` — Pha
 | `develop-implicit-webserver` | 1 | develop/first-deploy-recipe-implicit-standard |
 | `develop-intro` | 7 | develop/git-push-configured-webhook, develop/git-push-unconfigured, develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/post-adopt-standard-unset, develop/standard-auto-pair, develop/steady-dev-auto-container |
 | `develop-knowledge-pointers` | 10 | develop/failure-tier-3, develop/first-deploy-dev-dynamic-container, develop/first-deploy-recipe-implicit-standard, develop/git-push-configured-webhook, develop/git-push-unconfigured, develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/post-adopt-standard-unset, develop/standard-auto-pair, develop/steady-dev-auto-container |
+| `develop-local-env-channels` | 0 | TODO: explicit decision required (scenario or `coverageExempt:` frontmatter) |
+| `develop-local-env-troubleshoot` | 0 | TODO: explicit decision required (scenario or `coverageExempt:` frontmatter) |
 | `develop-local-workflow` | 0 | TODO: explicit decision required (scenario or `coverageExempt:` frontmatter) |
 | `develop-mode-expansion` | 3 | develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/steady-dev-auto-container |
 | `develop-platform-rules-common` | 10 | develop/failure-tier-3, develop/first-deploy-dev-dynamic-container, develop/first-deploy-recipe-implicit-standard, develop/git-push-configured-webhook, develop/git-push-unconfigured, develop/mode-expansion-source, develop/multi-service-scope-narrow, develop/post-adopt-standard-unset, develop/standard-auto-pair, develop/steady-dev-auto-container |
