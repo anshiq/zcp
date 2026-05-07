@@ -40,10 +40,14 @@ services:
 	}
 }
 
-// TestLocalizeRecipeImportYAML_StripsBuildFromGit pins that remaining
-// runtime services lose buildFromGit — local-mode stage starts in
-// READY_TO_DEPLOY so the agent's first local deploy is mandatory.
-func TestLocalizeRecipeImportYAML_StripsBuildFromGit(t *testing.T) {
+// TestLocalizeRecipeImportYAML_PreservesBuildFromGit pins that
+// remaining runtime services KEEP buildFromGit. Zerops API rejects
+// a runtime declaring zeropsSetup without buildFromGit
+// ("pipelineConfig requires source URL"). Stage auto-seeds from
+// upstream on import; first local deploy is a normal iteration,
+// not part of bootstrap. Surfaced by flow-eval-local
+// recipe-nodejs-hello-world suite 20260507-125401.
+func TestLocalizeRecipeImportYAML_PreservesBuildFromGit(t *testing.T) {
 	t.Parallel()
 	const input = `services:
   - hostname: appstage
@@ -58,10 +62,9 @@ func TestLocalizeRecipeImportYAML_StripsBuildFromGit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LocalizeRecipeImportYAML: %v", err)
 	}
-	if strings.Contains(got, "buildFromGit") {
-		t.Errorf("buildFromGit should be stripped from runtimes; got:\n%s", got)
+	if !strings.Contains(got, "buildFromGit:") {
+		t.Errorf("buildFromGit MUST remain (Zerops API requires it with zeropsSetup); got:\n%s", got)
 	}
-	// zeropsSetup and other fields preserved.
 	if !strings.Contains(got, "zeropsSetup: prod") {
 		t.Errorf("zeropsSetup: prod should remain; got:\n%s", got)
 	}
@@ -124,9 +127,6 @@ func TestLocalizeRecipeImportYAML_NoOpForRecipesAlreadyLocalShape(t *testing.T) 
 	}
 	if first != second {
 		t.Errorf("transform not idempotent:\nfirst:\n%s\n\nsecond:\n%s", first, second)
-	}
-	if strings.Contains(first, "buildFromGit") {
-		t.Errorf("buildFromGit should be stripped on first call; got:\n%s", first)
 	}
 }
 

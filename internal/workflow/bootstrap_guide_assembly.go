@@ -76,6 +76,18 @@ func (b *BootstrapState) buildGuide(step string, iteration int, env Environment,
 		match := b.RecipeMatch
 		if step == StepProvision && b.Plan != nil && len(b.Plan.Targets) > 0 {
 			if rewritten, err := RewriteRecipeImportYAML(b.RecipeMatch.ImportYAML, b.Plan); err == nil {
+				// Local mode (Theme 1): drop services declaring
+				// zeropsSetup: dev. The agent's CWD replaces the
+				// SSH-in dev runtime; provisioning a Zerops dev
+				// service is redundant and breaks bootstrap checks.
+				// buildFromGit on the remaining stage runtime is
+				// preserved — Zerops API rejects pipelineConfig
+				// without source URL.
+				if env == EnvLocal {
+					if localized, lerr := LocalizeRecipeImportYAML(rewritten); lerr == nil {
+						rewritten = localized
+					}
+				}
 				rewrittenMatch := *b.RecipeMatch
 				rewrittenMatch.ImportYAML = rewritten
 				match = &rewrittenMatch

@@ -5,7 +5,7 @@ phases: [bootstrap-active]
 routes: [recipe]
 environments: [local]
 steps: [provision]
-title: "Recipe local — provision + first-deploy is the bootstrap completion"
+title: "Recipe local — provision + clone + first run"
 coverageExempt: "recipe+local+provision — covered by recipe-local-flow design (Theme 1) + flow-eval-local scenarios"
 ---
 
@@ -13,12 +13,12 @@ coverageExempt: "recipe+local+provision — covered by recipe-local-flow design 
 
 ZCP transformed the recipe import.yml for local mode:
 
-- Services with `zeropsSetup: dev` were dropped (your CWD replaces them).
-- `buildFromGit:` was stripped from the remaining runtime — the stage starts in `READY_TO_DEPLOY`, NOT auto-seeded from upstream.
+- Services declaring `zeropsSetup: dev` were dropped (your CWD replaces them).
+- The remaining stage runtime keeps `buildFromGit` — Zerops API requires it whenever `zeropsSetup` is set.
 
-Submit the transformed YAML via `zerops_import` as usual. Stage runtime + managed deps come up; stage subdomain returns 502/503 until your first local deploy lands code on it.
+Submit the YAML you see in the guide via `zerops_import` as-is. After Zerops pulls upstream code via `buildFromGit`, the stage runtime is RUNNING with the recipe's reference build. Subdomain becomes live within 1-2 minutes; you can hit it to verify the recipe before any local edits.
 
-### After services are RUNNING / READY_TO_DEPLOY
+### After services are RUNNING
 
 ```
 1. zerops_env action="get" project=true       # surface project envVariables
@@ -30,14 +30,12 @@ Submit the transformed YAML via `zerops_import` as usual. Stage runtime + manage
 6. First local run: php artisan serve / npm run dev / etc.
 ```
 
-### First deploy is the mandatory bootstrap completion
+### Iterate locally; deploy when validating
 
-Stage was created without `buildFromGit`, so its subdomain is dead until you push real code.
+The cloned tree is your editor surface. Local edits do not affect stage until you deploy:
 
 ```
 zerops_deploy targetService="<stage-hostname>" workingDir="<cwd>"
 ```
 
-This single deploy verifies the build pipeline, env wiring, and runtime startup end-to-end. After it lands, stage subdomain becomes live. Until you run it, the bootstrap is not complete.
-
-Subsequent iterations: edit locally → re-run `npm run dev` (etc.) for fast feedback → `zerops_deploy` to update stage when validating production-shape builds.
+This rebuilds stage with your local code, replacing the upstream-seeded build. Use it whenever you want to validate the production-shape build pipeline against your changes — it is NOT a mandatory bootstrap-completion step.
