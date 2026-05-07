@@ -53,4 +53,4 @@ notableFriction:
       - atom may not emphasize the new setup parameter
 ---
 
-I want to set up a Node.js + Postgres project on Zerops using one of your recipes. Empty folder, please get me a working local dev setup.
+I want to start a simple Node.js + Postgres project locally on Zerops. Empty folder, get me a working dev setup.
