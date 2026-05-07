@@ -538,3 +538,100 @@ func TestEmitDeliverableYAML_KeepsDevPairURLsForTiers0And1(t *testing.T) {
 	mustContain(t, got, "DEV_API_URL: https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app")
 	mustContain(t, got, "API_URL: https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app")
 }
+
+// TestEmitDeliverableYAML_SingleSlotSeedsFromDevPairWhenTierEmpty — F-42.
+// When a single-slot tier (2-5) has no projectEnvVars entries of its own,
+// the engine seeds from the dev-pair baseline (tier 0, falling back to
+// tier 1) and passes through rewriteURLsForSingleSlot. Without this seed,
+// agents that record URL constants only at tier 0/1 (per the established
+// provision teaching at content/phase_entry/provision.md) ship single-
+// slot tier yamls with missing URL keys and break the SPA build-time
+// bake at porter deploy. Surfaced by run-29 dogfood evidence.
+func TestEmitDeliverableYAML_SingleSlotSeedsFromDevPairWhenTierEmpty(t *testing.T) {
+	t.Parallel()
+	plan := syntheticShowcasePlan()
+	plan.ProjectEnvVars = map[string]map[string]string{
+		"0": {
+			"API_URL":          "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL":     "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+			"DEV_API_URL":      "https://apidev-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"DEV_FRONTEND_URL": "https://appdev-${zeropsSubdomainHost}-5173.prg1.zerops.app",
+		},
+		// Tiers 1-5 deliberately not populated — engine seeds 2-5 from 0.
+	}
+	for _, tierIndex := range []int{2, 3, 4, 5} {
+		got, err := EmitDeliverableYAML(plan, tierIndex)
+		if err != nil {
+			t.Fatalf("EmitDeliverableYAML(tier=%d): %v", tierIndex, err)
+		}
+		mustContain(t, got, "API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app")
+		mustContain(t, got, "FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app")
+		mustNotContain(t, got, "DEV_API_URL")
+		mustNotContain(t, got, "DEV_FRONTEND_URL")
+		mustNotContain(t, got, "apistage-")
+		mustNotContain(t, got, "appstage-")
+		mustNotContain(t, got, "apidev-")
+		mustNotContain(t, got, "appdev-")
+	}
+}
+
+// TestEmitDeliverableYAML_SingleSlotPrefersOwnTierWhenSet — F-42 guard.
+// When a single-slot tier has its own entries, the seed-from-dev-pair
+// fallback must NOT fire — author intent at the per-tier index wins.
+func TestEmitDeliverableYAML_SingleSlotPrefersOwnTierWhenSet(t *testing.T) {
+	t.Parallel()
+	plan := syntheticShowcasePlan()
+	plan.ProjectEnvVars = map[string]map[string]string{
+		"0": {
+			"API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+		},
+		"4": {
+			"API_URL": "https://api-custom-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+		},
+	}
+	got, err := EmitDeliverableYAML(plan, 4)
+	if err != nil {
+		t.Fatalf("EmitDeliverableYAML: %v", err)
+	}
+	mustContain(t, got, "API_URL: https://api-custom-${zeropsSubdomainHost}-3000.prg1.zerops.app")
+	mustNotContain(t, got, "https://apistage-")
+}
+
+// TestEmitDeliverableYAML_SingleSlotSeedsFromTier1WhenTier0Empty —
+// F-42 fallback. Both dev-pair tiers (0 and 1) carry the same shape per
+// the provision teaching, but if an agent recorded only tier 1, single-
+// slot tiers still seed correctly.
+func TestEmitDeliverableYAML_SingleSlotSeedsFromTier1WhenTier0Empty(t *testing.T) {
+	t.Parallel()
+	plan := syntheticShowcasePlan()
+	plan.ProjectEnvVars = map[string]map[string]string{
+		"1": {
+			"API_URL":      "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+			"FRONTEND_URL": "https://appstage-${zeropsSubdomainHost}.prg1.zerops.app",
+		},
+	}
+	got, err := EmitDeliverableYAML(plan, 3)
+	if err != nil {
+		t.Fatalf("EmitDeliverableYAML: %v", err)
+	}
+	mustContain(t, got, "API_URL: https://api-${zeropsSubdomainHost}-3000.prg1.zerops.app")
+	mustContain(t, got, "FRONTEND_URL: https://app-${zeropsSubdomainHost}.prg1.zerops.app")
+}
+
+// TestEmitDeliverableYAML_DevPairTierEmpty_NoSeed — F-42 guard. Tier 1
+// is a dev-pair tier (RunsDevContainer=true) — it's the SOURCE of the
+// seed, never a sink. An empty tier 1 stays empty (no inherited URLs).
+func TestEmitDeliverableYAML_DevPairTierEmpty_NoSeed(t *testing.T) {
+	t.Parallel()
+	plan := syntheticShowcasePlan()
+	plan.ProjectEnvVars = map[string]map[string]string{
+		"0": {
+			"API_URL": "https://apistage-${zeropsSubdomainHost}-3000.prg1.zerops.app",
+		},
+	}
+	got, err := EmitDeliverableYAML(plan, 1)
+	if err != nil {
+		t.Fatalf("EmitDeliverableYAML: %v", err)
+	}
+	mustNotContain(t, got, "API_URL: https://apistage-")
+}

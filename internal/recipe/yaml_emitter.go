@@ -105,6 +105,22 @@ func writeProject(b *strings.Builder, plan *Plan, tier Tier) {
 
 	hasSecret := plan.Research.NeedsAppSecret && plan.Research.AppSecretKey != ""
 	envVars := plan.ProjectEnvVars[envKey(tier)]
+	// F-42 — single-slot tiers (2-5; RunsDevContainer=false) seed
+	// project envs from the dev-pair baseline (tier 0, falling back
+	// to tier 1) when the agent didn't record per-tier entries. The
+	// established provision teaching at content/phase_entry/provision.md
+	// has agents record URL constants once at tier 0/1; without this
+	// seed, single-slot tier yamls ship with missing URL keys and
+	// break SPA build-time bake at the porter's deploy. Run-29
+	// dogfood evidence: env-content sub-agent narrated *_URL keys
+	// in tier 2-5 comments that the engine never emitted.
+	if !tier.RunsDevContainer && len(envVars) == 0 {
+		if seed := plan.ProjectEnvVars["0"]; len(seed) > 0 {
+			envVars = seed
+		} else {
+			envVars = plan.ProjectEnvVars["1"]
+		}
+	}
 	// Run-22 R3-RC-3 — single-slot tiers (2-5; RunsDevContainer=false)
 	// rewrite slot-named hostnames in URL values to bare hostnames
 	// (`apistage-` → `api-`, `appdev-` → `app-`) and drop DEV_* keys.
