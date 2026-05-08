@@ -54,4 +54,4 @@ notableFriction:
       - EnsureEnvLocal is library-only, not invoked by any handler yet
 ---
 
-I want to start a new Node.js project that uses PostgreSQL for storage. Empty folder. Please set it up on Zerops so I can develop locally and deploy when ready.
+I want to start a new Node.js project that uses PostgreSQL for storage. Empty folder. Please set it up on Zerops so I can develop locally and deploy when ready. Use the bootstrap workflow (`zerops_workflow workflow="bootstrap"`) for the initial setup.

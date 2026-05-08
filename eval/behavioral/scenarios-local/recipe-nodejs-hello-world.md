@@ -53,4 +53,4 @@ notableFriction:
       - atom may not emphasize the new setup parameter
 ---
 
-I want to start a simple Node.js + Postgres project locally on Zerops. Empty folder, get me a working dev setup.
+I want to start a simple Node.js + Postgres project locally on Zerops. Empty folder, get me a working dev setup. Use the bootstrap workflow (`zerops_workflow workflow="bootstrap"`) — that's the entry point for any new project, including ones that match a Zerops recipe.

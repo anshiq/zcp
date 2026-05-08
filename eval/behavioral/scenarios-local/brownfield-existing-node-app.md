@@ -68,4 +68,4 @@ notableFriction:
       - No active classify-dotenv flow to make this explicit during adoption
 ---
 
-I have a Node.js + Express app that uses PostgreSQL. It's working locally with a `.env` file pointing at my local Postgres. I want to deploy it to Zerops — please get it running there with a managed Postgres while keeping my local development workflow intact.
+I have a Node.js + Express app that uses PostgreSQL. It's working locally with a `.env` file pointing at my local Postgres. I want to deploy it to Zerops — please get it running there with a managed Postgres while keeping my local development workflow intact. Use the bootstrap workflow (`zerops_workflow workflow="bootstrap"`) — it auto-detects existing app code and routes through adopt.
