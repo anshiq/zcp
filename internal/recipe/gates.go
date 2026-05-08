@@ -99,6 +99,21 @@ func CodebaseScaffoldGates() []Gate {
 	}
 }
 
+// FeatureGates runs at feature complete-phase. Inherits scaffold's
+// fact-quality gates and adds the feature-only screenshot-capture
+// gate (Run-31 Fix #4 closure). Scaffold has no browser-walk close-
+// step, so the screenshot gate would be a false positive there;
+// feature is the phase the integration_validator brief runs and the
+// close-step screenshot is teachable.
+func FeatureGates() []Gate {
+	gates := CodebaseScaffoldGates()
+	gates = append(gates, Gate{
+		Name: "feature-screenshot-captured",
+		Run:  gateFeatureScreenshotCaptured,
+	})
+	return gates
+}
+
 // CodebaseContentGates runs at codebase-content complete-phase. Owns
 // content-surface validation now that codebase-content is the sole
 // content-authoring phase for codebase-scoped surfaces (IG, KB,

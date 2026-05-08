@@ -92,32 +92,54 @@ old contract.
 
 ## Capture a final-state screenshot before close
 
-Accessibility-tree snapshots + `get text` assertions catch wiring
-regressions but miss visual defects (oval status-dots, missing card
-backgrounds, broken grid, FOUC mid-render). Run this after the final cross-deploy + browser-walk verify on
-appstage, when every card
-is populated, every status dot reads green, and every counter delta
-has held. ONE full-page screenshot lands at
-`<outputRoot>/screenshots/dashboard-close.png`. Add it as the LAST
-inner command in the close-step `zerops_browser` batch:
+Snapshot + `get text` assertions catch wiring regressions but miss
+visual defects (oval status-dots, missing card backgrounds, FOUC).
+The close step is gated: **`complete-phase phase=feature` REFUSES**
+when no `browser_verification` fact carries `extra.screenshot` set to
+a path under `<outputRoot>/screenshots/`. Violation code
+`feature-screenshot-not-captured` holds the phase open until the fact
+lands.
+
+You MUST capture ONE full-page screenshot after the final cross-deploy
++ browser-walk verify on appstage — every card populated, every status
+dot green, every counter delta held. Lands at
+`<outputRoot>/screenshots/dashboard-close.png`. Run this AFTER the
+final cross-deploy, NOT during iteration (half-wired states). Make
+`screenshot --full` the LAST inner command:
 
 ```json
 {
   "url": "https://app-${zeropsSubdomainHost}.prg1.zerops.app/",
   "commands": [
     ["wait", "[data-test='items-count']"],
+    ["snapshot", "-i", "-c"],
     ["screenshot", "--full", "<outputRoot>/screenshots/dashboard-close.png"]
   ]
 }
 ```
 
-Substitute `<outputRoot>` with the absolute path from `zerops_recipe
-action=status` and `mkdir -p <outputRoot>/screenshots` first. The
-`--full` flag captures the entire scroll height, not just the
-headless-Chrome viewport — Storage and Search usually sit below the
-fold. Record a `browser_verification` fact naming the screenshot path
-in `why` so post-run analysis can locate the artifact. ONE screenshot
-per close; iteration walks would record half-wired states.
+Substitute `<outputRoot>` from `zerops_recipe action=status`; `mkdir
+-p <outputRoot>/screenshots` first. `--full` captures full scroll
+height, not just the headless-Chrome viewport.
+
+Then record a `browser_verification` fact whose `extra.screenshot`
+carries the absolute path. The gate keys on this field;
+`extra.screenshot` MUST hold the path string, NOT the placeholder
+`none-snapshot-only` (the run-30/31 shape — agents who ran only
+`snapshot -i -c` emitted that placeholder and the close stayed gated):
+
+```json
+{
+  "topic": "dashboard-close",
+  "kind": "browser_verification",
+  "subject": "dashboard (final state)",
+  "service": "appstage",
+  "why": "Walked appstage after final cross-deploy; status dots green, cards populated, count delta held. Captured screenshot at <outputRoot>/screenshots/dashboard-close.png.",
+  "extra": {"screenshot": "<outputRoot>/screenshots/dashboard-close.png"}
+}
+```
+
+ONE screenshot per close. The gate accepts the FIRST qualifying fact.
 
 ## What NOT to do
 

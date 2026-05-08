@@ -39,6 +39,13 @@ var gateSetByName = map[string]func() []recipe.Gate{
 	"scaffold": func() []recipe.Gate {
 		return append(recipe.DefaultGates(), recipe.CodebaseScaffoldGates()...)
 	},
+	"feature": func() []recipe.Gate {
+		// Run-31 Fix #4 — feature inherits scaffold's fact-quality
+		// gates plus the feature-only screenshot-capture close-gate.
+		// Mirror in phase_entry.go::gatesForPhase(PhaseFeature) and
+		// the parity test in phase_entry_test.go.
+		return append(recipe.DefaultGates(), recipe.FeatureGates()...)
+	},
 	"env-content": func() []recipe.Gate {
 		return append(recipe.DefaultGates(), recipe.EnvGates()...)
 	},

@@ -43,6 +43,24 @@ func TestIntegrationValidatorAtom_TeachesScreenshotAtClose(t *testing.T) {
 		// during iterative dev-loop walks (those would capture half-wired
 		// state).
 		"after the final cross-deploy",
+		// Run-31 Fix #4 closure — imperative-mandate framing. The
+		// run-30 brief read as soft instruction ("Capture", "Add it",
+		// "Substitute"); run-31 sub-agents skipped it cleanly. The
+		// engine close-gate (gateFeatureScreenshotCaptured) refuses
+		// `complete-phase phase=feature` when no screenshot fact lands;
+		// the brief must teach the same MUST contract so the agent
+		// records the fact rather than tripping the gate.
+		"MUST",
+		// The fact-shape teaching — agent must record a
+		// `browser_verification` fact carrying the screenshot path in
+		// `extra.screenshot`, NOT the run-30/31 placeholder
+		// `none-snapshot-only`. The engine gate keys on the path-
+		// presence in extra.screenshot under <outputRoot>/screenshots/.
+		"extra.screenshot",
+		"none-snapshot-only",
+		// Refused-close framing — the brief must name the gate so the
+		// agent understands the close step is gated, not advisory.
+		"complete-phase phase=feature",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("integration_validator.md missing screenshot-capture anchor %q", want)

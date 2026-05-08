@@ -31,12 +31,20 @@ func gatesForPhase(p Phase) []Gate {
 	switch p {
 	case PhaseResearch:
 		return append(base, researchGates()...)
-	case PhaseScaffold, PhaseFeature:
+	case PhaseScaffold:
 		// Run-17 §8 (R-16-1 closure) — scaffold/feature record facts
 		// only. Fact-quality gates fire here; content-surface
 		// validators move to the codebase-content phase where the
 		// content sub-agent owns authorship.
 		return append(base, CodebaseScaffoldGates()...)
+	case PhaseFeature:
+		// Run-31 Fix #4 — feature inherits scaffold's fact-quality
+		// gates plus the feature-only screenshot-capture close-gate
+		// (FeatureGates). Scaffold has no browser-walk close-step, so
+		// the screenshot gate would be a false positive there;
+		// feature is the phase where the integration_validator brief
+		// runs and the close-step screenshot is teachable.
+		return append(base, FeatureGates()...)
 	case PhaseCodebaseContent:
 		// Codebase-content owns IG/KB/CLAUDE/zerops.yaml-comments
 		// authoring; surface validators run here so the agent that

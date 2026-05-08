@@ -63,12 +63,15 @@ func TestGatesForPhase_Scaffold_RunsFactQualityGatesOnly(t *testing.T) {
 }
 
 // TestGatesForPhase_Feature_RunsFactQualityGatesOnly — feature phase
-// follows scaffold's fact-quality contract.
+// follows scaffold's fact-quality contract plus the run-31 Fix #4
+// screenshot-capture close-gate (FeatureGates() = CodebaseScaffoldGates
+// + feature-screenshot-captured).
 func TestGatesForPhase_Feature_RunsFactQualityGatesOnly(t *testing.T) {
 	t.Parallel()
 	gates := gatesForPhase(PhaseFeature)
 	mustHaveGate(t, gates, "facts-recorded")
 	mustHaveGate(t, gates, "source-comment-voice")
+	mustHaveGate(t, gates, "feature-screenshot-captured")
 	mustNotHaveGate(t, gates, "codebase-surface-validators")
 	mustNotHaveGate(t, gates, "env-imports-present")
 }
@@ -143,7 +146,7 @@ func TestGatesForPhase_SimProdParity(t *testing.T) {
 			return append(DefaultGates(), CodebaseScaffoldGates()...)
 		},
 		PhaseFeature: func() []Gate {
-			return append(DefaultGates(), CodebaseScaffoldGates()...)
+			return append(DefaultGates(), FeatureGates()...)
 		},
 		PhaseCodebaseContent: func() []Gate {
 			return append(DefaultGates(), CodebaseContentGates()...)

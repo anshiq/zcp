@@ -302,6 +302,47 @@ service-family invariant ("no HA mode for meilisearch") lives in
 research / IG and in the service-family HOLD list further down this
 brief — it is not the service-block comment's job to restate it.
 
+### Tier README intros — closure-of-expectation guard
+
+The same closure-of-expectation rule applies to the tier README intros
+you author at workflow step 2 first bullet (`env/<N>/intro`). The
+intro is a tier-summary surface — it names who the tier is for and the
+within-tier deployment shape. Cross-scope tails — even parenthetical,
+even framed as "no move available" / "no option in those families" —
+must not appear. They pull the porter's attention to the tier ladder
+the intro is supposed to summarize, not contrast.
+
+The vocabulary of the rule for this surface: porter signals describe
+the within-tier shape (single-instance, dedicated CPU, 1 GB managed-
+RAM floor, doubled spike headroom). Service-family invariants ("no HA
+mode for meilisearch", "no `mode` field on object-storage") belong in
+research / IG, not the tier-summary intro.
+
+**BAD** — tier 5 intro with closure-of-expectation parenthetical:
+
+> *Tier 5 — highly-available production. Dedicated CPU, SERIOUS
+> corePackage on the project, HA mode on db/cache/broker (Meilisearch
+> and object-storage stay single-shape — no HA option in those
+> families), 1 GB managed-RAM floor, doubled spike headroom.*
+
+The parenthetical "no HA option in those families" is the same closure-
+of-expectation shape forbidden in service-block comments. It pulls the
+porter into a cross-family comparison — the porter reads "no HA option"
+and asks "what about other families? what about other tiers?" — when
+the intro's job is to summarize THIS tier's shape.
+
+**GOOD** — within-tier shape only:
+
+> *Tier 5 — highly-available production. Dedicated CPU, SERIOUS
+> corePackage on the project, HA mode on db/cache/broker, single-
+> instance Meilisearch and object-storage with the 1 GB managed-RAM
+> floor, doubled spike headroom.*
+
+The same factual content reaches the porter — Meilisearch and object-
+storage at tier 5 are single-instance — without the cross-family
+"no HA option" assertion. The porter learns the shape; the family
+invariant stays in research / IG where it belongs.
+
 ### When the only friendly-authority candidate is cross-tier
 
 Some service blocks at lower tiers genuinely have no within-tier adapt
