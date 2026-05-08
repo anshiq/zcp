@@ -219,6 +219,17 @@ func BuildEnvContentBrief(plan *Plan, parent *ParentRecipe, facts []FactRecord) 
 		parts = append(parts, "principles/yaml-comment-style.md")
 	}
 
+	// Run-32 F-49 — codebase-name-vs-slot-hostname. Pre-empts
+	// `record-fragment fragmentId=env/<N>/import-comments/<host>dev`
+	// traps where the env-content agent reaches for the slot
+	// hostname (`apidev`/`workerdev`) instead of the bare codebase
+	// name in fragment-id components.
+	if atom, err := readAtom("principles/codebase-name-vs-slot-hostname.md"); err == nil {
+		b.WriteString(atom)
+		b.WriteString("\n\n")
+		parts = append(parts, "principles/codebase-name-vs-slot-hostname.md")
+	}
+
 	// Per-tier capability matrix (already computed) + cross-tier deltas.
 	b.WriteString("## Per-tier capability matrix\n\n")
 	tiers := Tiers()
@@ -480,6 +491,11 @@ func appendCodebaseContentAtoms(b *strings.Builder, parts []string, plan *Plan, 
 	}
 	parts = appendAtomIfFound(b, parts, "principles/zerops-knowledge-attestation.md")
 	parts = appendAtomIfFound(b, parts, "principles/yaml-comment-style.md")
+	// Run-32 F-49 — codebase-name-vs-slot-hostname. Pre-empts
+	// `record-fragment fragmentId=codebase/<host>dev/...` traps where
+	// the codebase-content agent reaches for the slot hostname
+	// (`apidev`/`workerdev`) it sees on SSHFS mounts.
+	parts = appendAtomIfFound(b, parts, "principles/codebase-name-vs-slot-hostname.md")
 	return parts
 }
 

@@ -140,10 +140,23 @@ per codebase you touched. Same shape as scaffold's self-validate path:
 runs the codebase-scoped validators against just that codebase, so you
 see only your own work and can correct it in-session.
 
-If `ok:false` with violations on `codebase/<host>/{integration-guide,
-knowledge-base,claude-md/*}` ids → fix via `record-fragment
-mode=replace fragmentId=codebase/<host>/<name> fragment=<corrected
-body>`. Re-call until `ok:true`, then move on to the next codebase.
+If `ok:false`, the response carries EVERY violation discovered on
+this call. Read the full list before issuing any fix, then:
+
+1. Group violations by fix shape — surface-shape failures on
+   `codebase/<host>/{integration-guide,knowledge-base,claude-md/*}`
+   ids → `record-fragment mode=replace fragmentId=codebase/<host>/
+   <name> fragment=<corrected body>`. Yaml-comment or yaml-leaked-
+   comment violations → ssh-edit the file directly.
+2. Issue ALL fixes for the violations you saw THIS call, then
+   re-call `complete-phase phase=feature codebase=<host>` ONCE.
+   Steady state is two calls per codebase: first surfaces
+   everything; second confirms. Don't queue fixes one-at-a-time —
+   that wastes round-trips on information the validator already
+   gave you.
+3. If the second call surfaces NEW violations (a fix introduced
+   one, or a violation depended on a prior fix), repeat the same
+   complete-batch-then-retry shape until `ok:true`.
 
 `mode=replace` overwrites the ENTIRE fragment body. To extend an
 existing scaffold-authored fragment (add a new IG section, add a new

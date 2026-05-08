@@ -398,21 +398,70 @@ platform mechanism and the final sentence carries the *quoted error
 string* ("directory not found"). Acceptable directive-mapped shape
 because the failure mode is named explicitly.
 
-**The stem heuristic** — the text between `**...**` should contain at
-least one of:
+**The stem self-check** — before you call `record-fragment` on a KB
+entry, scan your own draft stem (the text between `**...**`) and
+confirm it contains at least one token from the four whitelists
+below. If none of the four signals match, do NOT record yet —
+restate using one of the listed verbs or observables, then re-scan.
+Record only when the self-check passes.
 
-- HTTP status code (`403`, `502`)
-- Quoted error string (`relation already exists`, "directory not
-  found")
-- Verb-form failure phrase (fails, crashes, corrupts, deadlocks,
-  silently exits, returns null)
-- Observable wrong-state phrase (empty body, null where X expected,
-  404 on X, missing manifest)
+The validator regex at `internal/recipe/slot_shape.go` is the
+authority; the four signal classes it accepts are:
 
-If none match AND a symptom-first reshape is derivable from the
-fact's Why, do the reshape at record time. The engine's record-time
-slot-shape check refuses author-claim stems with a redirect to this
-atom (Tranche 2).
+1. **HTTP status code** — any 3-digit `1xx`/`2xx`/`3xx`/`4xx`/`5xx`
+   (e.g. `403`, `502`).
+2. **Quoted token** — backticked or double-quoted string (e.g.
+   `` `relation already exists` ``, `"directory not found"`,
+   `` `synchronize: false` ``).
+3. **Failure verb** — case-insensitive whole-word match against the
+   18-verb whitelist (verbatim from the regex):
+
+   ```
+   fails, crashes, corrupts, deadlocks, silently exits,
+   silently stops, returns null, breaks, drops, rejects,
+   missing, hangs, times out, panics, leaks, stalls,
+   truncates, drained
+   ```
+
+4. **Observable phrase** — case-insensitive whole-phrase match against
+   the 12-phrase whitelist (verbatim from the regex):
+
+   ```
+   empty body, wrong header, null where, 404 on, 502 on,
+   empty response, stale data, zero rows, no rows,
+   unbound, undefined, forbidden
+   ```
+
+If your draft stem matches none of these four classes, it's an
+author-claim shape — the engine's record-time slot-shape check will
+refuse it with a redirect to this atom. The fix is at draft time:
+restate the stem using a whitelisted verb / observable, then re-scan.
+
+Note: this is the agent's own self-check on the four signals before
+calling `record-fragment`. The brief is the source of truth you
+read; the regex is the gate the engine applies. Both are pinned to
+the same vocabulary above.
+
+**BAD/GOOD pair** — KB entry from run-32 worker (multi-replica NATS
+duplicate processing):
+
+> **BAD** — `**Every job processed twice after scaling past one replica**`
+>
+> Author-claim shape: `processed`/`scaling`/`twice` are not
+> whitelisted verbs; no HTTP code, no quoted token, no observable
+> phrase from the 12-phrase list. Self-check fails → restate before
+> recording.
+>
+> **GOOD** — `**Missing queue-group option crashes exactly-once delivery — every replica processes every message**`
+>
+> `Missing` and `crashes` are both on the 18-verb whitelist; the stem
+> names the directive omission (queue-group option) + the failure
+> verb (crashes) + the porter-observable (every replica processes
+> every message). Self-check passes on two independent signals.
+
+If a symptom-first reshape is derivable from the fact's Why, do the
+reshape at record time. The engine's record-time slot-shape check
+refuses author-claim stems with a redirect to this atom (Tranche 2).
 
 ## IG one mechanism per H3 (Surface 4)
 

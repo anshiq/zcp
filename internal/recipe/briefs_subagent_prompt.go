@@ -386,6 +386,32 @@ func writePromptRecipeContext(b *strings.Builder, plan *Plan, kind BriefKind, cb
 			b.WriteString("- Subdomain access: yes\n")
 		}
 	}
+
+	// Run-32 F-53 — recipe-authoring MCP scope. Pre-empts sub-agents
+	// reaching for `zerops_workflow workflow=develop` (porter-facing
+	// dev-loop runner) from inside recipe authoring. The MCP tool
+	// description at `internal/tools/workflow.go` advertises `develop`
+	// as a public workflow visible to any agent; the brief never names
+	// the boundary between recipe-authoring tools and porter-facing
+	// tools. Run-32 feature-backend hit `PREREQUISITE_MISSING` on a
+	// `zerops_workflow workflow=develop` call.
+	b.WriteString("\n## Recipe-authoring MCP scope\n\n")
+	b.WriteString("The recipe-authoring MCP is `zerops_recipe` only. Use it for fragment\n")
+	b.WriteString("recording (`record-fragment`), fact recording (`record-fact`), phase\n")
+	b.WriteString("progression (`complete-phase`), self-validation, and dispatch helpers.\n")
+	b.WriteString("Other `mcp__zerops__*` tools are platform / porter facing:\n\n")
+	b.WriteString("- `zerops_import` / `zerops_subdomain` / `zerops_env` / `zerops_logs` /\n")
+	b.WriteString("  `zerops_events` / `zerops_deploy` / `zerops_dev_server` — platform\n")
+	b.WriteString("  operations the recipe needs, allowed.\n")
+	b.WriteString("- `zerops_workflow` (any `workflow=` value: `develop`, `bootstrap`,\n")
+	b.WriteString("  `adopt`) — porter-facing high-level workflow runner. Recipe-authoring\n")
+	b.WriteString("  agents do NOT invoke this; if you find yourself reaching for\n")
+	b.WriteString("  `workflow=develop`, you're trying to run the porter's dev loop, which\n")
+	b.WriteString("  is not a recipe-authoring action.\n")
+	b.WriteString("- `zerops_browser` — browser walk + screenshot for feature-phase\n")
+	b.WriteString("  verification, allowed.\n\n")
+	b.WriteString("When unsure, `zerops_recipe` is the recipe-authoring tool; everything\n")
+	b.WriteString("else is platform infrastructure or porter-facing.\n")
 }
 
 func writePromptCloseFooter(b *strings.Builder, kind BriefKind, codebase string, currentPhase Phase) {

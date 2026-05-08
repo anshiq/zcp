@@ -128,6 +128,17 @@ operational, self-inflicted}` — those have no porter-facing surface.
 Record only when `candidateClass ∈ {platform-invariant, intersection,
 scaffold-decision}`.
 
+## Close-out batch-fix discipline
+
+`complete-phase phase=scaffold codebase=<host>` returns the FULL
+violation list every call. If `ok:false`, fix EVERY violation the
+response named (record-fact for each `fact-rationale-missing`,
+record-fragment mode=replace for each surface-shape failure,
+ssh-edit for yaml-comment violations) BEFORE re-calling
+`complete-phase`. Steady state is two calls: first surfaces
+everything; second confirms. Don't queue fixes one-at-a-time —
+that's what burned 4-5 round-trips per codebase on run-32.
+
 ## Git hygiene
 
 Before first deploy:

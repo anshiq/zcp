@@ -10,6 +10,46 @@ across 6 tiers (0..5). The brief carries:
 - The plan snapshot (codebases + services)
 - Parent-recipe pointer (when present)
 
+## Surface caps to self-check before record
+
+The validator at `internal/recipe/slot_shape.go` enforces these
+structural caps on every `record-fragment` call. Self-check your
+draft body's length BEFORE invoking `record-fragment` — each
+rejection costs a round-trip on information already provided.
+
+| Surface | Cap | Spec anchor |
+|---|---|---|
+| `root/intro` | 1 sentence, 500 chars; no markdown headings | `docs/spec-content-surfaces.md` Surface 1 |
+| `env/<N>/intro` | 1-2 sentences, 350 chars; no `## ` headings; no `<!-- #ZEROPS_EXTRACT_*` markers | `docs/spec-content-surfaces.md` Surface 2 |
+| `env/<N>/import-comments/project` | ≤ 8 lines | `docs/spec-content-surfaces.md` Surface 3 |
+| `env/<N>/import-comments/<host>` | ≤ 8 lines | `docs/spec-content-surfaces.md` Surface 3 |
+
+When you draft a per-host import-comments block, count the lines
+before `record-fragment`. When you draft an `env/<N>/intro`, count
+the chars. Run-32's env-content agent burned three round-trips on
+caps the brief teaches but didn't surface where the agent composes:
+14-line broker block (cap 8), 353-char intro (cap 350).
+
+## Forbidden tokens that need attesting facts
+
+The validator at `internal/recipe/slot_shape_authoring.go` refuses
+import-comment bodies that invoke certain framing tokens without an
+attesting fact in the run's `facts.jsonl`. Pre-empt these tokens
+when no scaffold/feature-time fact attests their use:
+
+- **JetStream framing** — tokens `JetStream`, `quorum-replicated
+  stream(s)`, `durable consumer(s)`. Attestation: a fact with topic
+  prefix `nats-jetstream` (e.g. `nats-jetstream-enabled`,
+  `nats-jetstream-streams`). When the recipe uses ONLY core NATS
+  pub/sub (no `jetstream(nc)` / `jsm.streams.add` calls in code),
+  import-comments and KB MUST NOT invoke JetStream framing — there
+  is no stream to discuss. If your draft body contains any of these
+  tokens, check the FactsLog: if no `nats-jetstream-*` topic exists,
+  rewrite without the token rather than learn this from a refusal.
+
+The validator-regex source (`jetStreamTokenRE` and peers) is the
+authority; this list reflects the tokens currently in scope.
+
 ## Workflow
 
 1. **Author root/intro** — one sentence that frames what the recipe IS
@@ -355,6 +395,8 @@ graduation as fake friendly-authority.
 
 ### Worked example — runtime block (api/worker/app)
 
+**Body cap reminder**: ≤ 8 lines per `env/<N>/import-comments/<host>` block (see Surface caps at top). Run-32 cc-env tripped a 14-line block at first record — count lines before recording.
+
 **BEFORE** — engineering-spec, 7.0 floor:
 
 ```yaml
@@ -400,6 +442,8 @@ saturation; monitoring shows ceiling approach; custom domain
 configured). The mechanism still leads.
 
 ### Worked example — managed-service block (db/cache/broker/search)
+
+**Body cap reminder**: ≤ 8 lines per block (Surface caps at top). For NATS-shaped brokers, do NOT introduce `JetStream` framing tokens unless an attesting fact lives in `facts.jsonl` — the slot-shape validator refuses the record otherwise (Forbidden tokens at top).
 
 **BEFORE** — engineering-spec, 7.0 floor:
 

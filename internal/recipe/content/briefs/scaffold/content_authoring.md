@@ -234,31 +234,58 @@ If `ok:true`: safe to terminate.
 
 If `ok:false` with violations:
 
-- Violations on `codebase/<host>/{integration-guide,knowledge-base,
-  claude-md/*}` ids → fix in-session via `record-fragment
-  mode=replace`:
+1. The response carries EVERY violation discovered on this call —
+   the validator surfaces all missing rationale paths and all
+   surface-shape failures in one pass. Read the FULL list before
+   issuing any fix. Do not start fixing the first violation while
+   skimming the rest.
 
-  ```
-  zerops_recipe action=record-fragment slug=<slug>
-    fragmentId=codebase/<host>/integration-guide
-    mode=replace
-    fragment=<corrected body>
-  ```
+2. Group violations by fix shape:
+   - `fact-rationale-missing` → `record-fact kind=field_rationale
+     fieldPath=<suffix from violation>` (one fact per violation;
+     `FieldPath` is exactly what the violation message names).
+   - Surface-shape failures on `codebase/<host>/{integration-guide,
+     knowledge-base,claude-md/*}` (KB stem, IG body cap, etc.) →
+     `record-fragment mode=replace`:
 
-  Default mode is append for codebase IG/KB/claude-md ids (so feature
-  phase can extend scaffold's content). `mode=replace` overwrites —
-  use when correcting your own previously-recorded fragment within
-  the same phase.
+     ```
+     zerops_recipe action=record-fragment slug=<slug>
+       fragmentId=codebase/<host>/integration-guide
+       mode=replace
+       fragment=<corrected body>
+     ```
 
-- Violations on `<SourceRoot>/zerops.yaml` (yaml-comment-missing-
-  causal-word, etc.) → ssh-edit the yaml file directly; it's not a
-  fragment, it's the committed source. After ssh-edit, the engine's
-  IG item-1 generator will re-read the yaml body on next stitch.
+     Default mode is append for codebase IG/KB/claude-md ids (so
+     feature phase can extend scaffold's content). `mode=replace`
+     overwrites — use when correcting your own previously-recorded
+     fragment within the same phase.
+   - yaml-comment violations on `<SourceRoot>/zerops.yaml` (yaml-
+     comment-missing-causal-word, etc.) → ssh-edit the yaml file
+     directly; it's not a fragment, it's the committed source.
+     After ssh-edit, the engine's IG item-1 generator re-reads the
+     yaml body on next stitch.
 
-- Re-call `complete-phase phase=scaffold codebase=<your-host>` to
-  verify the fix.
+3. Issue ALL fixes for the violations you saw THIS call, then call
+   `complete-phase phase=scaffold codebase=<your-host>` ONCE more.
+   Whether you batch fixes in a single Claude message (parallel
+   tool calls) or issue them sequentially is a discipline choice —
+   the recipe MCP serialises fact / fragment writes anyway. The
+   rule is "complete the batch before retrying complete-phase."
 
-- Repeat until `ok:true`, then terminate.
+4. If the second call surfaces NEW violations (a fix introduced one,
+   or a violation depended on a prior fix landing), repeat the same
+   complete-batch-then-retry shape. Steady state is two
+   complete-phase calls per codebase: the first call surfaces
+   everything; the second confirms.
+
+**Anti-pattern** (cost: 4-5 round-trips per codebase): fix one
+violation, retry complete-phase, see N-1 violations, fix one,
+retry, see N-2... The validator returns the FULL list every call;
+treating violations as a queue wastes round-trips on information
+already provided. Run-32's scaffold-api burned 5 complete-phase
+calls (factsCount 55 → 62 → 63 → 66 → 72) because it queued
+fixes; one batch-fix between calls 1 and 2 would have cleared all
+8 violations.
 
 The phase-level `complete-phase` (no codebase parameter) is the main
 agent's responsibility after every sub-agent returns — it advances
@@ -339,3 +366,16 @@ Finalize gates reject on these; fix at author-time:
 ## At scaffold close — initialize git
 
 Run `git init && git add -A && git commit -m 'scaffold: initial structure + zerops.yaml'` from `<cb.SourceRoot>` (= `/var/www/<hostname>dev/`). The apps-repo publish path needs a clean git history; doing this post-hoc loses the per-feature commit shape a porter sees when scrolling the repo.
+
+**Pre-check before commit.** Run `git status --porcelain` first; if
+the output is empty, skip the commit (nothing to commit; `git
+commit` exits 1 on an empty diff and cancels every parallel tool
+call in the same Claude message as collateral). Shape:
+
+```
+ssh <hostname>dev "cd <cb.SourceRoot> && [ -n \"\$(git status --porcelain)\" ] && git add -A && git commit -m 'scaffold: initial structure + zerops.yaml' || echo 'no changes to commit'"
+```
+
+Run-32's scaffold-worker burned a `complete-phase` round-trip
+because the parallel `git commit` returned exit 1 on a clean
+working tree.

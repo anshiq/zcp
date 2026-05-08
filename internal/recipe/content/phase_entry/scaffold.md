@@ -24,8 +24,14 @@ git reset --soft $(git rev-list --max-parents=0 HEAD) 2>/dev/null || \
 git config user.email recipe@zerops.io
 git config user.name 'Recipe Author'
 git add -A
-git commit -q -m 'scaffold: initial structure + zerops.yaml'
+[ -n "$(git status --porcelain)" ] && \
+  git commit -q -m 'scaffold: initial structure + zerops.yaml' || \
+  echo 'no changes to commit'
 ```
+
+The `git status --porcelain` pre-check guards against an empty diff:
+`git commit` exits 1 on a clean working tree and cancels every
+parallel tool call in the same Claude message as collateral.
 
 Pick the recovery once and apply consistently across all three scaffold
 sub-agents — wipe-and-reinit is acceptable for a dogfood run; in

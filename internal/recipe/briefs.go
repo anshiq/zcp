@@ -120,9 +120,17 @@ import (
 // dots, missing card backgrounds, FOUC mid-render). The screenshot is
 // captured at close on the wired-stage URL via `zerops_browser` →
 // `["screenshot", "--full", "<outputRoot>/screenshots/dashboard-close.png"]`.
+//
+// Run-32 F-49 raised FeatureBriefCap 44 → 46 KB to absorb the new
+// `principles/codebase-name-vs-slot-hostname.md` atom (~870 bytes) —
+// pre-empts `complete-phase codebase='apidev'` traps where the
+// feature agent reaches for the slot hostname it has been working
+// against all phase. The teaching previously lived only in the
+// refinement brief (post-trap recovery); now it loads at scaffold +
+// feature + codebase-content + env-content composers.
 const (
 	ScaffoldBriefCap = 48 * 1024
-	FeatureBriefCap  = 44 * 1024
+	FeatureBriefCap  = 46 * 1024
 )
 
 // BriefKind identifies a sub-agent role. Scaffold + feature have
@@ -471,6 +479,12 @@ func BuildScaffoldBriefWithResolver(plan *Plan, cb Codebase, parent *ParentRecip
 		// comment` lines into zerops.yaml; codebase-content phase
 		// authors causal comments later as the whole-yaml fragment.
 		"principles/bare-yaml-prohibition.md",
+		// Run-32 F-49 — codebase-name-vs-slot-hostname. Pre-empts
+		// `complete-phase codebase='<host>dev'` and `fragmentId=
+		// codebase/<host>dev/...` traps where agents reach for the
+		// slot hostname they've been working with all phase. The
+		// teaching previously lived only in the refinement brief.
+		"principles/codebase-name-vs-slot-hostname.md",
 	}
 	// Run-21 R2-1 (#5) — predicate scoped to THIS codebase. Pre-fix the
 	// init-commands atom leaked into every codebase's brief whenever any
@@ -657,6 +671,11 @@ func BuildFeatureBrief(plan *Plan, pass FeaturePass) (Brief, error) {
 		"briefs/feature/feature_kinds.md",
 		"briefs/feature/decision_recording.md",
 		"principles/mount-vs-container.md",
+		// Run-32 F-49 — codebase-name-vs-slot-hostname. Pre-empts
+		// `complete-phase codebase='apidev'` and similar slot-hostname
+		// reaches when the feature agent has been working against
+		// `apidev` mounts all phase.
+		"principles/codebase-name-vs-slot-hostname.md",
 	}
 	if planDeclaresSeed(plan) {
 		atoms = append(atoms, "principles/init-commands-model.md")

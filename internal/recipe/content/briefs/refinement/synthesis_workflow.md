@@ -30,6 +30,35 @@ Worked example:
 If the engine returns "unknown codebase 'workerdev' (Plan codebases:
 [api app worker])", drop the slot suffix and retry with the bare name.
 
+### Codebase name vs slot hostname (filesystem AND MCP)
+
+The bare codebase name (`api`/`app`/`worker`) is the MCP-parameter
+form: `codebase=`, `fragmentId=codebase/<host>/...`,
+`fragmentId=env/<N>/import-comments/<host>`. The slot hostname
+(`apidev`/`apistage`, `appdev`/`appstage`, `workerdev`/`workerstage`)
+is the filesystem-mount form: SSHFS mounts live at
+`/var/www/<slot>` (the dev slot is the editable mount the recipe
+sub-agents wrote to; the stage slot is the deployable). When you
+`ls` / `cat` source files at refinement time, use the slot hostname:
+
+```
+ls /var/www/<slug>/apidev/src       # filesystem — slot hostname
+cat /var/www/<slug>/workerdev/zerops.yaml
+```
+
+When you `record-fragment` / `complete-phase`, use the bare codebase
+name:
+
+```
+record-fragment fragmentId=codebase/api/integration-guide   # MCP — bare name
+complete-phase  codebase=worker
+```
+
+Run-32's refinement agent burned a wrong-path `ls` round-trip on
+`/var/www/<slug>/api/` — there is no `api/` mount; the codebases
+mount at `apidev/`/`appdev/`/`workerdev/`. Keep the two forms
+straight: filesystem = slot, MCP = bare.
+
 ## Refinement actions, by criterion
 
 ### Criterion 1 — Stem shape (KB)
