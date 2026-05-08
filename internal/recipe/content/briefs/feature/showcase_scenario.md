@@ -333,6 +333,36 @@ Both affordances target the same `POST /api/storage/upload` endpoint.
 The selector lets a human upload a real file; the blob button lets
 `zerops_browser` exercise the upload pipeline without a file dialog.
 
+### Styling — both affordances adopt the design tokens
+
+The file selector and "Upload selected" button must share the visual
+vocabulary of the rest of the card — same button radius, same primary
+colour for the active CTA, same border treatment on the file-input
+wrapper. Bare browser default styling (`<input type="file">`'s native
+"Choose File" widget; an unstyled `<button>`) is a regression — it
+ships visibly different fonts, shapes, and colours than the card it
+sits inside. Two concrete moves:
+
+1. **Hide the native file-input chrome and project a styled label.**
+   Wrap `<input type="file" data-feature="upload-file" class="sr-only">`
+   in a `<label>` whose visual shape uses the same token-driven
+   classes as the rest of the card (rounded panel, design-token border,
+   `font-[var(--zerops-font-body)]`). Show the chosen filename
+   adjacent to the label via JS (`input.files[0]?.name ?? 'No file
+   chosen'`). Native `Choose File` button visible inside the card is
+   the regression signal.
+2. **The blob/"Upload selected" button uses the same token vocabulary
+   as the primary "Upload sample blob" button** — same radius, same
+   `--zerops-primary` background when enabled, same disabled-state
+   colour. A grey-on-grey unstyled button next to a teal primary
+   button is the regression signal.
+
+Object list items (the recently-uploaded files below the upload form)
+get the same token-driven card treatment — design-token background,
+no default-browser blue/purple `text-decoration: underline` link
+styling. If a list item renders as a raw `<a>` with browser-default
+underline, it didn't pass the styling pass.
+
 ### Browser-walk fallback escape hatch
 
 If `[data-feature="upload"]` click delivery fails (silent, counter

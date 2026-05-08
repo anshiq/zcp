@@ -76,20 +76,23 @@ isn't namable.
 A series of `record-fragment mode=replace` and `replace-by-topic`
 calls. End with `complete-phase phase=refinement`.
 
-## Dispatch — inline-or-pointer
+## Dispatch — multi-file pointer
 
-`build-subagent-prompt briefKind=refinement` returns ONE OF two
-response shapes per call:
+`build-subagent-prompt briefKind=refinement` ALWAYS returns a
+multi-file pointer:
 
-- **Inline** (body ≤ 40 KB) — `response.prompt` is the full composed
-  brief; dispatch with `prompt=<response.prompt>` byte-identical.
-- **Pointer** (body > 40 KB) — `response.prompt` is empty;
-  `response.briefPath` is the absolute path to the engine-persisted
-  brief on disk under `<outputRoot>/.briefs/`. Dispatch with a thin
-  wrapper telling the sub-agent to `Read <briefPath>` first thing.
+- `response.prompt` is empty.
+- `response.briefPath` is the absolute path to `index.md` under
+  `<outputRoot>/.briefs/refinement-phase-<unixnano>/`.
 
-Branch on `briefPath != ""`. The two shapes are mutually exclusive —
-disk-fallback closes the cap-treadmill (run-29 Fix #1).
+The index lists N part files (phase-entry, synthesis-workflow,
+embedded-rubric, references, context, facts) in a "Read order"
+section. The sub-agent dispatch wrapper MUST instruct: "Read
+`<briefPath>` first; then Read each part file listed in its 'Read
+order' section in the order shown before authoring any refinement."
+Run-31 Fix #1 closure — multi-file shape isolates the embedded
+rubric (~31 KB on its own) and the recorded-facts stream so neither
+crowds the brief past the Read-tool 25K-token cap.
 
 ## Read order
 

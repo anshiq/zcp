@@ -467,23 +467,45 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 		}
 		factsSnapshot = recs
 	}
-	prompt, err := buildSubagentPromptForPhase(sess.Plan, sess.Parent, in, sess.Current, sess.MountRoot, factsSnapshot)
+	// Run-31 Fix #1 closure — multi-file briefs. Codebase-content,
+	// env-content, and refinement persist to disk as index.md + N
+	// part-*.md (composer-side); the dispatch envelope returns
+	// `briefPath` pointing at index.md. Single-file kinds (scaffold,
+	// feature, finalize, claudemd-author) keep the legacy run-29 Fix #1
+	// disk-fallback shape: inline below 40 KB, single-file disk pointer
+	// above.
+	prompt, indexPath, err := buildSubagentDispatchForPhase(sess.Plan, sess.Parent, in, sess.Current, sess.MountRoot, sess.OutputRoot, factsSnapshot)
 	if err != nil {
 		r.Error = err.Error()
 		return r
 	}
-	// Run-29 Fix #1 — disk-fallback for oversized briefs. Above the
-	// threshold the engine writes the body to
+	if indexPath != "" {
+		// Multi-file path. The composer already wrote the index + parts
+		// to disk; populate BriefPath with the index. BriefSize carries
+		// the index file's byte count for sanity-check.
+		stat, sErr := os.Stat(indexPath)
+		if sErr == nil {
+			r.BriefSize = int(stat.Size())
+		}
+		r.BriefPath = indexPath
+		r.Notice = "brief written to disk as multi-file index; dispatch sub-agent with this path. Sub-agent must Read index.md, then Read each part file listed in its 'Read order' section in order."
+		if BriefKind(in.BriefKind) == BriefRefinement {
+			sess.mu.Lock()
+			sess.RefinementDispatched = true
+			sess.mu.Unlock()
+		}
+		r.OK = true
+		return r
+	}
+	// Run-29 Fix #1 — single-file disk-fallback for oversized briefs.
+	// Above the threshold the engine writes the body to
 	// `<sess.OutputRoot>/.briefs/<kind>-<codebase>-<unixnano>.md` and
-	// returns a pointer instead of inlining; closes the cap-treadmill
-	// (44→48→52→56→60→64 KB across runs 22-28) by making disk-write
-	// the designed primary path for large briefs. Either-or semantics
-	// with Prompt: when BriefPath is set, Prompt is empty.
-	// OutputRoot is populated before this handler runs (set at
-	// handlers.go NewSession path / OpenOrCreate path). Defense-in-
-	// depth: an empty OutputRoot falls through to the inline path,
-	// matching legacy in-memory test fixtures that construct sessions
-	// without an on-disk root.
+	// returns a pointer instead of inlining. Either-or semantics with
+	// Prompt: when BriefPath is set, Prompt is empty. OutputRoot is
+	// populated before this handler runs (set at handlers.go NewSession
+	// path / OpenOrCreate path). Defense-in-depth: an empty OutputRoot
+	// falls through to the inline path, matching legacy in-memory test
+	// fixtures that construct sessions without an on-disk root.
 	if len(prompt) > BriefDiskFallbackThreshold && sess.OutputRoot != "" {
 		path, wErr := writeBriefToDisk(sess.OutputRoot, BriefKind(in.BriefKind), in.Codebase, prompt)
 		if wErr != nil {
@@ -1024,6 +1046,17 @@ func completePhase(sess *Session, in RecipeInput, r RecipeResult) RecipeResult {
 // prompt. Wrapper text around the brief (header before, context
 // after) is allowed — only truncations and paraphrases are rejected.
 // Run-12 §D; run-13 §4 clarified position semantics.
+//
+// Run-31 review (HIGH) — multi-file kinds (codebase-content / env-content
+// / refinement) compose to disk as index.md + N part files; the legacy
+// single-file composers used here return an empty Body for those kinds.
+// `strings.Contains(prompt, "")` is always-true in Go, so the previous
+// implementation silently passed for ANY dispatched prompt on exactly
+// the kinds with the highest paraphrase risk. Refuse multi-file kinds
+// with a structured error pointing at the new contract until the
+// multi-file verify path lands (assert prompt names the index path;
+// assert index file lists each part by absolute path; assert each part
+// exists and is non-empty). Pinned by TestVerifyDispatch_MultiFileKindRefused.
 func verifyDispatch(sess *Session, in RecipeInput, r RecipeResult) RecipeResult {
 	if in.BriefKind == "" {
 		r.Error = "verify-subagent-dispatch: briefKind required"
@@ -1031,6 +1064,20 @@ func verifyDispatch(sess *Session, in RecipeInput, r RecipeResult) RecipeResult 
 	}
 	if in.DispatchedPrompt == "" {
 		r.Error = "verify-subagent-dispatch: dispatchedPrompt required"
+		return r
+	}
+	if isMultiFileBriefKind(BriefKind(in.BriefKind)) {
+		r.Error = fmt.Sprintf(
+			"verify-subagent-dispatch: kind %q is multi-file (index.md + N part files); "+
+				"the single-file Contains-the-body check is a no-op for this kind because the "+
+				"composer returns an empty Body. The multi-file verify path is not yet wired — "+
+				"the agent should assert (a) the dispatched prompt contains the absolute index "+
+				"path, (b) the index file exists and lists each part by absolute path, and "+
+				"(c) each part exists and is non-empty. TODO: add multi-file verify path; "+
+				"refusing here is safer than silent-passing for exactly the kinds with the "+
+				"highest paraphrase risk (run-31 review HIGH).",
+			in.BriefKind,
+		)
 		return r
 	}
 	expected, err := buildBriefForRequest(sess, in)

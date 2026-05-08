@@ -1,6 +1,7 @@
 package recipe
 
 import (
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -410,6 +411,72 @@ func TestRefinementAtoms_TeachesBareCodebaseFragmentId(t *testing.T) {
 		if !strings.Contains(brief.Body, want) {
 			t.Errorf("refinement brief missing bare-codebase-name worked-example token %q", want)
 		}
+	}
+}
+
+// TestBuildRefinementBriefMultiFile_StitchedPointerBlock_PopulatedFromOutputRoot
+// pins the multi-file refinement composer's runDir wiring: when the
+// dispatcher passes outputRoot, the stitched-output pointer block in
+// the references part must list every per-tier README + per-codebase
+// README rooted at outputRoot. Regression guard for the run-31 wiring
+// where the multi-file dispatch path passed empty runDir despite
+// having outputRoot in scope, blanking the pointer block and leaving
+// the refinement sub-agent without Read-targets.
+func TestBuildRefinementBriefMultiFile_StitchedPointerBlock_PopulatedFromOutputRoot(t *testing.T) {
+	t.Parallel()
+	plan := realShowcasePlan()
+	outRoot := t.TempDir()
+
+	brief, err := buildRefinementBriefMultiFile(plan, nil, outRoot, nil, outRoot)
+	if err != nil {
+		t.Fatalf("buildRefinementBriefMultiFile: %v", err)
+	}
+	if brief.IndexPath == "" {
+		t.Fatalf("expected IndexPath populated; got empty")
+	}
+
+	// Concatenate every persisted part body so we can assert against
+	// the references-part regardless of which part-N-references.md
+	// number Persist allocates.
+	var combined strings.Builder
+	for _, p := range brief.PartPaths {
+		body, rErr := os.ReadFile(p)
+		if rErr != nil {
+			t.Fatalf("read part %s: %v", p, rErr)
+		}
+		combined.Write(body)
+		combined.WriteByte('\n')
+	}
+	body := combined.String()
+
+	// Per-codebase Read-targets — every codebase in realShowcasePlan
+	// must appear as a `<outputRoot>/<host>/README.md` line.
+	for _, cb := range plan.Codebases {
+		want := outRoot + "/" + cb.Hostname + "/README.md"
+		if !strings.Contains(body, want) {
+			t.Errorf("refinement brief missing per-codebase pointer %q", want)
+		}
+	}
+
+	// Per-tier Read-targets — every tier folder gets a
+	// `<outputRoot>/environments/<folder>/README.md` line.
+	for _, tier := range Tiers() {
+		want := outRoot + "/environments/" + tier.Folder + "/README.md"
+		if !strings.Contains(body, want) {
+			t.Errorf("refinement brief missing per-tier pointer %q", want)
+		}
+	}
+
+	// Root README pointer must reference outputRoot.
+	rootWant := outRoot + "/README.md"
+	if !strings.Contains(body, rootWant) {
+		t.Errorf("refinement brief missing root README pointer %q", rootWant)
+	}
+
+	// Pointer block heading must be present (defends against future
+	// composer rearrangements that drop the section entirely).
+	if !strings.Contains(body, "## Stitched output to refine") {
+		t.Errorf("refinement brief missing '## Stitched output to refine' heading")
 	}
 }
 

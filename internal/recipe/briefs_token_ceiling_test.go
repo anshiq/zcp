@@ -6,13 +6,12 @@ import (
 )
 
 // Run-30 Fix #1 PARTIAL — brief writer chunking under the Read-tool
-// 25K-token ceiling. v9.71.0 bumped CodebaseContentBriefCap 72→76 KB in
-// BYTES; with markdown-dense briefs the empirical worst case is ~2.51
-// chars/token (cc-api 35427 tokens / 88844 bytes; cc-worker 35014 /
-// 88004; refinement 32297 / 83447). At that rate, 76 KB encodes to
-// ~30K real tokens — over the Read-tool 25K ceiling. Run-30 sub-agents
-// recovered with offset+limit chunking; prompt-cache invalidates and
-// latency adds.
+// 25K-token ceiling. With markdown-dense briefs the empirical worst
+// case is ~2.51 chars/token (cc-api 35427 tokens / 88844 bytes;
+// cc-worker 35014 / 88004; refinement 32297 / 83447). At that rate, a
+// 76 KB brief encodes to ~30K real tokens — over the Read-tool 25K
+// ceiling. Run-30 sub-agents recovered with offset+limit chunking;
+// prompt-cache invalidates and latency adds.
 //
 // Fix 2 (run-30 follow-up): the estimator was changed from `len/3` to
 // `len/2` after empirical 2.51 cpt worst-case proved 3.0 cpt was
@@ -22,13 +21,24 @@ import (
 // tokens — rounded up to 33000 for ~1.4 KB byte-headroom against
 // inputs with slightly different compression.
 //
+// Run-31 Fix #1 closure (multi-file architecture): multi-file kinds
+// (codebase-content / env-content / refinement) have moved off the
+// single-file token-ceiling guard — production no longer composes a
+// single Body for those kinds; the dispatch path emits index.md + N
+// part files and each part's per-part invariant is pinned by
+// `TestBuildCodebaseContentBrief_MultiFile_RealSlug_PartsUnderCap` +
+// siblings in `briefs_multi_file_test.go`. This test now covers only
+// the kinds that REMAIN single-file: scaffold, feature, finalize,
+// claudemd-author.
+//
 // The test uses a real-slug plan (`nestjs-showcase`) so the embedded-
 // parent fallback fires (parentSlugFor returns `nestjs-minimal`),
 // matching the production load shape that pushed run-30 over.
 
 // realShowcasePlan returns a plan whose slug triggers the embedded
 // parent baseline (parentSlugFor("nestjs-showcase") == "nestjs-minimal").
-// Mirrors syntheticShowcasePlan otherwise.
+// Mirrors syntheticShowcasePlan otherwise. Shared with
+// `briefs_multi_file_test.go`.
 func realShowcasePlan() *Plan {
 	return &Plan{
 		Slug:      "nestjs-showcase",
@@ -59,40 +69,13 @@ func TestBrief_StaysUnderReadToolTokenCeiling(t *testing.T) {
 	t.Parallel()
 	plan := realShowcasePlan()
 
+	// Multi-file kinds (codebase-content / env-content / refinement) are
+	// pinned per-part in `briefs_multi_file_test.go`; only single-file
+	// kinds remain in scope for this guard.
 	cases := []struct {
 		name  string
 		build func() (Brief, error)
 	}{
-		{
-			name: "codebase-content/api",
-			build: func() (Brief, error) {
-				return BuildCodebaseContentBrief(plan, plan.Codebases[0], nil, nil)
-			},
-		},
-		{
-			name: "codebase-content/app",
-			build: func() (Brief, error) {
-				return BuildCodebaseContentBrief(plan, plan.Codebases[1], nil, nil)
-			},
-		},
-		{
-			name: "codebase-content/worker",
-			build: func() (Brief, error) {
-				return BuildCodebaseContentBrief(plan, plan.Codebases[2], nil, nil)
-			},
-		},
-		{
-			name: "env-content",
-			build: func() (Brief, error) {
-				return BuildEnvContentBrief(plan, nil, nil)
-			},
-		},
-		{
-			name: "refinement",
-			build: func() (Brief, error) {
-				return BuildRefinementBrief(plan, nil, "/tmp/run", nil)
-			},
-		},
 		{
 			name: "scaffold/app",
 			build: func() (Brief, error) {

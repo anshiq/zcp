@@ -41,6 +41,102 @@ func BuildSubagentPromptForReplay(plan *Plan, parent *ParentRecipe, in RecipeInp
 	return buildSubagentPromptForPhase(plan, parent, in, currentPhase, mountRoot, facts)
 }
 
+// isMultiFileBriefKind reports whether the kind composes via the
+// multi-file path (index.md + part-*.md under
+// `<outputRoot>/.briefs/<kind>-<codebase>-<unixnano>/`). Run-31 Fix #1
+// closure — codebase-content / env-content / refinement carry the
+// volume that historically blew the Read-tool token cap; the others
+// stay on the single-file path.
+func isMultiFileBriefKind(kind BriefKind) bool {
+	//exhaustive:ignore — single-file kinds (scaffold/feature/finalize/claudemd-author) fall through to the false return.
+	switch kind {
+	case BriefCodebaseContent, BriefEnvContent, BriefRefinement:
+		return true
+	}
+	return false
+}
+
+// composePromptHeaderAndFooter renders the recipe-level context
+// (header) and closing notes (footer) the dispatch path normally
+// concatenates around the engine brief body. For multi-file briefs the
+// header is rendered into index.md above the "Read order" section and
+// the footer is rendered below it; the legacy single-file path
+// concatenates them around brief.Body.
+func composePromptHeaderAndFooter(plan *Plan, kind BriefKind, cb Codebase, codebase string, currentPhase Phase) (header, footer string) {
+	var hb strings.Builder
+	writePromptHeader(&hb, plan, kind, cb)
+	writePromptRecipeContext(&hb, plan, kind, cb)
+	hb.WriteString("\n---\n\n")
+	hb.WriteString("# Engine brief — ")
+	hb.WriteString(string(kind))
+	hb.WriteString("\n\n")
+
+	var fb strings.Builder
+	fb.WriteString("\n---\n\n")
+	writePromptCloseFooter(&fb, kind, codebase, currentPhase)
+	return hb.String(), fb.String()
+}
+
+// buildSubagentDispatchForPhase returns either an inline `prompt` (for
+// single-file kinds; legacy path) or an `indexPath` (for multi-file
+// kinds; new run-31 path). Exactly one is non-empty. outputRoot is
+// required for multi-file kinds; an empty outputRoot returns an error
+// for those.
+func buildSubagentDispatchForPhase(plan *Plan, parent *ParentRecipe, in RecipeInput, currentPhase Phase, mountRoot, outputRoot string, facts []FactRecord) (prompt, indexPath string, err error) {
+	if plan == nil {
+		return "", "", errors.New("buildSubagentDispatch: nil plan")
+	}
+	kind := BriefKind(in.BriefKind)
+	if !isMultiFileBriefKind(kind) {
+		p, pErr := buildSubagentPromptForPhase(plan, parent, in, currentPhase, mountRoot, facts)
+		return p, "", pErr
+	}
+	// Multi-file path.
+	if outputRoot == "" {
+		return "", "", errors.New("multi-file brief requires outputRoot")
+	}
+	var cb Codebase
+	if requiresCodebase(kind) {
+		if in.Codebase == "" {
+			return "", "", fmt.Errorf("buildSubagentDispatch: %s kind requires codebase", kind)
+		}
+		found := false
+		for _, c := range plan.Codebases {
+			if c.Hostname == in.Codebase {
+				cb, found = c, true
+				break
+			}
+		}
+		if !found {
+			return "", "", fmt.Errorf("codebase %q not in plan", in.Codebase)
+		}
+	}
+	header, footer := composePromptHeaderAndFooter(plan, kind, cb, in.Codebase, currentPhase)
+	var brief Brief
+	//exhaustive:ignore — isMultiFileBriefKind already filtered single-file kinds; default arm catches mismatches.
+	switch kind {
+	case BriefCodebaseContent:
+		brief, err = buildCodebaseContentBriefMultiFileWithFraming(plan, cb, parent, facts, outputRoot, header, footer)
+	case BriefEnvContent:
+		brief, err = buildEnvContentBriefMultiFileWithFraming(plan, parent, facts, outputRoot, header, footer)
+	case BriefRefinement:
+		// runDir == outputRoot — both name the run-output root the
+		// stitched README/import.yaml/zerops.yaml/CLAUDE.md files land
+		// under, which is what renderRefinementStitchedPointerBlock
+		// emits as Read-targets for the refinement sub-agent.
+		// Production parity: workflow.go::Session.BuildBrief threads
+		// `Session.OutputRoot` as runDir into BuildRefinementBrief on
+		// the single-file path; the multi-file path now mirrors that.
+		brief, err = buildRefinementBriefMultiFileWithFraming(plan, parent, outputRoot, facts, outputRoot, header, footer)
+	default:
+		return "", "", fmt.Errorf("multi-file dispatch: unknown kind %q", kind)
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return "", brief.IndexPath, nil
+}
+
 // buildSubagentPromptForPhase is buildSubagentPrompt with the session's
 // current phase explicitly threaded so the BriefFeature closing footer
 // can teach a defensive re-dispatch sub-agent "the session is already at
@@ -154,10 +250,19 @@ func buildBriefForKind(plan *Plan, parent *ParentRecipe, kind BriefKind, cb Code
 	case BriefEnvContent:
 		return BuildEnvContentBrief(plan, parent, facts)
 	case BriefRefinement:
-		// Run-17 §9 — refinement composer wired without runDir; the
-		// dispatcher path passes outputRoot via Session.OutputRoot at
-		// the handler boundary. Static composition (no Session)
-		// passes empty runDir; the brief still carries atoms + rubric.
+		// Run-17 §9 — runDir is what `renderRefinementStitchedPointerBlock`
+		// uses to render the per-tier / per-codebase Read-targets the
+		// sub-agent inspects (`<runDir>/README.md`,
+		// `<runDir>/environments/<tier-folder>/README.md`, …). Production
+		// dispatch threads `Session.OutputRoot` here via
+		// `workflow.go::Session.BuildBrief` (single-file path) and via
+		// `buildSubagentDispatchForPhase` (multi-file path). This static
+		// composition entry has no outputRoot in scope — `buildBriefForKind`
+		// is called from the legacy single-file `buildSubagentPromptForPhase`
+		// path used by unit tests and by `cmd/zcp-recipe-sim` (which calls
+		// `BuildRefinementBrief` directly with its own absDir). Empty
+		// runDir here suppresses the stitched-output pointer block;
+		// the brief still carries atoms + rubric.
 		return BuildRefinementBrief(plan, parent, "", facts)
 	default:
 		return Brief{}, fmt.Errorf("unknown briefKind %q", kind)

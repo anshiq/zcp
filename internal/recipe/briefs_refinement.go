@@ -171,13 +171,12 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		}
 	}
 	if len(filteredFacts) > 0 {
-		factsBuf, kept, evicted := composeRefinementFactsBlock(filteredFacts, RefinementBriefCap-b.Len())
+		factsBuf, evicted := composeRefinementFactsBlock(filteredFacts, RefinementBriefCap-b.Len())
 		b.WriteString(factsBuf)
 		parts = append(parts, "filtered-facts")
 		if evicted > 0 {
 			parts = append(parts, "facts_evicted_for_cap")
 		}
-		_ = kept
 	}
 
 	return Brief{
@@ -201,13 +200,13 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 // late in the run (e.g. "Pattern A wires NATS via four vars, Pattern B
 // crashes" added at feature pass after scaffold's earlier
 // connectivity attempts).
-func composeRefinementFactsBlock(facts []FactRecord, budget int) (string, int, int) {
+func composeRefinementFactsBlock(facts []FactRecord, budget int) (block string, evicted int) {
 	if len(facts) == 0 {
-		return "", 0, 0
+		return "", 0
 	}
 	if budget <= 0 {
 		// No headroom even for the heading — drop the entire block.
-		return "", 0, len(facts)
+		return "", len(facts)
 	}
 
 	// Render each fact into its own line so eviction is per-fact.
@@ -238,7 +237,7 @@ func composeRefinementFactsBlock(facts []FactRecord, budget int) (string, int, i
 			b.WriteString(line)
 		}
 		b.WriteString(trailer)
-		return b.String(), len(rendered), 0
+		return b.String(), 0
 	}
 
 	// Need eviction. Walk most-recent-first and stop adding when the
@@ -253,7 +252,7 @@ func composeRefinementFactsBlock(facts []FactRecord, budget int) (string, int, i
 	if available <= 0 {
 		// Even rubric overhead doesn't fit; return empty so the brief
 		// composer can still report the eviction marker via parts.
-		return "", 0, len(rendered)
+		return "", len(rendered)
 	}
 
 	keptLines := make([]string, 0, len(rendered))
@@ -268,7 +267,7 @@ func composeRefinementFactsBlock(facts []FactRecord, budget int) (string, int, i
 		keptLines = append([]string{line}, keptLines...)
 		used += len(line)
 	}
-	evicted := len(rendered) - len(keptLines)
+	evicted = len(rendered) - len(keptLines)
 
 	var b strings.Builder
 	b.WriteString(heading)
@@ -283,5 +282,5 @@ func composeRefinementFactsBlock(facts []FactRecord, budget int) (string, int, i
 	} else {
 		b.WriteString(trailer)
 	}
-	return b.String(), len(keptLines), evicted
+	return b.String(), evicted
 }

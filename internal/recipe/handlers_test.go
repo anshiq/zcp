@@ -1411,6 +1411,65 @@ func TestVerifyDispatch_ParaphrasedBriefRejected(t *testing.T) {
 	}
 }
 
+// TestVerifyDispatch_MultiFileKindRefused — run-31 review HIGH. The
+// legacy verify path delegates to buildBriefForRequest which calls
+// the SINGLE-FILE BuildCodebaseContentBrief / BuildEnvContentBrief /
+// BuildRefinementBrief composers; for multi-file kinds the production
+// dispatcher emits index.md + N part files with EMPTY Body. The
+// previous verify check ran `strings.Contains(prompt, expected.Body)`,
+// which is `Contains(prompt, "")` for multi-file kinds — always true.
+// Verify silently passed for ANY dispatched prompt on the three kinds
+// that carry the highest paraphrase risk.
+//
+// Refuse multi-file kinds with a structured error pointing at the new
+// contract until the full multi-file verify path lands (assert that
+// the dispatched prompt names the index path; assert index file exists
+// + lists each part by absolute path; assert each part exists and is
+// non-empty).
+func TestVerifyDispatch_MultiFileKindRefused(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	store := NewStore(dir)
+	if _, err := store.OpenOrCreate("synth-showcase", filepath.Join(dir, "run")); err != nil {
+		t.Fatalf("OpenOrCreate: %v", err)
+	}
+	sess, _ := store.Get("synth-showcase")
+	sess.Plan = syntheticShowcasePlan()
+
+	cases := []struct {
+		name      string
+		briefKind string
+		codebase  string
+	}{
+		{name: "codebase-content", briefKind: "codebase-content", codebase: "api"},
+		{name: "env-content", briefKind: "env-content"},
+		{name: "refinement", briefKind: "refinement"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Even a "perfect" dispatch (any non-empty string) must NOT
+			// silently pass for multi-file kinds — the legacy bug was
+			// `Contains(prompt, "")` always-true. A refusal asserts the
+			// gate is closed until the multi-file verify path lands.
+			res := dispatch(t.Context(), store, RecipeInput{
+				Action: "verify-subagent-dispatch", Slug: "synth-showcase",
+				BriefKind: tc.briefKind, Codebase: tc.codebase,
+				DispatchedPrompt: "any wrapper at all\n",
+			})
+			if res.OK {
+				t.Fatalf("multi-file kind %q silently passed verify (legacy Contains-empty-string bug)", tc.briefKind)
+			}
+			// Error must point at the new contract — index path + parts —
+			// not just say "mismatch".
+			if !strings.Contains(res.Error, "multi-file") {
+				t.Errorf("error should mention multi-file shape; got %q", res.Error)
+			}
+		})
+	}
+}
+
 // TestDispatch_CompletePhaseScaffold_AutoStitchesCodebases — run-13
 // §3. complete-phase scaffold materializes per-codebase fragments to
 // <SourceRoot>/{README.md,CLAUDE.md} so codebase surface validators

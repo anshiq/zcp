@@ -110,13 +110,12 @@ func TestCodebaseContentBrief_EmbedsParentMD_WhenParentAbsent_ShowcaseSlug(t *te
 	if !strings.Contains(brief.Body, "See parent recipe `nestjs-minimal` for <topic>.") {
 		t.Errorf("codebase-content brief embedded-parent framing missing concrete cross-reference shape string")
 	}
-	// Cap regression — the embedded fallback path must stay under the
-	// 56 KB codebase-content cap on the highest-load variant (worker).
-	// 1000-byte excerpt was chosen specifically to satisfy this on
-	// showcase + worker plans; tighter than scaffold's 4000-byte excerpt.
-	if brief.Bytes > CodebaseContentBriefCap {
-		t.Errorf("codebase-content brief over cap with embedded fallback: %d bytes (cap %d)", brief.Bytes, CodebaseContentBriefCap)
-	}
+	// Run-31 Fix #1 closure — single-file CodebaseContentBriefCap is
+	// gone. The embedded-parent excerpt cap (1000 bytes for showcase,
+	// 4000 for scaffold) is now sized to fit comfortably inside a
+	// single multi-file part; the per-part invariant is pinned by
+	// `TestBuildCodebaseContentBrief_MultiFile_RealSlug_PartsUnderCap`
+	// in briefs_multi_file_test.go.
 	// Run-22 fixup BLOCKER 1 — the closing ``` fence must be preceded
 	// by `\n`. Pre-fix the helper called HasSuffix on the FULL parent
 	// body (which usually ends in `\n`) instead of the excerpt
@@ -196,9 +195,9 @@ func TestEnvContentBrief_EmbedsParentMD_WhenParentAbsent_ShowcaseSlug(t *testing
 	if !strings.Contains(brief.Body, "See parent recipe `nestjs-minimal` tier <N> for <topic>.") {
 		t.Errorf("env-content brief embedded-parent framing missing concrete tier cross-reference shape string")
 	}
-	if brief.Bytes > EnvContentBriefCap {
-		t.Errorf("env-content brief over cap with embedded fallback: %d bytes (cap %d)", brief.Bytes, EnvContentBriefCap)
-	}
+	// Run-31 Fix #1 closure — single-file EnvContentBriefCap is gone.
+	// Per-part invariants pinned by
+	// `TestBuildEnvContentBrief_MultiFile_RealSlug_PartsUnderCap`.
 	assertEmbeddedParentFenceWellFormed(t, brief.Body)
 }
 

@@ -241,15 +241,19 @@ func TestBuildCodebaseContentBrief_NoParent_NoParentBlock(t *testing.T) {
 	}
 }
 
-func TestBuildCodebaseContentBrief_SizeUnderCap(t *testing.T) {
+// TestBuildCodebaseContentBrief_BuildsCleanly is the post-run-31-Fix-#1
+// successor to the legacy single-file CodebaseContentBriefCap regression
+// guard. The single-file cap is gone (multi-file architecture replaces
+// it); per-part invariants are pinned by
+// `TestBuildCodebaseContentBrief_MultiFile_RealSlug_PartsUnderCap` in
+// `briefs_multi_file_test.go`. This test keeps a smoke check that the
+// legacy single-file composer still returns without error for callers
+// that haven't migrated (sim-replay path, unit fixtures).
+func TestBuildCodebaseContentBrief_BuildsCleanly(t *testing.T) {
 	t.Parallel()
 	plan := contentPhaseTestPlan()
-	brief, err := BuildCodebaseContentBrief(plan, plan.Codebases[0], nil, nil)
-	if err != nil {
+	if _, err := BuildCodebaseContentBrief(plan, plan.Codebases[0], nil, nil); err != nil {
 		t.Fatalf("BuildCodebaseContentBrief: %v", err)
-	}
-	if brief.Bytes > CodebaseContentBriefCap {
-		t.Errorf("codebase-content brief over cap: %d bytes (cap %d) — accidental verbatim embed?", brief.Bytes, CodebaseContentBriefCap)
 	}
 }
 
@@ -296,15 +300,14 @@ func TestBuildEnvContentBrief_CarriesParentRecipePointer_WhenParentNonNil(t *tes
 	}
 }
 
-func TestBuildEnvContentBrief_SizeUnderCap(t *testing.T) {
+// TestBuildEnvContentBrief_BuildsCleanly — see
+// TestBuildCodebaseContentBrief_BuildsCleanly. Per-part invariants are
+// pinned by TestBuildEnvContentBrief_MultiFile_RealSlug_PartsUnderCap.
+func TestBuildEnvContentBrief_BuildsCleanly(t *testing.T) {
 	t.Parallel()
 	plan := contentPhaseTestPlan()
-	brief, err := BuildEnvContentBrief(plan, nil, nil)
-	if err != nil {
+	if _, err := BuildEnvContentBrief(plan, nil, nil); err != nil {
 		t.Fatalf("BuildEnvContentBrief: %v", err)
-	}
-	if brief.Bytes > EnvContentBriefCap {
-		t.Errorf("env-content brief over cap: %d bytes (cap %d)", brief.Bytes, EnvContentBriefCap)
 	}
 }
 

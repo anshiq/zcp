@@ -4,6 +4,12 @@ Running log of changes on top of [plan.md](plan.md). Each entry captures what ch
 
 ---
 
+## 2026-05-07 — Run-31 Fix #1 closure (multi-file architecture)
+
+Closes the cap-treadmill across runs 22-31 (44→48→52→56→60→64→72→76→66 KB) by changing the brief transport shape from "one big file the agent reads in one shot" to "an `index.md` plus N part files the agent reads in known order." For codebase-content / env-content / refinement, the dispatch handler now persists the brief as `<outputRoot>/.briefs/<kind>-<scope>-<unixnano>/index.md` plus `part-<N>-<slug>.md` files; each part is bounded by `PerPartTokenCeiling = 22000` estimated tokens (`PartFileCap = 44 KB`), well under the Read-tool 25K real-token cap. The composed brief as a whole is unbounded — splits happen at semantic boundaries, with a runtime cap as the safety net. Single-file caps `CodebaseContentBriefCap` (66 KB) and `EnvContentBriefCap` (56 KB) are gone; phase-entry atoms (`codebase-content.md` / `env-content.md` / `refinement.md`) teach the read-the-index-then-the-parts dispatch contract; `briefs_multi_file_test.go` pins the per-part invariant against a 142-fact run-31-shaped corpus. Plan: [`plans/multi-file-briefs.md`](../../plans/multi-file-briefs.md).
+
+---
+
 ## 2026-04-27 — run-15 readiness: content-quality plateau + run-14 stealth-regression closure
 
 ### Context

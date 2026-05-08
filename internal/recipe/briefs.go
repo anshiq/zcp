@@ -225,10 +225,25 @@ const (
 // The `TestBrief_StaysUnderReadToolTokenCeiling` test runs against a
 // real-slug plan so the embedded-parent fallback exercises the
 // production load shape that bloated run-30 briefs past the ceiling.
+//
+// Run-31 Fix #1 closure (multi-file architecture). The single-file
+// caps `CodebaseContentBriefCap` (66 KB) and `EnvContentBriefCap`
+// (56 KB) are gone; under realistic fact corpora (run-31 nestjs-
+// showcase: 142 facts, ~93 in cc-api scope), real briefs land at
+// 78-94 KB / 36-39K real tokens — the synthetic-nil-facts unit
+// fixture had been hiding the production load shape. The replacement
+// is `PerPartTokenCeiling` (22000 estimated tokens, ≈44 KB bytes,
+// `PartFileCap`), enforced by the part-writer abstraction in
+// `briefs_parts.go` and consumed by the multi-file composers in
+// `briefs_content_phase_multifile.go` (codebase-content, env-content,
+// refinement). Single-file caps no longer apply for those three kinds;
+// the brief as a whole is unbounded, each part fits under the Read-
+// tool 25K-token cap by construction. See `plans/multi-file-briefs.md`
+// for the architectural rationale and
+// `briefs_multi_file_test.go::TestBuildCodebaseContentBrief_MultiFile_RealSlug_PartsUnderCap`
+// for the per-part invariant pin.
 const (
-	CodebaseContentBriefCap = 66 * 1024
-	EnvContentBriefCap      = 56 * 1024
-	ClaudeMDBriefCap        = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
+	ClaudeMDBriefCap = 8 * 1024 // §Risk 7 — Zerops-free brief stays small by construction
 )
 
 // charsPerTokenEstimate is a conservative chars-per-token proxy used by
@@ -310,13 +325,62 @@ const RefinementBriefCap = 80 * 1024
 const FinalizeBriefCap = 14 * 1024
 
 // Brief is a composed sub-agent brief. Body is the final text handed to
-// the Agent tool; Parts lists the section identifiers in order so the
-// harness can trace what came from where.
+// the Agent tool when the brief composes as a single file; Parts lists
+// the section identifiers in order so the harness can trace what came
+// from where.
+//
+// Run-31 Fix #1 closure — multi-file briefs. For codebase-content,
+// env-content, and refinement (the kinds that historically blew the
+// Read-tool token cap), the composer persists an index.md plus N part
+// files to disk during composition. IndexPath holds the absolute path
+// to the index; PartPaths holds the absolute paths to part files in
+// read order. When IndexPath is set, Body is empty and the dispatch
+// envelope returns IndexPath as briefPath. The agent reads the index,
+// then reads each part in the order the index lists. Each part is
+// bounded by PerPartTokenCeiling (22000 estimated tokens, ~44 KB);
+// the composed brief as a whole is unbounded.
 type Brief struct {
 	Kind  BriefKind `json:"kind"`
 	Body  string    `json:"body"`
 	Bytes int       `json:"bytes"`
 	Parts []string  `json:"parts,omitempty"`
+	// IndexPath — absolute path to the index.md file when the brief
+	// composes multi-file (codebase-content, env-content, refinement).
+	// Empty for single-file kinds (scaffold, feature, finalize,
+	// claudemd-author).
+	IndexPath string `json:"indexPath,omitempty"`
+	// PartPaths — absolute paths to the part files in read order.
+	// Populated alongside IndexPath; empty for single-file kinds.
+	PartPaths []string `json:"partPaths,omitempty"`
+	// Metrics describes the multi-file emission shape (parts, total
+	// bytes, max-part bytes, max-part estimated tokens). Populated by
+	// the multi-file Persist path; zero for single-file kinds. Surface
+	// on the dispatch envelope so future drift between composer-
+	// estimated tokens and Read-tool real tokens stays visible.
+	// Run-31 multi-file review Fix #4.
+	Metrics BriefMetrics `json:"metrics,omitzero"`
+}
+
+// Validate reports whether the Brief is in a coherent transport shape.
+// Single-file briefs carry Body and an empty IndexPath; multi-file
+// briefs carry IndexPath + at least one PartPath and an empty Body.
+// A Brief with both Body and IndexPath populated is ambiguous (caller
+// can't pick a transport channel) and refused; an empty Brief (no Body
+// and no IndexPath) is also refused. Run-31 multi-file review Fix #9 —
+// without this guard a future composer / test could produce a Brief
+// the dispatch handler silently routes wrong.
+func (b Brief) Validate() error {
+	hasBody := b.Body != ""
+	hasIndex := b.IndexPath != ""
+	switch {
+	case hasBody && hasIndex:
+		return errors.New("brief: ambiguous shape — both Body and IndexPath populated; pick one transport")
+	case !hasBody && !hasIndex:
+		return errors.New("brief: empty — neither Body nor IndexPath populated")
+	case hasIndex && len(b.PartPaths) == 0:
+		return errors.New("brief: multi-file shape requires at least one PartPath alongside IndexPath")
+	}
+	return nil
 }
 
 //go:embed all:content

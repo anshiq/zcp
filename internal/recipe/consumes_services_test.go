@@ -365,11 +365,13 @@ func TestBuildCodebaseContentBrief_CrossCodebaseFactsCap(t *testing.T) {
 			t.Errorf("worker brief missing propagated fact: %s", topic)
 		}
 	}
-	// Cap regression — the populated case must stay under the bumped
-	// cap. Headroom is the test's job to pin.
-	if brief.Bytes > CodebaseContentBriefCap {
-		t.Errorf("populated cross-codebase facts blew the cap: %d bytes (cap %d) — bump CodebaseContentBriefCap or trim emit shape", brief.Bytes, CodebaseContentBriefCap)
-	}
+	// Run-31 Fix #1 closure — the legacy single-file
+	// CodebaseContentBriefCap byte-cap is gone (multi-file architecture
+	// replaced it). Per-part invariants are pinned by
+	// `TestBuildCodebaseContentBrief_MultiFile_RealSlug_PartsUnderCap`,
+	// which exercises a 142-fact run-shaped corpus; the propagation
+	// path here is covered by the topic-substring assertions above and
+	// the multi-file per-part token-ceiling test.
 }
 
 // TestCrossCodebaseManagedServiceFacts_NilConsumesServices — Run-26 F-31.

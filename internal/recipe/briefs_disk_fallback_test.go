@@ -227,16 +227,18 @@ func TestRecipeResult_BriefPath_OmitemptyJSON(t *testing.T) {
 	}
 }
 
-// TestPhaseEntryCodebaseContentAtom_TeachesInlineOrPointer — atom
-// contains the dispatch-shape teaching for the two response shapes.
-func TestPhaseEntryCodebaseContentAtom_TeachesInlineOrPointer(t *testing.T) {
+// TestPhaseEntryCodebaseContentAtom_TeachesMultiFilePointer — atom
+// contains the dispatch-shape teaching for the run-31 multi-file
+// pointer shape (always disk; index.md + part-*.md). Replaces the
+// run-29 inline-or-pointer teaching.
+func TestPhaseEntryCodebaseContentAtom_TeachesMultiFilePointer(t *testing.T) {
 	t.Parallel()
 
 	body := loadPhaseEntry(PhaseCodebaseContent)
-	mustContain(t, body, "## Dispatch — inline-or-pointer")
+	mustContain(t, body, "## Dispatch — multi-file pointer")
 	mustContain(t, body, "briefPath")
-	mustContain(t, body, "40 KB")
-	mustContain(t, body, "Read <briefPath>")
+	mustContain(t, body, "index.md")
+	mustContain(t, body, "Read order")
 }
 
 // TestHandleBuildSubagentPrompt_OverThreshold_PromptIsEmptyBriefPathSet —

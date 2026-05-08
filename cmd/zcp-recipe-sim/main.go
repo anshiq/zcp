@@ -19,6 +19,9 @@
 //	zcp-recipe-sim stitch          -dir docs/zcprecipator3/simulations/24
 //	zcp-recipe-sim emit-refinement -dir docs/zcprecipator3/simulations/24
 //	# user dispatches 1 refinement Agent call against briefs/refinement-prompt.md
+//	# (the dispatch pointer reads <dir>/.briefs/refinement-phase/index.md and
+//	# walks every part-*.md listed in its "Read order" section — multi-file
+//	# shape mirrors production refinement dispatch).
 //	zcp-recipe-sim stitch          -dir docs/zcprecipator3/simulations/24
 //	zcp-recipe-sim validate        -dir docs/zcprecipator3/simulations/24
 //
@@ -122,9 +125,14 @@ Subcommands:
                    stitched simulation. Run after the codebase-content
                    + env-content sub-agents have authored fragments and
                    `+"`stitch`"+` has assembled the full corpus.
+                   Multi-file brief shape (mirrors production): index.md
+                   + N part-*.md persisted under .briefs/refinement-
+                   phase/, with briefs/refinement-prompt.md as a thin
+                   dispatch pointer (replay-adapter + index path).
                    Reads:  <dir>/environments/{plan.json,facts.jsonl}
                            <dir>/{README.md, environments/*, *dev/*}
-                   Writes: <dir>/briefs/refinement-prompt.md
+                   Writes: <dir>/briefs/refinement-prompt.md  (pointer)
+                           <dir>/.briefs/refinement-phase/{index.md, part-*.md}
                            <dir>/fragments-new/refinement/  (empty)
                    Flags:  -dir, -mount-root, -parent
 

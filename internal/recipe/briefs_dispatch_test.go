@@ -9,23 +9,58 @@ import (
 )
 
 // dispatchedPromptBody resolves a build-subagent-prompt response into
-// its full body, handling both the inline shape (`res.Prompt`) and the
-// run-29 Fix #1 disk-fallback shape (`res.BriefPath` — file under
-// <outputRoot>/.briefs/). Returns "" if neither is set or the path
-// cannot be read.
+// its full body, handling all three transport shapes:
+//   - Inline (`res.Prompt`) — single-file kind under
+//     `BriefDiskFallbackThreshold`.
+//   - Single-file disk fallback (`res.BriefPath` ends in `.md`) — run-29
+//     Fix #1 shape, single file under `<outputRoot>/.briefs/`.
+//   - Multi-file index (`res.BriefPath` ends in `/index.md`) — run-31
+//     Fix #1 closure shape; index lists part-*.md files in read order
+//     and the resolved body concatenates them so content-presence
+//     tests still see the full brief.
+//
+// Returns "" if none of the shapes is populated or the path cannot be
+// read.
 func dispatchedPromptBody(t *testing.T, res RecipeResult) string {
 	t.Helper()
 	if res.Prompt != "" {
 		return res.Prompt
 	}
-	if res.BriefPath != "" {
-		body, err := os.ReadFile(res.BriefPath)
-		if err != nil {
-			t.Fatalf("read brief at %s: %v", res.BriefPath, err)
-		}
+	if res.BriefPath == "" {
+		return ""
+	}
+	body, err := os.ReadFile(res.BriefPath)
+	if err != nil {
+		t.Fatalf("read brief at %s: %v", res.BriefPath, err)
+	}
+	if !strings.HasSuffix(res.BriefPath, "/index.md") {
 		return string(body)
 	}
-	return ""
+	// Multi-file shape — concatenate index + every part file in the
+	// directory. The dir lists part-*.md siblings the index references;
+	// agents are taught to Read each in the index's "Read order"
+	// section. For test purposes we concatenate so content-presence
+	// asserts work the same way they did in the single-file shape.
+	dir := filepath.Dir(res.BriefPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir %s: %v", dir, err)
+	}
+	var b strings.Builder
+	b.Write(body)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "part-") || !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		partBody, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("read part %s: %v", name, err)
+		}
+		b.Write(partBody)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // TestScaffoldBrief_DispatchedToProductionAgent_CarriesReachableSlugList

@@ -51,25 +51,31 @@ Two correct dispatch shapes. Pick by main-agent context budget:
   briefKind=codebase-content codebase=<host>` invocation so it fetches
   the prompt itself.
 
-## Dispatch — inline-or-pointer
+## Dispatch — multi-file pointer
 
-`build-subagent-prompt` returns ONE OF two response shapes per call:
+`build-subagent-prompt` for `briefKind=codebase-content` ALWAYS returns
+a multi-file pointer:
 
-- **Inline** (body ≤ 40 KB) — `response.prompt` is the full composed
-  brief; dispatch with `prompt=<response.prompt>` byte-identical.
-- **Pointer** (body > 40 KB) — `response.prompt` is empty;
-  `response.briefPath` is the absolute path to the engine-persisted
-  brief on disk under `<outputRoot>/.briefs/`. `response.briefSize`
-  carries the byte count for sanity-check. Dispatch with a thin
-  wrapper telling the sub-agent to `Read <briefPath>` first thing,
-  then proceed.
+- `response.prompt` is empty.
+- `response.briefPath` is the absolute path to `index.md` under
+  `<outputRoot>/.briefs/codebase-content-<host>-<unixnano>/`.
+- `response.briefSize` carries the index file's byte count for
+  sanity-check.
 
-Branch on `briefPath != ""`. The two shapes are mutually exclusive —
-the engine never populates both. Below the threshold the inline path
-keeps run-13 §B2's byte-identical dispatch; above, disk-fallback
-closes the cap-treadmill (run-29 Fix #1) by making disk-write the
-designed primary path for large briefs rather than the error-recovery
-fallback.
+The index lists N part files (`part-1-<slug>.md`, `part-2-<slug>.md`,
+...) in a "Read order" section. The sub-agent dispatch wrapper MUST
+instruct: "Read `<briefPath>` first; then Read each part file listed
+in its 'Read order' section in the order shown before authoring any
+fragment."
+
+Why multi-file? The composed brief carries phase-entry, synthesis
+workflow, citation guides, platform principles, cross-service
+teaching, yaml-comment style rules, codebase metadata, recorded
+facts, parent-recipe baseline, and sibling sub-agent notes — at run-31
+production load shape this totals 78-94 KB / 36-39K real tokens, well
+over the Read-tool 25K-token single-shot cap. Splitting at semantic
+boundaries lets each part fit under the cap without dropping any
+teaching. Run-31 Fix #1 closure.
 
 Hand-typed paraphrase wrappers — out. Re-stating the brief in your
 own words compounds math errors and path drift (run-13 §B2) and at
