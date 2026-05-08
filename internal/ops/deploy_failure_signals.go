@@ -51,6 +51,22 @@ func buildSignalLibrary() []failureSignal {
 			build:      buildCommandNotFound,
 		},
 		{
+			// Narrowest npm signal — must precede npm-package-missing
+			// because both can match the same log block (the missing-
+			// lockfile error often arrives alongside enoent on
+			// node_modules paths). Surfaced by flow-eval-local
+			// brownfield-existing-node-app suite 20260507-133912 where
+			// a brownfield repo with `npm ci` in buildCommands but no
+			// committed lockfile fell to the build baseline ("no
+			// recognized log pattern matched") and the agent spent a
+			// turn on zerops_events to find the real cause.
+			id:         "build:npm-ci-missing-lockfile",
+			phases:     []DeployFailurePhase{PhaseBuild},
+			logRegex:   regexp.MustCompile(`(?i)(?:can only install with an existing package-lock|EUSAGE.*?npm ci|requires.*package-lock\.json or npm-shrinkwrap\.json)`),
+			requireLog: true,
+			build:      buildNpmCiMissingLockfile,
+		},
+		{
 			id:         "build:npm-package-missing",
 			phases:     []DeployFailurePhase{PhaseBuild},
 			logRegex:   regexp.MustCompile(`npm (?:ERR! )?(?:404|notarget|enoent)`),
@@ -311,6 +327,15 @@ func buildNpmMissing(_ string) *topology.DeployFailureClassification {
 		LikelyCause:     "npm could not resolve a package (404 / notarget / enoent).",
 		SuggestedAction: "Verify package name + version in package.json. Re-run `npm install` locally to regenerate package-lock.json, then commit.",
 		Signals:         []string{"build:npm-package-missing"},
+	}
+}
+
+func buildNpmCiMissingLockfile(_ string) *topology.DeployFailureClassification {
+	return &topology.DeployFailureClassification{
+		Category:        topology.FailureClassBuild,
+		LikelyCause:     "buildCommands runs `npm ci` but the repo has no package-lock.json (or npm-shrinkwrap.json). `npm ci` is reproducible-install only — it refuses without a committed lockfile.",
+		SuggestedAction: "Either commit a lockfile (run `npm install` locally, commit package-lock.json) or change buildCommands to `npm install` (slower but tolerates a missing lockfile). Brownfield repos imported without a committed lockfile hit this on first deploy.",
+		Signals:         []string{"build:npm-ci-missing-lockfile"},
 	}
 }
 

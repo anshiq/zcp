@@ -52,6 +52,28 @@ func TestClassifyDeployFailure_Build(t *testing.T) {
 			wantInCause:  "npm could not resolve",
 		},
 		{
+			// Brownfield gotcha: repo has no committed package-lock.json
+			// but buildCommands runs `npm ci`. npm refuses with EUSAGE
+			// before any package resolve happens. Surfaced by
+			// flow-eval-local brownfield-existing-node-app suite
+			// 20260507-133912 — the agent fell to the build baseline
+			// and had to read zerops_events to learn the real cause.
+			name: "npm-ci-missing-lockfile",
+			input: FailureInput{
+				Phase:  PhaseBuild,
+				Status: platform.BuildStatusBuildFailed,
+				BuildLogs: []string{
+					"npm error code EUSAGE",
+					"npm error",
+					"npm error The `npm ci` command can only install with an existing package-lock.json or",
+					"npm error npm-shrinkwrap.json with lockfileVersion >= 1.",
+				},
+			},
+			wantCategory: topology.FailureClassBuild,
+			wantSignal:   "build:npm-ci-missing-lockfile",
+			wantInCause:  "no package-lock.json",
+		},
+		{
 			name: "module-not-found",
 			input: FailureInput{
 				Phase:     PhaseBuild,

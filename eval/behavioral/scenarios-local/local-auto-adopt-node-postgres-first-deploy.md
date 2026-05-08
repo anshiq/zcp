@@ -9,7 +9,7 @@ description: |
   guidance — the local-mode-only navigation surface.
 seed: settled
 fixture: fixtures/local-auto-adopt-node-postgres.yaml
-preseed: preseed/local-auto-adopt-node-postgres.sh
+preseedScript: preseed/local-auto-adopt-node-postgres.sh
 tags: [local-mode, auto-adopt, deploy-local, env-bridge, first-deploy, node, postgres]
 area: local-mode
 retrospective:
