@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/zeropsio/zcp/internal/eval"
 )
@@ -131,10 +132,5 @@ func runBehavioralRunLocal(args []string) {
 // hasFlag reports whether name appears as a bare flag in args (no value).
 // Used for boolean toggles that don't need a separate value.
 func hasFlag(args []string, name string) bool {
-	for _, a := range args {
-		if a == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(args, name)
 }

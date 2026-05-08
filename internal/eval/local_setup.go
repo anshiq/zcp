@@ -1,7 +1,9 @@
 package eval
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,7 +70,7 @@ func PrepareLocalRunDirs(p LocalRunPaths) error {
 			return fmt.Errorf("mkdir %s: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(p.Sentinel, []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(p.Sentinel, []byte(""), 0o600); err != nil {
 		return fmt.Errorf("write sentinel %s: %w", p.Sentinel, err)
 	}
 	return nil
@@ -85,20 +87,14 @@ func PrepareLocalRunDirs(p LocalRunPaths) error {
 // token export.
 func AssertLocalRunPrereqs() error {
 	if os.Getenv("ZCP_API_KEY") == "" {
-		return fmt.Errorf(`ZCP_API_KEY env var is required for local-mode flow-eval.
-Set it to your eval-zcp project-scoped token (the one in your .mcp.json
-and matching what 'zcli login' is using). Example:
+		return errors.New(`missing ZCP_API_KEY env var — local-mode flow-eval requires your eval-zcp project-scoped token (the same one in your .mcp.json that 'zcli login' uses). Set it:
   export ZCP_API_KEY=<eval-zcp-token>
-The token authenticates BOTH the parent eval runner (for service
-cleanup + fixture import) AND the spawned MCP server inside the agent's
-claude process (via env inheritance).`)
+The token authenticates BOTH the parent eval runner (for service cleanup + fixture import) AND the spawned MCP server inside the agent's claude process (via env inheritance)`)
 	}
 	if _, err := exec.LookPath("zcp"); err != nil {
-		return fmt.Errorf(`'zcp' not found in PATH — local-mode flow-eval needs the
-binary installed (the spawned claude process resolves command:"zcp" via
-PATH). Install with:
+		return errors.New(`'zcp' not found in PATH — local-mode flow-eval needs the binary installed (the spawned claude process resolves command:"zcp" via PATH). Install with:
   make install
-Then re-run.`)
+then re-run`)
 	}
 	return nil
 }
@@ -137,8 +133,10 @@ func PrepareIsolatedClaudeHome(claudeHome string) error {
 	if err := os.MkdirAll(sandboxClaude, 0o700); err != nil {
 		return fmt.Errorf("mkdir sandbox .claude: %w", err)
 	}
-	realHome, err := os.UserHomeDir()
-	if err != nil {
+	realHome, _ := os.UserHomeDir()
+	if realHome == "" {
+		// No usable HOME — nothing to snapshot. Eval will need
+		// ANTHROPIC_API_KEY in env to auth.
 		return nil
 	}
 	realConfigPath := filepath.Join(realHome, ".claude.json")
@@ -148,10 +146,13 @@ func PrepareIsolatedClaudeHome(claudeHome string) error {
 		return nil
 	}
 	data, err := os.ReadFile(realConfigPath)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		// Operator has no ~/.claude.json (e.g. uses ANTHROPIC_API_KEY
 		// directly). Eval will need that env var; nothing to copy.
 		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read operator claude config: %w", err)
 	}
 	if err := os.WriteFile(sandboxConfigPath, data, 0o600); err != nil {
 		return fmt.Errorf("write sandbox claude config: %w", err)
