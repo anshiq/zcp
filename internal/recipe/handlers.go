@@ -272,8 +272,8 @@ type RecipeResult struct {
 func Register(srv *mcp.Server, store *Store) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "zerops_recipe",
-		Description: "zcprecipator3 recipe engine. Actions: start, enter-phase, complete-phase, build-brief, build-subagent-prompt, verify-subagent-dispatch, record-fact, resolve-chain, emit-yaml, update-plan, stitch-content, status. Call start first — it returns the research-phase guidance and the parent recipe inline. See docs/zcprecipator3/plan.md §6.",
-		Annotations: &mcp.ToolAnnotations{Title: "Run a Zerops recipe (v3)"},
+		Description: "AUTHOR a Zerops recipe (zcprecipator3 engine) — recipe-corpus maintainer tool. To USE an existing recipe, call `zerops_workflow action=\"start\" workflow=\"bootstrap\"` instead — recipe match surfaces as a ranked route option. Actions: start, enter-phase, complete-phase, build-brief, build-subagent-prompt, verify-subagent-dispatch, record-fact, resolve-chain, emit-yaml, update-plan, stitch-content, status. Call start first. See docs/zcprecipator3/plan.md §6.",
+		Annotations: &mcp.ToolAnnotations{Title: "Author a Zerops recipe (v3) — for recipe-corpus maintainers, NOT for users wanting to use a recipe"},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in RecipeInput) (*mcp.CallToolResult, any, error) {
 		res := dispatch(ctx, store, in)
 		if !res.OK {
