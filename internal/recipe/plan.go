@@ -38,6 +38,51 @@ type Plan struct {
 	FeatureKinds []string `json:"featureKinds,omitempty"`
 }
 
+// CanonicalAppsRepoCodebase returns the codebase whose published
+// apps-repo README owns the recipe's central H2 sections —
+// "## Recipe features" (RF1) + "## Production vs. Development" (PD1)
+// + "## Understand Zerops Core Concepts". For multi-codebase recipes
+// this is the api-role codebase (the central app per
+// briefs/refinement/derived_rules.md §RF1); for single-codebase
+// recipes it's the only codebase (monolith / lone runtime).
+//
+// Returns ok=false when no canonical apps-repo can be identified —
+// recipe shapes without an api role and without a single non-worker
+// codebase fall through; the caller (validators) MUST treat this as
+// "no canonical apps-repo, validator no-ops" rather than picking an
+// arbitrary codebase.
+//
+// Run-34 Fix 2 — used by gateRequireRF1PD1OnCanonicalAppsRepo so the
+// brief teaching for RF1+PD1 has engine teeth: brief teaches REQUIRED
+// → engine enforces REQUIRED at codebase-content complete-phase.
+func (p *Plan) CanonicalAppsRepoCodebase() (Codebase, bool) {
+	if p == nil {
+		return Codebase{}, false
+	}
+	// First preference: a codebase with RoleAPI. Multi-codebase
+	// showcase recipes always carry an api codebase as the central app.
+	for _, cb := range p.Codebases {
+		if cb.Role == RoleAPI {
+			return cb, true
+		}
+	}
+	// Second preference: a single non-worker codebase (lone monolith,
+	// lone frontend). Pure worker-only plans return false.
+	var only Codebase
+	count := 0
+	for _, cb := range p.Codebases {
+		if cb.IsWorker {
+			continue
+		}
+		only = cb
+		count++
+	}
+	if count == 1 {
+		return only, true
+	}
+	return Codebase{}, false
+}
+
 // HasWorkerCodebase reports whether any codebase in the plan has
 // IsWorker=true. Used by the feature-phase brief composer (run-22
 // followup F-5) to gate the worker-shape teaching atom: only load

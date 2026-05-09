@@ -143,6 +143,14 @@ func CodebaseContentGates() []Gate {
 		// `await sub.drain()`. Both are deploy-breaking patterns at tier
 		// 4-5 (minContainers: 2).
 		{Name: "worker-subscription", Run: gateWorkerSubscription},
+		// Run-34 Fix 2 — engine-side teeth for the brief teaching that
+		// the canonical apps-repo (api codebase for multi-codebase
+		// recipes; lone non-worker for single-codebase) MUST carry
+		// `## Recipe features` (RF1) + `## Production vs. Development`
+		// (PD1) H2 sections. Pre-fix, brief taught REQUIRED but a single
+		// agent skip silently shipped an incomplete README. Pinned by
+		// TestRequireRF1PD1OnCanonicalAppsRepo_*.
+		{Name: "canonical-apps-repo-rf1-pd1", Run: gateRequireRF1PD1OnCanonicalAppsRepo},
 	}
 }
 
