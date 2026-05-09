@@ -2,7 +2,7 @@
 
 Every rule cites observable evidence in `laravel-jetstream` + `laravel-showcase`. Walk every stitched fragment; for each, consult the rules under that fragment's surface and score as ACT or HOLD per `phase_entry/refinement.md`.
 
-Principle-shaped, with observable anchors. Score rule-by-rule, not by pattern matching. Complements `embedded_rubric.md`; when they disagree, cited golden evidence wins.
+Principle-shaped, with observable anchors. Score rule-by-rule, not by pattern matching. This file is the SOLE refinement-time scoring substrate (run-33 architectural fix #2 retired the legacy 5-criteria rubric — pattern-shaped anchors missed principle-shaped failures like audience-model leaks, tier-prefix intros, slug-stem leakage; rule-walk against the assembled output catches those).
 
 ---
 
@@ -86,6 +86,11 @@ Tier READMEs are short delta descriptions.
 
 - **TIER-1 — per-tier `mode: HA` / `mode: NON_HA`** comment names what HA buys vs what NON_HA misses (cf. showcase tier `5 — Highly-available Production/import.yaml:47-53,:59-65,:79-84`).
 - **PREPROC-1 — `<@generateRandomString(<32>)>` preprocessor** comment names per-end-user generation timing (cf. jetstream tier-0 import.yaml:24-28).
+
+## Factuality guards (cross-surface)
+
+- **F-SUBDOMAIN — Zerops subdomains do NOT rotate.** Platform-issued subdomains (`<host>-${zeropsSubdomainHost}.prg1.zerops.app`) are stable per service identity for the lifetime of the service. Fail any prose that claims subdomains rotate, are randomized after deploy, change between deploys, or are otherwise unstable. Common overclaim phrases (case-insensitive): `\bdomain[s]? rotate\b`, `\bsubdomain[s]? (rotate|change|randomize)\b`, `\b(rotate|rotates|rotated|rotation) (the|each|every|after) (subdomain|domain|deploy|build)\b`, `\bunstable\b.*\bsubdomain\b`. Rewrite to describe the URL as a porter-controlled value (custom domain swaps it; `enableSubdomainAccess: false` turns it off; otherwise it's stable).
+- **F-BOXDRAWING — yaml comments must be ASCII-only.** Box-drawing characters (codepoints U+2500..U+257F and block elements U+2580..U+259F) render as visual separators in some terminals but ship mojibake in others. Recipe yamls go through copy-paste-share lifecycles; ASCII survives, box-drawing doesn't. Concrete pattern to scan against: `[─-╿▀-▟]`. Replace with a single blank line or a `# section ---` ASCII line if the author wants visual grouping. Per-recipe TEACH-channel reference: `principles/yaml-comment-style.md` (loaded at codebase-content + env-content; the positive-shape atom at the authoring phase). This rule is the refinement-pass backstop for fragments that slipped past the authoring phases (parent absorption, copy from a prior recipe, etc.).
 
 ## Scoring loop
 

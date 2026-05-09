@@ -27,30 +27,47 @@ threshold holds. Below the threshold, you do not act.
 
 ## How you make decisions
 
-You apply the rubric (5 criteria × 3 anchors each, embedded below).
-For every fragment:
+You walk `derived_rules.md` rule-by-rule against every stitched
+document. The rules are golden-grounded principles (V1-V6 universal
+voice; R1-R6 root README; T1-T4 tier README; TY1-TY5 tier
+import.yaml; IG1-IG6 apps-repo Integration Guide; KB1/KB3-KB6 KB;
+Y1-Y15 zerops.yaml; RF1/PD1 "Recipe features" + "Production vs
+Development"). For every stitched fragment:
 
-1. Read fragment body.
-2. Score against each rubric criterion.
-3. If a criterion lands below 8.5 AND the fix is unambiguous from the
-   reference distillation atoms, refine.
-4. If a criterion lands below 8.5 but the fix requires judgment
-   (multiple reasonable refinements), HOLD.
-5. If a criterion lands ≥8.5, HOLD.
+1. Read the fragment end-to-end as a porter would — top-to-bottom,
+   no special context.
+2. Walk every rule that applies to that fragment's surface.
+3. ACT (`record-fragment mode=replace`) on every rule violation —
+   cite the rule id + the violating phrase + the preserving edit in
+   the replacement body.
+4. HOLD when the violation is fuzzy (you can't name the rule, the
+   exact fragment, or the precise edit cleanly).
+
+Walk every rule against every document REGARDLESS of how the
+fragment got there. The rule fires on the OUTPUT shape, not on
+whether the agent's facts/source happened to align — a fragment
+that scores clean on every Voice phrasing can still violate IG6
+(generic best practice the cloned yaml already does), V6
+(authoring vocabulary), or RF1/PD1 (missing required H2 sections
+on the api codebase README).
 
 ## The refinement edit threshold
 
-ACT when you can cite the violated rubric criterion, the exact
-fragment, and the preserving edit. HOLD when any of the three is
-fuzzy.
+ACT when you can cite the violated rule, the exact fragment, and the
+preserving edit. HOLD when any of the three is fuzzy.
 
 Bias toward ACT within this threshold. The snapshot/restore wrapper
 means a false-positive ACT reverts automatically when the post-replace
 validator catches a regression — the cost of a wrong ACT is one
-rubric re-check, not a published mistake. The pre-run-23 "100%-sure /
+rule re-check, not a published mistake. The pre-run-23 "100%-sure /
 hesitate-to-argue" framing drove default-HOLD on every cross-surface
 duplication notice and shipped recipes with documented duplication
-the rubric already named as a violation. Run-23 F-27.
+the rules already named as violations. Run-23 F-27. Run-33
+architectural fix #2 retired the legacy 5-criteria rubric in favor
+of rule-walk against derived_rules — pattern-shaped anchors missed
+principle-shaped failures (audience-model leaks, tier-prefix intros,
+slug-stem leakage); rule-walk against the assembled output catches
+those.
 
 ## Transactional safety
 
@@ -86,26 +103,27 @@ multi-file pointer:
   `<outputRoot>/.briefs/refinement-phase-<unixnano>/`.
 
 The index lists N part files (phase-entry, synthesis-workflow,
-embedded-rubric, references, context, facts) in a "Read order"
+rules-from-goldens, references, context, facts) in a "Read order"
 section. The sub-agent dispatch wrapper MUST instruct: "Read
 `<briefPath>` first; then Read each part file listed in its 'Read
 order' section in the order shown before authoring any refinement."
-Run-31 Fix #1 closure — multi-file shape isolates the embedded
-rubric (~31 KB on its own) and the recorded-facts stream so neither
-crowds the brief past the Read-tool 25K-token cap.
+Run-31 Fix #1 closure — multi-file shape isolates the rule substrate
+and the recorded-facts stream so neither crowds the brief past the
+Read-tool 25K-token cap.
 
 ## Read order
 
 1. `phase_entry/refinement.md` — this atom.
 2. `briefs/refinement/synthesis_workflow.md` — refinement actions,
    classification × surface table, surface-by-surface decision rules.
-3. `briefs/refinement/embedded_rubric.md` — the rubric, embedded
-   verbatim from the spec.
+3. `briefs/refinement/derived_rules.md` — golden-grounded
+   principle-shaped rules. The scoring substrate — walk every rule
+   against every stitched fragment.
 4. The "Engine-flagged suspects" section, when present — fragments
-   the engine's pre-scan flagged for investigation. Investigate each
-   against the rubric.
+   the engine's pre-scan flagged for investigation. Walk every rule
+   against each named fragment.
 5. The pointer block listing every stitched output path under
-   `runDir`. Read each path; refine where the threshold holds.
+   `runDir`. Read each path; ACT where the threshold holds.
 6. The seven reference distillation atoms — fetch on demand via
    `zerops_knowledge uri=zerops://themes/refinement-references/<name>`:
    - `kb_shapes` — KB stem symptom-first heuristic.

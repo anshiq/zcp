@@ -111,13 +111,14 @@ var loadBearingRules = []loadBearingRule{
 		fingerprintRE: regexp.MustCompile(`(?m)^The bare yaml is the scaffold contract\.`),
 	},
 	{
-		// Run-22 R1-RC-7. Tier-promotion narrative ban (refinement
-		// rubric is the authority). Fingerprint: the H3 heading shape
-		// in embedded_rubric.md. Run-29 Fix #3 broadened the heading to
-		// cover yaml service-block comments AND READMEs.
+		// Run-22 R1-RC-7, migrated in run-34 Fix A from embedded_rubric.md
+		// to derived_rules.md. Tier-promotion narrative ban — Y8 owns
+		// the yaml-comment scope, T4 owns the tier README scope. The
+		// canonical statement is the Y8 bullet (yaml comments are the
+		// site refinement most often flags).
 		name:          "tier-promotion narrative ban",
-		canonicalAtom: "internal/recipe/content/briefs/refinement/embedded_rubric.md",
-		fingerprintRE: regexp.MustCompile(`(?m)^### Tier-promotion narrative — README extracts AND yaml service-block comments\s*$`),
+		canonicalAtom: "internal/recipe/content/briefs/refinement/derived_rules.md",
+		fingerprintRE: regexp.MustCompile(`\*\*Y8 — no tier-promotion narrative inside yaml comments\.\*\*`),
 	},
 	{
 		// Run-22 R1-RC-2. Same-key shadow trap teaching at scaffold
@@ -130,12 +131,12 @@ var loadBearingRules = []loadBearingRule{
 		fingerprintRE: regexp.MustCompile(`\*\*Same-key shadow trap\*\* — declaring`),
 	},
 	{
-		// Run-22 R3-C-1. Subdomain rotate overclaim is flagged by the
-		// refinement rubric. Fingerprint: the H3 heading in
-		// embedded_rubric.md ("Subdomain rotation overclaim").
+		// Run-22 R3-C-1, migrated in run-34 Fix A from embedded_rubric.md
+		// to derived_rules.md. Subdomain rotate overclaim is flagged by
+		// the F-SUBDOMAIN factuality guard.
 		name:          "subdomain rotation overclaim guard",
-		canonicalAtom: "internal/recipe/content/briefs/refinement/embedded_rubric.md",
-		fingerprintRE: regexp.MustCompile(`(?m)^### Subdomain rotation overclaim \(factual\)\s*$`),
+		canonicalAtom: "internal/recipe/content/briefs/refinement/derived_rules.md",
+		fingerprintRE: regexp.MustCompile(`\*\*F-SUBDOMAIN — Zerops subdomains do NOT rotate\.\*\*`),
 	},
 	{
 		// Run-22 R3-RC-3. URL constants two-channel sync —

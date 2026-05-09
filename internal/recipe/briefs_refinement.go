@@ -76,14 +76,15 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		parts = append(parts, "briefs/refinement/synthesis_workflow.md")
 	}
 
-	// Run-33 architectural fix #2 — `derived_rules.md` is now the
-	// primary scoring substrate; the legacy rubric (`embedded_rubric.md`,
-	// 5 criteria × 3 anchors each, line-count/pattern shaped) is
-	// retired. Pattern-shaped anchors missed principle-shaped failures
-	// (audience-model, tier-prefix intros, slug-stem leakage); rule-walk
-	// against the stitched output is closer to how a porter would read
-	// and apply rules. Source + derivation in
-	// plans/run-32-rules-from-jetstream.md.
+	// Run-33 architectural fix #2 — `derived_rules.md` is the SOLE
+	// scoring substrate; the legacy rubric (`embedded_rubric.md`,
+	// 5 criteria × 3 anchors each, line-count/pattern shaped) was
+	// retired in run-33 and the atom deleted in the run-34 follow-up
+	// (Fix A in plans/run-34-validation.md). Pattern-shaped anchors
+	// missed principle-shaped failures (audience-model, tier-prefix
+	// intros, slug-stem leakage); rule-walk against the stitched
+	// output is closer to how a porter would read and apply rules.
+	// Source + derivation in plans/run-32-rules-from-jetstream.md.
 	if rules, err := readAtom("briefs/refinement/derived_rules.md"); err == nil {
 		b.WriteString(rules)
 		b.WriteString("\n\n")

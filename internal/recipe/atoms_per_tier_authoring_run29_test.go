@@ -196,38 +196,26 @@ func TestPerTierAuthoringAtom_ClosureOfExpectationBadExample_Present(t *testing.
 	}
 }
 
-func TestEmbeddedRubric_RubricAnchor_ReferencesWithinTier(t *testing.T) {
-	t.Parallel()
-	body, err := readAtom("briefs/refinement/embedded_rubric.md")
-	if err != nil {
-		t.Fatalf("read embedded_rubric.md: %v", err)
-	}
-	for _, want := range []string{
-		"1–2 within-tier",
-		"3+ within-tier with named signals",
-		"≥3 within-tier with named signals AND each tied to a real adapt path the porter would take by editing THIS yaml",
-		"The `within-tier` qualifier is load-bearing",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("embedded_rubric.md rubric scoring anchor missing within-tier qualifier %q", want)
-		}
-	}
-}
+// Run-34 Fix A — embedded_rubric.md was deleted; the within-tier
+// scoring qualifier and the forbidden-narrative section were carried
+// over to derived_rules.md as the Y8 (no tier-promotion narrative
+// inside yaml comments) + T4 (no tier-promotion narrative on tier
+// README) rules. The per_tier_authoring.md atom remains the canonical
+// home for the positive-shape within-tier teaching at the env-content
+// authoring phase; refinement walks Y8 + T4 to flag violations.
 
-func TestEmbeddedRubric_TierPromotionForbid_CoversYAMLServiceBlocks(t *testing.T) {
+func TestDerivedRules_TierPromotionForbid_YamlAndTierReadme(t *testing.T) {
 	t.Parallel()
-	body, err := readAtom("briefs/refinement/embedded_rubric.md")
+	body, err := readAtom("briefs/refinement/derived_rules.md")
 	if err != nil {
-		t.Fatalf("read embedded_rubric.md: %v", err)
+		t.Fatalf("read derived_rules.md: %v", err)
 	}
 	for _, want := range []string{
-		"### Tier-promotion narrative — README extracts AND yaml service-block comments",
-		"yaml comments inside service blocks",
-		"refinement-time Notice",
-		"Finalize closure does\nNOT block on this regex set",
+		"Y8 — no tier-promotion narrative inside yaml comments",
+		"T4 — no tier-promotion narrative",
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("embedded_rubric.md forbidden-narrative section missing yaml-comment scope anchor %q", want)
+			t.Errorf("derived_rules.md missing tier-promotion guard %q", want)
 		}
 	}
 }

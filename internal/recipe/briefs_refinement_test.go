@@ -46,10 +46,11 @@ func TestBuildRefinementBrief_AssemblesCoreAtoms(t *testing.T) {
 			t.Errorf("brief.Parts missing %q; got %v", want, brief.Parts)
 		}
 	}
-	// Run-33 architectural fix #2 — embedded_rubric.md retired in
-	// favor of rule-walk against stitched output via derived_rules.md.
+	// Run-33 architectural fix #2 + run-34 Fix A — embedded_rubric.md
+	// retired and the atom file deleted; rule-walk against stitched
+	// output via derived_rules.md is the sole scoring substrate.
 	if slices.Contains(brief.Parts, "briefs/refinement/embedded_rubric.md") {
-		t.Errorf("brief.Parts unexpectedly carries embedded_rubric.md (retired in run-33 fix #2)")
+		t.Errorf("brief.Parts unexpectedly carries embedded_rubric.md (retired in run-33 fix #2; deleted in run-34 Fix A)")
 	}
 }
 
@@ -120,15 +121,52 @@ func TestBuildRefinementBrief_BodyUnderShrinkTarget(t *testing.T) {
 	}
 	// Run-32 phase 2 — soft cap raised 60→75 KB to accommodate the
 	// derived_rules.md atom (golden-grounded rule substrate added
-	// alongside embedded_rubric.md). Once dispatch tests confirm the
-	// rule substrate is the load-bearing scoring source, embedded_rubric
-	// can be retired and the cap pushed back down.
-	// Run-33 — bumped 75 → 76 KB to fit Y13 (causal-command-sequence
-	// rule restored from run-32-rules-from-jetstream.md:405). Cap
-	// drops back when Change 2 retires embedded_rubric (~35 KB).
-	const briefShrinkCap = 76 * 1024
+	// alongside embedded_rubric.md). Run-33 — bumped 75→76 KB to fit
+	// Y13 (causal-command-sequence rule restored from
+	// run-32-rules-from-jetstream.md:405). Run-34 Fix A — embedded_rubric
+	// retired and deleted (~35 KB removed); cap dropped to 45 KB to
+	// catch any future re-inlining regression.
+	const briefShrinkCap = 45 * 1024
 	if brief.Bytes > briefShrinkCap {
 		t.Errorf("refinement brief %d bytes exceeds %d cap (F-24 shrink target; run-32 phase 2 raised to 75K)", brief.Bytes, briefShrinkCap)
+	}
+}
+
+// TestRefinementBrief_LoadsDerivedRulesNotRubric — run-34 Fix A.
+// Pins that the refinement brief loads `derived_rules.md` content and
+// does NOT load `embedded_rubric.md` content. The rubric atom was
+// deleted in run-34 Fix A; this test guards against any future
+// regression that re-introduces it (file or load).
+func TestRefinementBrief_LoadsDerivedRulesNotRubric(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{Slug: "x", Codebases: []Codebase{{Hostname: "api"}}}
+	brief, err := BuildRefinementBrief(plan, nil, "/run", nil)
+	if err != nil {
+		t.Fatalf("BuildRefinementBrief: %v", err)
+	}
+	// derived_rules.md content present (canonical rule headings).
+	for _, ruleAnchor := range []string{
+		"V1 — porter-clones-and-runs",
+		"Y8 — no tier-promotion narrative",
+		"F-SUBDOMAIN — Zerops subdomains do NOT rotate",
+	} {
+		if !strings.Contains(brief.Body, ruleAnchor) {
+			t.Errorf("brief missing derived_rules anchor %q", ruleAnchor)
+		}
+	}
+	// embedded_rubric.md content absent (rubric criterion headings).
+	for _, rubricAnchor := range []string{
+		"Criterion 1 — Stem shape",
+		"Criterion 2 — Voice",
+		"Criterion 3 — Citation",
+	} {
+		if strings.Contains(brief.Body, rubricAnchor) {
+			t.Errorf("brief unexpectedly carries rubric anchor %q (retired in run-33 fix #2; atom deleted in run-34 Fix A)", rubricAnchor)
+		}
+	}
+	// The atom file itself must be gone — readAtom should fail.
+	if _, err := readAtom("briefs/refinement/embedded_rubric.md"); err == nil {
+		t.Error("embedded_rubric.md atom should be deleted; readAtom should fail")
 	}
 }
 
@@ -354,9 +392,10 @@ func TestBuildRefinementBrief_EvictionKeepsRecentFacts(t *testing.T) {
 
 // TestBuildRefinementBrief_EvictionPreservesRubricBlocks — run-28
 // fix #2. Eviction targets ONLY facts; phase-entry, synthesis_workflow,
-// embedded_rubric, reference_atom_catalog, stitched-output-pointer,
-// and engine_flagged_suspects must remain in Parts/body even when
-// facts are heavily evicted.
+// derived_rules (the run-34 Fix A successor to embedded_rubric),
+// reference_atom_catalog, stitched-output-pointer, and
+// engine_flagged_suspects must remain in Parts/body even when facts
+// are heavily evicted.
 func TestBuildRefinementBrief_EvictionPreservesRubricBlocks(t *testing.T) {
 	t.Parallel()
 	plan := &Plan{

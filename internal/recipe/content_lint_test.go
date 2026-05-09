@@ -76,28 +76,25 @@ func TestBrief_TeachesProjectLevelShadowTrap(t *testing.T) {
 	}
 }
 
-// TestRefinementRubric_ForbidsTierPromotionNarrative — run-22 RC-7.
+// TestRefinementRules_ForbidsTierPromotionNarrative — run-22 RC-7,
+// migrated in run-34 Fix A from embedded_rubric.md to derived_rules.md.
 // Spec §108 forbids "promote to tier N+1" / "outgrow" / "graduate"
-// narratives in tier README intros. The refinement rubric must
-// enumerate the regex set so refinement has reason to flag.
+// narratives in tier README intros and yaml comments. T4 + Y8 in
+// derived_rules.md carry the principle.
 // Run-22 evidence: tier 4 README intro shipped "promote to tier 5
 // when one of them becomes the bottleneck".
 func TestRefinementRubric_ForbidsTierPromotionNarrative(t *testing.T) {
 	t.Parallel()
-	body, err := readAtom("briefs/refinement/embedded_rubric.md")
+	body, err := readAtom("briefs/refinement/derived_rules.md")
 	if err != nil {
-		t.Fatalf("read embedded_rubric.md: %v", err)
+		t.Fatalf("read derived_rules.md: %v", err)
 	}
 	for _, mustHave := range []string{
-		`\bpromote\b.*\btier\b`,
-		`\boutgrow\w*`,
-		`\bupgrade from tier\b`,
-		`\bgraduate (to|out of)\b`,
-		`\bmove (up|to) tier\b`,
-		"Tier-promotion narrative",
+		"Y8 — no tier-promotion narrative inside yaml comments",
+		"T4 — no tier-promotion narrative",
 	} {
 		if !strings.Contains(body, mustHave) {
-			t.Errorf("embedded_rubric.md missing tier-promotion guard %q", mustHave)
+			t.Errorf("derived_rules.md missing tier-promotion guard %q", mustHave)
 		}
 	}
 }
@@ -686,22 +683,26 @@ func TestCrossServiceURLsAtom_TeachesUpdatePlanProjectEnvVars(t *testing.T) {
 	}
 }
 
-// run-22 R3-C-1 — refinement rubric flags subdomain "rotate" overclaim.
-// Platform-issued subdomains are stable per service identity; they do
-// not rotate. Run-22 evidence: appdev/README.md L166 claimed "those
-// domains rotate" with no factual basis.
+// run-22 R3-C-1, migrated in run-34 Fix A — derived_rules.md flags
+// the subdomain "rotate" overclaim. Platform-issued subdomains are
+// stable per service identity; they do not rotate. Run-22 evidence:
+// appdev/README.md L166 claimed "those domains rotate" with no factual
+// basis.
 func TestRefinementRubric_FlagsSubdomainRotateClaim(t *testing.T) {
 	t.Parallel()
-	body, err := readAtom("briefs/refinement/embedded_rubric.md")
+	body, err := readAtom("briefs/refinement/derived_rules.md")
 	if err != nil {
-		t.Fatalf("read embedded_rubric.md: %v", err)
+		t.Fatalf("read derived_rules.md: %v", err)
 	}
-	// The rubric must teach refinement to flag the overclaim phrase.
+	// The rule must teach refinement to flag the overclaim phrase.
+	if !strings.Contains(body, "F-SUBDOMAIN") {
+		t.Error("derived_rules.md should carry the F-SUBDOMAIN factuality guard")
+	}
 	if !strings.Contains(body, "rotate") {
-		t.Error("embedded_rubric.md should mention the subdomain rotation overclaim guard")
+		t.Error("derived_rules.md should mention the subdomain rotation overclaim guard")
 	}
 	if !strings.Contains(body, "stable per service") && !strings.Contains(body, "do not rotate") {
-		t.Error("embedded_rubric.md should explain why the rotate claim is wrong")
+		t.Error("derived_rules.md should explain why the rotate claim is wrong")
 	}
 }
 
@@ -904,42 +905,40 @@ func TestScaffoldBrief_TeachesOnlyOneFactSchema(t *testing.T) {
 	}
 }
 
-// run-22 followup F-3 — the embedded refinement rubric must carry a
-// Unicode box-drawing flag-pattern parallel to the tier-promotion
-// section. `principles/yaml-comment-style.md` already TEACHES the
-// positive-shape rule at codebase-content + env-content; refinement is
-// the editorial-pass backstop for fragments that slipped past the
-// authoring phases (parent absorption, copy-from-prior-recipe drift).
-// Per spec §4 the rubric flag-list is the right tool for the editorial
-// actor — TEACH-channel atom-load + DISCOVER-channel rubric-flag are
-// parallel channels, not redundant.
+// run-22 followup F-3, migrated in run-34 Fix A — derived_rules.md
+// must carry a Unicode box-drawing flag-pattern parallel to the
+// tier-promotion section. `principles/yaml-comment-style.md` already
+// TEACHES the positive-shape rule at codebase-content + env-content;
+// refinement is the editorial-pass backstop for fragments that slipped
+// past the authoring phases (parent absorption, copy-from-prior-recipe
+// drift). Per spec §4 the rule list is the right tool for the
+// editorial actor — TEACH-channel atom-load + DISCOVER-channel
+// rule-flag are parallel channels, not redundant.
 func TestRefinementRubric_FlagsUnicodeBoxDrawing(t *testing.T) {
 	t.Parallel()
-	body, err := readAtom("briefs/refinement/embedded_rubric.md")
+	body, err := readAtom("briefs/refinement/derived_rules.md")
 	if err != nil {
-		t.Fatalf("read embedded_rubric.md: %v", err)
+		t.Fatalf("read derived_rules.md: %v", err)
 	}
 	for _, mustHave := range []string{
-		// The flag section name must surface in the rubric.
-		"Unicode box-drawing",
+		// The rule id must surface.
+		"F-BOXDRAWING",
+		// Plain-language anchor.
+		"box-drawing",
 		// Codepoint anchors so authors can search.
 		"U+2500",
 		"U+257F",
 		"U+2580",
 		"U+259F",
-		// The cross-ref to the TEACH-channel atom (system.md §4 channel
-		// hierarchy: rubric is editorial-pass backstop, not redundant).
+		// The cross-ref to the TEACH-channel atom.
 		"yaml-comment-style.md",
-		// run-22 fixup F-3 — codex review caught that prose-only
-		// glyph descriptions let an LLM editor ignore the rubric. The
-		// rubric MUST embed a concrete regex literal so an agent can
-		// pattern-scan rather than glyph-spot. The pattern below is the
-		// character-class shape covering both Unicode ranges
+		// Concrete regex literal so an agent can pattern-scan rather
+		// than glyph-spot. Character class covers both Unicode ranges
 		// (U+2500..U+257F box-drawing + U+2580..U+259F block elements).
 		"[─-╿▀-▟]",
 	} {
 		if !strings.Contains(body, mustHave) {
-			t.Errorf("embedded_rubric.md missing Unicode box-drawing flag anchor %q", mustHave)
+			t.Errorf("derived_rules.md missing Unicode box-drawing flag anchor %q", mustHave)
 		}
 	}
 }

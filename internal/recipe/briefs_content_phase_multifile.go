@@ -341,12 +341,12 @@ func buildEnvContentBriefMultiFileWithFraming(plan *Plan, parent *ParentRecipe, 
 // index.md + N part files.
 //
 // Part split (refinement):
-//  1. part-1-phase-entry  — phase_entry
-//  2. part-2-synthesis    — synthesis_workflow
-//  3. part-3-rubric       — embedded_rubric
-//  4. part-4-references   — fetchable reference catalog + stitched-output pointer block
-//  5. part-5-context      — embedded parent baseline + engine-flagged suspects
-//  6. part-6-facts        — recorded facts (most-recent-first with eviction)
+//  1. part-1-phase-entry        — phase_entry
+//  2. part-2-synthesis          — synthesis_workflow
+//  3. part-3-rules-from-goldens — derived_rules (golden-grounded rule substrate; replaced legacy embedded_rubric in run-33 fix #2)
+//  4. part-4-references         — fetchable reference catalog + stitched-output pointer block
+//  5. part-5-context            — embedded parent baseline + engine-flagged suspects
+//  6. part-6-facts              — recorded facts (most-recent-first with eviction)
 func buildRefinementBriefMultiFile(plan *Plan, parent *ParentRecipe, runDir string, facts []FactRecord, outputRoot string) (Brief, error) {
 	return buildRefinementBriefMultiFileWithFraming(plan, parent, runDir, facts, outputRoot, "", "")
 }
@@ -394,11 +394,11 @@ func buildRefinementBriefMultiFileWithFraming(plan *Plan, parent *ParentRecipe, 
 		return Brief{}, err
 	}
 
-	// Part 3 — derived rules atom (run-33 architectural fix #2 retired
-	// the legacy embedded_rubric.md; rule-walk against the stitched
-	// output is the primary scoring lens). Golden-grounded
-	// principle-shaped substrate extracted from laravel-jetstream +
-	// laravel-showcase.
+	// Part 3 — derived rules atom. Run-33 architectural fix #2 retired
+	// the legacy embedded_rubric.md (deleted in the run-34 follow-up);
+	// rule-walk against the stitched output is the sole scoring
+	// substrate. Golden-grounded principle-shaped rules extracted from
+	// laravel-jetstream + laravel-showcase.
 	if err := w.StartPart("rules-from-goldens", "golden-grounded rule substrate — principle-shaped scoring rules"); err != nil {
 		return Brief{}, err
 	}

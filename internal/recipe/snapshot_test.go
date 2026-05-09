@@ -1,7 +1,6 @@
 package recipe
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -61,29 +60,9 @@ func TestRestoreFragment_NilFragmentsMap_Initializes(t *testing.T) {
 	}
 }
 
-// TestEmbeddedRubric_MatchesSpec pins the contract that the embedded
-// rubric stays byte-identical to the spec rubric. Drift would mean
-// the refinement sub-agent grades against a different rubric than
-// post-dogfood ANALYSIS.md uses.
-func TestEmbeddedRubric_MatchesSpec(t *testing.T) {
-	t.Parallel()
-	rubric, err := readAtom("briefs/refinement/embedded_rubric.md")
-	if err != nil {
-		t.Fatalf("read embedded rubric: %v", err)
-	}
-	// The spec lives at repo root — we use a hand-derived sentinel
-	// (the rubric's first criterion header) rather than reading the
-	// spec file from disk, since tests run from the package dir and
-	// the relative path back to docs is fragile across CI shapes.
-	for _, anchor := range []string{
-		"Criterion 1 — Stem shape",
-		"Criterion 2 — Voice",
-		"Criterion 3 — Citation",
-		"Criterion 4 — Trade-off",
-		"Criterion 5 — Classification",
-	} {
-		if !strings.Contains(rubric, anchor) {
-			t.Errorf("embedded rubric missing anchor %q — likely a partial copy from spec-content-quality-rubric.md", anchor)
-		}
-	}
-}
+// Run-33 architectural fix #2 + run-34 Fix A — embedded_rubric.md
+// retired and deleted; rule-walk against derived_rules.md is the sole
+// scoring substrate. The byte-identity-to-spec contract is gone with
+// the rubric atom. Per-rule pinning lives in
+// `briefs_refinement_test.go::TestBuildRefinementBrief_EmbedsDerivedRules`
+// (which asserts rule ids land in the brief body).
