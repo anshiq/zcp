@@ -7,10 +7,10 @@ import (
 )
 
 // RefinementSuspect names one engine-pre-flagged fragment the refinement
-// sub-agent should investigate. Class is a short tag the rubric uses to
+// sub-agent should investigate. Class is a short tag the rule-walk uses to
 // route ACT/HOLD reasoning ("kb-author-claim-stem", "missing-citation",
 // "single-sided-tradeoff"); FragmentID identifies the suspect; Reason is
-// a one-line prose hint naming the rubric anchor that flagged it.
+// a one-line prose hint naming the rule that flagged it.
 //
 // Run-23 F-24 — refinement brief stops being "read everything, find
 // anything wrong" and becomes "investigate THESE specific suspects,
@@ -28,19 +28,19 @@ type RefinementSuspect struct {
 // `**bold**` author-claim like "use X" / "set Y" / "configure Z" /
 // "pin W" without an HTTP code, quoted error, failure verb, or
 // observable wrong-state phrase. The match is necessarily heuristic
-// (the rubric's full scoring is multi-signal); this is the cheap
-// pre-scan that surfaces likely candidates for the agent's own scoring.
+// (the KB-shape rule walk is multi-signal); this is the cheap
+// pre-scan that surfaces likely candidates for the agent's own rule-walk.
 var kbAuthorClaimStemPattern = regexp.MustCompile(`(?m)^- \*\*(?:Use|Set|Pin|Configure|Define|Add|Enable|Disable|Replace|Always|Never)\b[^*]*\*\* — `)
 
-// kbSymptomSignalPattern matches the symptom-signals the rubric
-// rewards: HTTP code, quoted error string, failure verb,
-// observable-wrong-state phrase. A KB bullet that carries any of
-// these in its first sentence is NOT a suspect.
+// kbSymptomSignalPattern matches the symptom-signals the KB-shape rule
+// (KB1 in `derived_rules.md`) rewards: HTTP code, quoted error string,
+// failure verb, observable-wrong-state phrase. A KB bullet that carries
+// any of these in its first sentence is NOT a suspect.
 var kbSymptomSignalPattern = regexp.MustCompile(`(?i)\b(?:[1-5]\d{2}|fails|crashes|corrupts|deadlocks?|silently exits?|returns null|breaks|drops|rejects|hangs|times? out|panics|missing|wrong|empty body|null where|404 on|undefined)\b`)
 
 // CollectRefinementSuspects gathers suspects from (a) existing notices
-// emitted at finalize / codebase-content phases and (b) a cheap rubric
-// regex pre-scan over the per-codebase KB fragment bodies.
+// emitted at finalize / codebase-content phases and (b) a cheap
+// rule-walk regex pre-scan over the per-codebase KB fragment bodies.
 //
 // The function is intentionally deterministic + fast (single pass over
 // notices + regex over each codebase KB body); composer calls it at
@@ -55,7 +55,7 @@ func CollectRefinementSuspects(plan *Plan, notices []Violation) []RefinementSusp
 
 	// (a) Pull every existing notice into the suspect list. The notice
 	// surface (codebase-content + finalize) flags duplication, voice
-	// drift, and other rubric-adjacent concerns the agent should
+	// drift, and other rule-adjacent concerns the agent should
 	// investigate during refinement. Engine flags; agent decides.
 	for _, n := range notices {
 		if n.Severity != SeverityNotice {
@@ -68,10 +68,11 @@ func CollectRefinementSuspects(plan *Plan, notices []Violation) []RefinementSusp
 		})
 	}
 
-	// (b) KB rubric pre-scan — flag fragments whose KB body opens
+	// (b) KB rule-walk pre-scan — flag fragments whose KB body opens
 	// with a `**author-directive**` bold-prefix bullet that lacks a
-	// symptom signal. The agent's own rubric scoring is the load-
-	// bearing decision; this just says "look here first."
+	// symptom signal. The agent's own rule-walk against KB1 in
+	// `derived_rules.md` is the load-bearing decision; this just says
+	// "look here first."
 	for _, cb := range plan.Codebases {
 		fragID := "codebase/" + cb.Hostname + "/knowledge-base"
 		body, ok := plan.Fragments[fragID]
@@ -96,7 +97,7 @@ func CollectRefinementSuspects(plan *Plan, notices []Violation) []RefinementSusp
 			suspects = append(suspects, RefinementSuspect{
 				Class:      "kb-author-claim-stem",
 				FragmentID: fragID,
-				Reason:     "stem opens with author-directive bold prefix without a symptom signal in the same line — score Criterion 1 against `zerops://themes/refinement-references/kb_shapes`",
+				Reason:     "stem opens with author-directive bold prefix without a symptom signal in the same line — walk KB1 (symptom-first stem shape) in `derived_rules.md`; deeper context in `zerops://themes/refinement-references/kb_shapes`",
 			})
 			// Only one suspect per fragment for this class.
 			break
@@ -104,8 +105,9 @@ func CollectRefinementSuspects(plan *Plan, notices []Violation) []RefinementSusp
 	}
 
 	// (c) Run-29 Fix #4 — IG ↔ yaml-comment same-mechanism duplication
-	// pre-scan (Criterion 6 defense-in-depth; the authoring-order
-	// teaching in synthesis_workflow.md is the primary fix). For each
+	// pre-scan (cross-surface duplication defense-in-depth; the
+	// authoring-order teaching in synthesis_workflow.md is the primary
+	// fix). For each
 	// codebase, walk the IG fragment + zerops.yaml fragment; for each
 	// canonical mechanism anchor, if BOTH fragments contain the anchor
 	// AND share ≥10 consecutive non-whitespace bytes of context, emit
@@ -136,7 +138,7 @@ func CollectRefinementSuspects(plan *Plan, notices []Violation) []RefinementSusp
 				continue
 			}
 			suspects = append(suspects, RefinementSuspect{
-				Class:      "criterion-6-ig-yamlcomment-dup",
+				Class:      "ig-yamlcomment-dup",
 				FragmentID: igID,
 				Reason: fmt.Sprintf(
 					"IG and zerops.yaml comment for %q both teach the %q mechanism with overlapping prose context — Surface 4 owns the mechanism, Surface 7 owns the field-adjacent WHY-choice (see briefs/codebase-content/synthesis_workflow.md §Surface ownership). Edit one surface to a cross-reference of the other.",
@@ -293,7 +295,7 @@ func FormatRefinementSuspects(suspects []RefinementSuspect) string {
 	}
 	var b strings.Builder
 	b.WriteString("## Engine-flagged suspects (investigate at minimum these)\n\n")
-	b.WriteString("Each suspect names a fragment and the rubric anchor that flagged it. The list is the engine's pre-scan over notices + KB regex; it is NOT exhaustive — the rubric remains your authority. ACT or HOLD with reasons; record a notice when you HOLD on a flagged class.\n\n")
+	b.WriteString("Each suspect names a fragment and the rule that flagged it. The list is the engine's pre-scan over notices + KB regex; it is NOT exhaustive — `derived_rules.md` remains your authority. ACT or HOLD with reasons; record a notice when you HOLD on a flagged class.\n\n")
 	for _, s := range suspects {
 		fmt.Fprintf(&b, "- **%s** — `%s`: %s\n", s.Class, s.FragmentID, s.Reason)
 	}

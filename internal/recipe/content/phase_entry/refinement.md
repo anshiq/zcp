@@ -84,9 +84,9 @@ edit didn't stick.
 For root and env fragments (`root/intro`, `env/<N>/intro`,
 `env/<N>/import-comments/<host>`) the wrapper does NOT fire; the
 slot-shape refusal at record time is the safety net. Refinement on
-those surfaces is best-effort — apply the rubric-criterion + fragment
-+ preserving-edit citation rule, and HOLD when any of the three
-isn't namable.
+those surfaces is best-effort — apply the same rule-walk threshold
+(cite the violated rule + the exact fragment + the preserving edit),
+and HOLD when any of the three isn't namable.
 
 ## Output
 

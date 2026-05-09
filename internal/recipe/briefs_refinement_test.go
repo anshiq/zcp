@@ -572,3 +572,74 @@ func TestNoFilesystemReferenceLeak_RefinementBrief(t *testing.T) {
 		}
 	}
 }
+
+// TestRefinementBrief_NoResidualRubricLanguage — run-34 Fix A closure.
+// The rubric was retired in run-33 fix #2; the embedded_rubric.md atom
+// was deleted and the threshold language flipped to rule-walk against
+// `derived_rules.md`. This test pins that no residual rubric vocabulary
+// leaks into the assembled refinement brief body — every prose-side
+// teaching of "what to cite at refinement time" must use rule-walk
+// vocabulary so the agent doesn't get a contradictory teaching shape.
+//
+// Historical references in atom prose (e.g. synthesis_workflow.md
+// noting that "the legacy 5-criteria rubric (`embedded_rubric.md`) was
+// retired") are scoped: they explain WHY the substrate changed rather
+// than INSTRUCT the agent to score against criteria. The forbid list
+// covers the instruction-shaped tokens.
+func TestRefinementBrief_NoResidualRubricLanguage(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug: "synth-showcase",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"},
+			{Hostname: "worker", Role: RoleWorker, BaseRuntime: "nodejs@22", IsWorker: true},
+		},
+	}
+	brief, err := BuildRefinementBrief(plan, nil, "/run/dir", nil)
+	if err != nil {
+		t.Fatalf("BuildRefinementBrief: %v", err)
+	}
+	for _, forbidden := range []string{
+		"violated rubric criterion",
+		"rubric criterion",
+		"rubric anchor",
+		"rubric remains your authority",
+		"score against the rubric",
+		"score Criterion",
+		"Score against each rubric criterion",
+	} {
+		if strings.Contains(brief.Body, forbidden) {
+			t.Errorf("refinement brief carries residual rubric vocabulary %q — run-34 Fix A retired the rubric in favor of rule-walk against `derived_rules.md`", forbidden)
+		}
+	}
+	// And the multi-file path must hold the same shape — exercise it via
+	// the multi-file composer with an outputRoot tempdir.
+	outRoot := t.TempDir()
+	mf, err := buildRefinementBriefMultiFile(plan, nil, outRoot, nil, outRoot)
+	if err != nil {
+		t.Fatalf("buildRefinementBriefMultiFile: %v", err)
+	}
+	var combined strings.Builder
+	for _, p := range mf.PartPaths {
+		body, rErr := os.ReadFile(p)
+		if rErr != nil {
+			t.Fatalf("read part %s: %v", p, rErr)
+		}
+		combined.Write(body)
+		combined.WriteByte('\n')
+	}
+	mfBody := combined.String()
+	for _, forbidden := range []string{
+		"violated rubric criterion",
+		"rubric criterion",
+		"rubric anchor",
+		"rubric remains your authority",
+		"score against the rubric",
+		"score Criterion",
+		"Score against each rubric criterion",
+	} {
+		if strings.Contains(mfBody, forbidden) {
+			t.Errorf("refinement multi-file brief carries residual rubric vocabulary %q — run-34 Fix A retired the rubric in favor of rule-walk against `derived_rules.md`", forbidden)
+		}
+	}
+}

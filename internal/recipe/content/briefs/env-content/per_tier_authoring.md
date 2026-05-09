@@ -129,17 +129,18 @@ without downtime) → operational reality (autoscaling absorbs spikes).
 
 ## Friendly-authority phrasing — the adapt-path contract
 
-The refinement rubric grades these import-comments against Criterion 2
-(Voice). Engineering-spec prose ("Single instance with the smallest
+Refinement walks these import-comments against the V1-V4 voice rules in
+`derived_rules.md` (porter-clones-and-runs framing, porter-actionable
+phrasing). Engineering-spec prose ("Single instance with the smallest
 managed RAM. Snapshots run, but there is no replica…") describes the
-shape correctly but doesn't tell the porter what to change. **Aim for
-the 8.5 anchor at first write** — at least one friendly-authority
-phrasing per service block, each tied to a concrete porter signal —
-not the 7.0 engineering-spec floor that refinement then has to lift.
-Voice rewrites across 50+ blocks at refinement time exceed the F-27
-threshold; voice belongs in env-content authoring.
+shape correctly but doesn't tell the porter what to change. **Land
+friendly-authority phrasing at first write** — at least one per service
+block, each tied to a concrete porter signal — not engineering-spec
+prose that refinement then has to lift. Voice rewrites across 50+
+blocks at refinement time exceed the F-27 threshold; voice belongs in
+env-content authoring.
 
-### Canonical phrasing patterns (count toward the score)
+### Canonical phrasing patterns
 
 - *"Feel free to ..."*
 - *"Configure this to ..."*

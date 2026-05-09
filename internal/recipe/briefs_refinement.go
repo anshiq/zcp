@@ -110,7 +110,7 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 	hasStitchedBody := runDir != "" || (parent != nil && parent.Slug != "" && parent.SourceRoot != "")
 	if hasStitchedBody {
 		b.WriteString("## Stitched output to refine\n\n")
-		b.WriteString("Read each path; refine fragments where you can cite the violated rubric criterion, the exact fragment, and the preserving edit.\n\n")
+		b.WriteString("Read each path; refine fragments where you can cite the violated rule (from `derived_rules.md`), the exact fragment, and the preserving edit.\n\n")
 		if runDir != "" {
 			b.WriteString("**Root**\n\n")
 			fmt.Fprintf(&b, "- `%s/README.md` — root README\n", runDir)

@@ -177,7 +177,7 @@ two surfaces):
   per-service envVariables write runs after the auto-inject..."*
 
 The yaml comment teaches the mechanism. Surface 7 owns field-adjacent
-choices, not mechanism teaching. Criterion 6 violation; surface
+choices, not mechanism teaching. Cross-surface duplication; surface
 ownership violation.
 
 **GOOD** — IG owns the mechanism; yaml comment is short field-adjacent

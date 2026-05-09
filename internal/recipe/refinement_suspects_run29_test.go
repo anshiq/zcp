@@ -6,14 +6,16 @@ import (
 )
 
 // Run-29 Fix #4 — refinement-suspects extension for IG ↔ yaml-comment
-// same-mechanism duplication (Criterion 6 defense-in-depth). The
-// authoring-order teaching in synthesis_workflow.md is the primary
-// fix; this predicate flags suspects when both surfaces teach the
-// same canonical mechanism with overlapping prose context.
+// same-mechanism duplication (cross-surface duplication
+// defense-in-depth; class name retired the legacy `criterion-6-` prefix
+// alongside the rubric retirement in run-34 Fix A). The authoring-order
+// teaching in synthesis_workflow.md is the primary fix; this predicate
+// flags suspects when both surfaces teach the same canonical mechanism
+// with overlapping prose context.
 
 // TestCollectRefinementSuspects_IGYAMLCommentDup_Detected — fixture
 // with same-mechanism teaching on IG #5 + zerops.yaml comment for the
-// same codebase → suspect emitted with code criterion-6-ig-yamlcomment-dup.
+// same codebase → suspect emitted with code ig-yamlcomment-dup.
 func TestCollectRefinementSuspects_IGYAMLCommentDup_Detected(t *testing.T) {
 	t.Parallel()
 	plan := syntheticShowcasePlan()
@@ -38,7 +40,7 @@ func TestCollectRefinementSuspects_IGYAMLCommentDup_Detected(t *testing.T) {
 	suspects := CollectRefinementSuspects(plan, nil)
 	found := false
 	for _, s := range suspects {
-		if s.Class == "criterion-6-ig-yamlcomment-dup" && s.FragmentID == "codebase/api/integration-guide" {
+		if s.Class == "ig-yamlcomment-dup" && s.FragmentID == "codebase/api/integration-guide" {
 			found = true
 			if !strings.Contains(s.Reason, "${db_hostname}") {
 				t.Errorf("expected suspect Reason to name the anchor; got %q", s.Reason)
@@ -47,7 +49,7 @@ func TestCollectRefinementSuspects_IGYAMLCommentDup_Detected(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected criterion-6-ig-yamlcomment-dup suspect on codebase/api; got %+v", suspects)
+		t.Errorf("expected ig-yamlcomment-dup suspect on codebase/api; got %+v", suspects)
 	}
 }
 
@@ -71,8 +73,8 @@ func TestCollectRefinementSuspects_IGYAMLCommentDifferent_NoSuspect(t *testing.T
 	}
 	suspects := CollectRefinementSuspects(plan, nil)
 	for _, s := range suspects {
-		if s.Class == "criterion-6-ig-yamlcomment-dup" {
-			t.Errorf("expected no criterion-6-ig-yamlcomment-dup suspect when IG and yaml teach different mechanisms; got %+v", s)
+		if s.Class == "ig-yamlcomment-dup" {
+			t.Errorf("expected no ig-yamlcomment-dup suspect when IG and yaml teach different mechanisms; got %+v", s)
 		}
 	}
 }
@@ -104,8 +106,8 @@ func TestCollectRefinementSuspects_IGEngineYamlBlockOnly_NoSuspect(t *testing.T)
 	}
 	suspects := CollectRefinementSuspects(plan, nil)
 	for _, s := range suspects {
-		if s.Class == "criterion-6-ig-yamlcomment-dup" {
-			t.Errorf("expected no criterion-6-ig-yamlcomment-dup suspect when IG anchor only appears inside engine-stamped yaml block; got %+v", s)
+		if s.Class == "ig-yamlcomment-dup" {
+			t.Errorf("expected no ig-yamlcomment-dup suspect when IG anchor only appears inside engine-stamped yaml block; got %+v", s)
 		}
 	}
 }

@@ -7,7 +7,7 @@ import (
 
 // Run-29 Fix #4 — synthesis_workflow atom: surface ownership +
 // authoring order (IG-mechanisms first, yaml-comment-WHY-choices
-// second). Refinement suspects (criterion-6-ig-yamlcomment-dup) is the
+// second). Refinement suspects (ig-yamlcomment-dup) is the
 // defense-in-depth detector tested in refinement_suspects_run29_test.go.
 
 func TestSynthesisWorkflowAtom_AuthoringOrderSection_Present(t *testing.T) {

@@ -478,8 +478,8 @@ func writePromptCloseFooter(b *strings.Builder, kind BriefKind, codebase string,
 		b.WriteString("mode=replace`, re-call until ok:true, then terminate.\n")
 	case BriefRefinement:
 		b.WriteString("When you've refined every fragment where you can cite the\n")
-		b.WriteString("violated rubric criterion, the exact fragment, and the\n")
-		b.WriteString("preserving edit, call\n\n")
+		b.WriteString("violated rule (from `derived_rules.md`), the exact fragment,\n")
+		b.WriteString("and the preserving edit, call\n\n")
 		b.WriteString("    zerops_recipe action=complete-phase phase=refinement\n\n")
 		b.WriteString("to close the run. Each `record-fragment mode=replace` you fire\n")
 		b.WriteString("at this phase is wrapped in a snapshot/restore primitive — if\n")
