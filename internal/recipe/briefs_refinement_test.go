@@ -613,11 +613,12 @@ func TestRefinementBrief_NoResidualRubricLanguage(t *testing.T) {
 		}
 	}
 	// And the multi-file path must hold the same shape — exercise it via
-	// the multi-file composer with an outputRoot tempdir.
+	// the exported multi-file composer (the production-facing entry; cmd/
+	// zcp-recipe-sim/refine.go uses this variant) with an outputRoot tempdir.
 	outRoot := t.TempDir()
-	mf, err := buildRefinementBriefMultiFile(plan, nil, outRoot, nil, outRoot)
+	mf, err := BuildRefinementBriefMultiFile(plan, nil, outRoot, nil, outRoot, "", "")
 	if err != nil {
-		t.Fatalf("buildRefinementBriefMultiFile: %v", err)
+		t.Fatalf("BuildRefinementBriefMultiFile: %v", err)
 	}
 	var combined strings.Builder
 	for _, p := range mf.PartPaths {
