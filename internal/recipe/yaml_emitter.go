@@ -239,10 +239,16 @@ func writeWorkspaceRuntimeDev(b *strings.Builder, cb Codebase, tier Tier) {
 // writeWorkspaceRuntimeStage emits a stage runtime slot in workspace
 // shape. Stage services omit startWithoutCode — they wait at
 // READY_TO_DEPLOY until the first cross-deploy from dev.
+//
+// Stage runs the prod-build artifact, so `type` is the codebase's
+// prod runtime base — for build/run-asymmetric codebases (Vite SPA:
+// nodejs build, static run) ProdRuntimeBase carries `static`; the
+// symmetric case (NestJS / Laravel) falls back to BaseRuntime via
+// prodRuntimeType.
 func writeWorkspaceRuntimeStage(b *strings.Builder, cb Codebase, tier Tier) {
 	host := cb.Hostname + "stage"
 	fmt.Fprintf(b, "  - hostname: %s\n", host)
-	fmt.Fprintf(b, "    type: %s\n", cb.BaseRuntime)
+	fmt.Fprintf(b, "    type: %s\n", prodRuntimeType(cb))
 	if cb.Role == RoleAPI {
 		b.WriteString("    priority: 5\n")
 	}
@@ -336,7 +342,9 @@ func writeRuntimeStage(b *strings.Builder, plan *Plan, cb Codebase, tier Tier, c
 	}
 	writeComment(b, comment, "  ")
 	fmt.Fprintf(b, "  - hostname: %s\n", host)
-	fmt.Fprintf(b, "    type: %s\n", cb.BaseRuntime)
+	// Stage runs the prod-build artifact — see prodRuntimeType
+	// (Vite-SPA asymmetry: build nodejs@22, run static).
+	fmt.Fprintf(b, "    type: %s\n", prodRuntimeType(cb))
 	if cb.Role == RoleAPI {
 		b.WriteString("    priority: 5\n")
 	}
@@ -354,7 +362,10 @@ func writeRuntimeStage(b *strings.Builder, plan *Plan, cb Codebase, tier Tier, c
 func writeRuntimeSingle(b *strings.Builder, plan *Plan, cb Codebase, tier Tier, comments map[string]string) {
 	writeComment(b, comments[cb.Hostname], "  ")
 	fmt.Fprintf(b, "  - hostname: %s\n", cb.Hostname)
-	fmt.Fprintf(b, "    type: %s\n", cb.BaseRuntime)
+	// Single tier-2..5 slot runs the prod-build artifact — see
+	// prodRuntimeType (Vite-SPA asymmetry: build nodejs@22, run
+	// static).
+	fmt.Fprintf(b, "    type: %s\n", prodRuntimeType(cb))
 	if cb.Role == RoleAPI {
 		b.WriteString("    priority: 5\n")
 	}
@@ -472,6 +483,26 @@ func runtimeRepoSuffix(plan *Plan, cb Codebase) string {
 // base runtime — dev containers use the same family as stage/prod, only
 // zeropsSetup differs.
 func devRuntimeType(cb Codebase) string { return cb.BaseRuntime }
+
+// prodRuntimeType returns the runtime identifier for a codebase's
+// prod-deployed slot — the value that lands on `services[].type` in
+// the deliverable import.yaml AND on the workspace stage slot. When
+// the codebase's prod `run.base` differs from the build base (Vite
+// SPA: build with nodejs@22, run on `static`), ProdRuntimeBase
+// carries the prod base and we use it; the symmetric case (build
+// base == prod runtime) leaves ProdRuntimeBase empty and we fall
+// back to BaseRuntime.
+//
+// Without this asymmetry handling, a Vite-SPA recipe declares
+// `type: nodejs@22` in stage import.yaml — the deploy boots a
+// nodejs runtime that has no `start` command and idles until
+// readinessCheck times out. Run-32 dogfood evidence.
+func prodRuntimeType(cb Codebase) string {
+	if cb.ProdRuntimeBase != "" {
+		return cb.ProdRuntimeBase
+	}
+	return cb.BaseRuntime
+}
 
 // isRuntimeShared returns true when this codebase shares its source with
 // another (the host). Shared runtime workers skip their own dev slot

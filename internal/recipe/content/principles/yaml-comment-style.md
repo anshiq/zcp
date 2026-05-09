@@ -2,6 +2,37 @@
 
 ASCII `#` only, one hash per line, one space after, then prose.
 
+## Comment density — aim for ~35%, not "every directive"
+
+yaml comments justify DECISIONS THIS RECIPE MADE. They are not field
+documentation (the field name says what; the docs say how). Aim for
+~35% comment-line density (1 line of comment per 2-3 lines of yaml on
+average). The goldens consistently hold around 36%; run-32 shipped
+56-63% and the porter waded through prose to find yaml.
+
+**Comment the non-obvious only.** If the directive's purpose is
+obvious from its name + value, the comment is noise. `os: ubuntu`,
+`cache: [node_modules]`, `enableSubdomainAccess: true` need no
+rationale at the field site (subdomain access is named in the env
+intro; cache survives between builds is the field's literal name).
+
+**Don't paragraph-defend every field.** A 4-7 line essay defending
+`npm ci` over `npm install` is below-bar — the porter doesn't need a
+treatise on lockfile semantics to read the build commands. One
+sentence naming the decision suffices: *"`npm ci` for reproducible
+builds — fails fast on lockfile drift."*
+
+**Don't restate what the field does.** *"`readinessCheck` blocks
+traffic until the new container responds"* — the field name says
+that. Comment instead with the recipe-specific decision: *"`/api/health`
+is the readiness path because it doesn't touch the DB — readiness
+shouldn't gate on a downstream service."*
+
+**The signal-vs-noise test.** Read the yaml without the comment. If
+the porter would still know what's happening (field name + value
+self-explain), the comment is redundant — drop it. If the porter
+would wonder *why this value*, the comment earns its line.
+
 ## The shape
 
 Each comment is a **multi-line block**. Each line carries up to ~65
@@ -27,7 +58,20 @@ Short labels (≤40 chars) pass unconditionally — `# Base image`,
 
 ## GOOD vs BAD — the same content authored two ways
 
-### GOOD (multi-line wrap, ~60 chars per line, paragraph break, voice)
+### GOOD (~38% density: 3 comment lines / 5 yaml lines)
+
+```yaml
+# Aliased to stable own-keys so application code reads its own
+# names — swap a managed service later with a yaml-only edit.
+# S3_REGION is required by the SDK; value is irrelevant on Zerops.
+envVariables:
+  DB_HOST: ${db_hostname}
+  CACHE_HOST: ${cache_hostname}
+  NATS_HOST: ${broker_hostname}
+  S3_REGION: us-east-1
+```
+
+### BAD (8-line essay + empty `#` separator: 62% density, paragraph-defends every field)
 
 ```yaml
 # Cross-service refs (db_*, cache_*, broker_*) re-aliased under
@@ -40,27 +84,19 @@ Short labels (≤40 chars) pass unconditionally — `# Base image`,
 # be set or the SDK refuses to construct.
 envVariables:
   DB_HOST: ${db_hostname}
-  CACHE_HOST: ${cache_hostname}
-  NATS_HOST: ${broker_hostname}
-  S3_REGION: us-east-1
-```
-
-### BAD (one long line + empty `#` separator + another long line)
-
-```yaml
-# Cross-service refs (db_*, cache_*, broker_*) re-aliased under stable own-keys (DB_HOST, CACHE_HOST, NATS_HOST, etc.) so the application code reads its own names — swap a managed service later with a yaml-only edit, no code rewrite.
-# 
-# Replace S3_REGION with whatever your library expects; the value is irrelevant for the platform's S3-compatible storage but must be set or the SDK refuses to construct.
-envVariables:
   ...
 ```
 
-Same words, but the BAD shape is one ~400-char line followed by an
-empty `#` followed by another long line. The browser / file viewer
-soft-wraps it, but it reads as a wall of prose, not a paragraph.
-The empty `#` separator with no content is also wrong — the GOOD
-shape uses `#` as a paragraph separator BETWEEN body lines, not as
-a decorative gap.
+Same teaching, twice the prose. The decision is "alias under own
+keys" + "S3_REGION must be set"; readers don't need a treatise on
+swap-without-code-rewrite to extract that. Drop the
+parenthetical enumerations and the "in case you're wondering"
+qualifiers; lead with the decision in one sentence.
+
+**Also forbidden — single-line wall of prose.** A 400-char line
+that happens to start with `#` is not a comment block; the
+viewer soft-wraps it but it reads as a paragraph, not as
+field-adjacent rationale. Wrap to ~65 chars per line.
 
 ## Anti-patterns to NOT produce
 

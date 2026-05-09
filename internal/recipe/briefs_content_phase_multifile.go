@@ -388,6 +388,17 @@ func buildRefinementBriefMultiFileWithFraming(plan *Plan, parent *ParentRecipe, 
 		return Brief{}, err
 	}
 
+	// Part 3b — derived rules atom (run-32 phase 2). Golden-grounded
+	// principle-shaped scoring substrate (~10 KB) extracted from
+	// laravel-jetstream + laravel-showcase. Own part because Part 3 is
+	// already at PerPartTokenCeiling with the rubric alone.
+	if err := w.StartPart("rules-from-goldens", "golden-grounded rule substrate — principle-shaped scoring rules"); err != nil {
+		return Brief{}, err
+	}
+	if err := w.WriteOptionalAtom("briefs/refinement/derived_rules.md"); err != nil {
+		return Brief{}, err
+	}
+
 	// Part 4 — fetchable references + stitched-output pointer block.
 	if err := w.StartPart("references", "fetchable reference catalog + stitched-output pointer block"); err != nil {
 		return Brief{}, err
@@ -466,7 +477,12 @@ func writeSynthesisWorkflowBlockToPart(w *partWriter) error {
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString("### Citation guides for this recipe\n\n")
+	// Run-32 Step 3 — relabel from "Citation guides for this recipe" to
+	// lookup-key list with "never surface in published content" framing.
+	// Closes the Pattern #2 priming vector (English-cased slug
+	// verbalization). Mirrored in briefs_content_phase.go.
+	b.WriteString("### `zerops_knowledge` lookup keys (internal taxonomy — NEVER surface in published content)\n\n")
+	b.WriteString("Use these slugs as the `query=` value when calling `zerops_knowledge`. They identify the embedded knowledge corpus topics; they are NOT terms the porter recognizes. In published prose, link text must name the SUBJECT, not the lookup key. Forbidden in any rendered content: backticked slug, slug-in-link-text, or English-cased translation (`[managed NATS service]`, `[Zerops env-var model]`).\n\n")
 	for _, g := range guides {
 		fmt.Fprintf(&b, "- `%s`\n", g)
 	}

@@ -179,6 +179,27 @@ func TestEmittedTierDecisionFacts_NilPlan_Empty(t *testing.T) {
 	}
 }
 
+// Run-32 F-B — engine populates Why on tier_decision shells at emit
+// time so downstream tier-intro rendering reads structured rationale
+// instead of improvising from FieldPath/ChosenValue. Captured run-32
+// shipped 10/10 tier_decision shells with Why=null (Counter #6 = 0%);
+// regression guard ensures the fix doesn't silently revert.
+func TestEmittedTierDecisionFacts_PopulatesWhy(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{Services: []Service{
+		{Kind: ServiceKindManaged, Hostname: "db", Type: "postgresql@18", SupportsHA: true},
+	}}
+	facts := EmittedTierDecisionFacts(plan)
+	if len(facts) == 0 {
+		t.Fatal("expected at least one tier_decision shell")
+	}
+	for _, f := range facts {
+		if f.Why == "" {
+			t.Errorf("tier_decision shell %q has empty Why — engine emit must populate it", f.Topic)
+		}
+	}
+}
+
 // factTopics renders a facts slice as topic strings for diagnostic output.
 // Helper retained from prior shell tests so error messages stay readable.
 func factTopics(facts []FactRecord) []string {

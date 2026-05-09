@@ -96,6 +96,14 @@ func CodebaseScaffoldGates() []Gate {
 		// non-empty `.gitignore`; closes the run-27 workerdev leak that
 		// shipped 242 node_modules dirs into the recipe deliverable.
 		{Name: "gitignore-present", Run: gateGitignorePresent},
+		// Run-32 Step 2 — cross-codebase env-var coherence (detection
+		// only, SeverityNotice). Detects same-source mismatches across
+		// sibling codebases (apidev `S3_ACCESS_KEY_ID` vs workerdev
+		// `S3_KEY` for `${storage_accessKeyId}`). Surfaces a notice so
+		// the scaffold sub-agent sees the drift; refusal-side enforcement
+		// lands in a follow-up once the scaffold contract has a place
+		// to publish the cross-codebase env-var contract.
+		{Name: "cross-codebase-env-coherence", Run: gateCrossCodebaseEnvCoherence},
 	}
 }
 

@@ -90,11 +90,15 @@ func TestNounPhraseSlugCitation_CatchesRun19DominantShapes(t *testing.T) {
 		{"`<slug>` reference documents …",
 			"The `env-var-model` reference documents alias shadowing.",
 			true},
-		// Legitimate inline-prose citations — no backticks around the
-		// slug, full mechanism words: must NOT match.
-		{"Inline prose without backticked slug — legitimate",
+		// The validator only catches backticked-slug-as-noun citations.
+		// Un-backticked topic-name handwaves ("the X guide on Zerops
+		// docs covers Y") slip past this regex, but they're below-bar
+		// per the rubric's Criterion 3 (forbidden middle ground — porter
+		// has no clickable destination). The brief teaches against them;
+		// this regex doesn't have to.
+		{"Topic-name handwave (rolling-deploys) — slips this regex (caught at rubric level)",
 			"see the rolling-deploys guide on Zerops docs", false},
-		{"Inline prose with mechanism phrase — legitimate",
+		{"Topic-name handwave (env-var-model) — slips this regex (caught at rubric level)",
 			"the env-var-model guide covers cross-service auto-injection", false},
 		{"Plain code reference (`foo`) — legitimate",
 			"the `process.env.FOO` env var resolves at runtime", false},
@@ -123,7 +127,7 @@ func TestNounPhraseSlugCitation_RefusalSurfaces(t *testing.T) {
 	t.Parallel()
 
 	body := "The Zerops `rolling-deploys` reference covers SIGTERM ordering."
-	wantSubstrings := []string{"noun-phrase slug citation", "mechanism, not by slug", "Spec §216"}
+	wantSubstrings := []string{"noun-phrase slug citation", "real markdown link", "forbidden middle ground", "Spec §216"}
 
 	t.Run("kbBullet", func(t *testing.T) {
 		t.Parallel()

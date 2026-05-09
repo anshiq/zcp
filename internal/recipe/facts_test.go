@@ -305,6 +305,7 @@ func TestFactRecord_Validate_TierDecision_RequiresFields(t *testing.T) {
 		Tier:        4,
 		FieldPath:   "services[name=db].mode",
 		ChosenValue: "NON_HA",
+		Why:         "Tier 4 keeps db NON_HA — single-region prod tolerates the failover gap to halve cost.",
 	}
 	if err := full.Validate(); err != nil {
 		t.Fatalf("full tier_decision should validate: %v", err)
@@ -321,6 +322,8 @@ func TestFactRecord_Validate_TierDecision_RequiresFields(t *testing.T) {
 		{"tier-out-of-range-too-high", func(f *FactRecord) { f.Tier = 6 }},
 		{"fieldPath", func(f *FactRecord) { f.FieldPath = "" }},
 		{"chosenValue", func(f *FactRecord) { f.ChosenValue = "" }},
+		// Run-32 F-B — Why is load-bearing for downstream tier-intro rendering.
+		{"why", func(f *FactRecord) { f.Why = "" }},
 	}
 	for _, tc := range cases {
 		t.Run("missing="+tc.field, func(t *testing.T) {
@@ -346,6 +349,7 @@ func TestFactRecord_Validate_TierDecision_TierZero_Accepted(t *testing.T) {
 		Tier:        0,
 		FieldPath:   "services[name=db].mode",
 		ChosenValue: "NON_HA",
+		Why:         "Tier 0 (AI Agent) declares NON_HA across managed services — agents need a deployable target, not redundancy.",
 	}
 	if err := f.Validate(); err != nil {
 		t.Errorf("Tier 0 (AI Agent) should be a valid tier; validator rejected it: %v", err)
@@ -519,6 +523,7 @@ func TestFactsLog_RoundTrip_NewKindRecords(t *testing.T) {
 			FieldPath:   "services[name=db].mode",
 			ChosenValue: "NON_HA",
 			TierContext: "Tier 4 audience: small-prod single-region.",
+			Why:         "Tier 4 keeps db NON_HA — single-region prod tolerates the failover gap to halve cost.",
 			Scope:       "env/4/services.db",
 		},
 		{
@@ -696,5 +701,41 @@ func TestClassifyWithNotice_NewKind_EarlyReturn(t *testing.T) {
 	}
 	if _, notice := ClassifyWithNotice(legacy); notice != "" {
 		t.Errorf("Kind=\"\" platform-trap should not produce a notice when classifying clean: notice=%q", notice)
+	}
+}
+
+// Run-32 F-D — negation fact kind validation. Records a deliberate
+// absence (codebase doesn't consume service / surface). Required fields:
+// Service (the absent subject), Scope (codebase scope), Why (rationale).
+func TestFactRecord_Validate_Negation_RequiresFields(t *testing.T) {
+	t.Parallel()
+	full := FactRecord{
+		Topic:   "worker-no-postgres",
+		Kind:    FactKindNegation,
+		Service: "db",
+		Scope:   "worker",
+		Why:     "Worker codebase consumes only NATS + Valkey + storage; never imports TypeOrmModule. Engine should skip DB env-var wiring for this codebase.",
+	}
+	if err := full.Validate(); err != nil {
+		t.Fatalf("full negation should validate: %v", err)
+	}
+	cases := []struct {
+		field string
+		mut   func(*FactRecord)
+	}{
+		{"topic", func(f *FactRecord) { f.Topic = "" }},
+		{"service", func(f *FactRecord) { f.Service = "" }},
+		{"scope", func(f *FactRecord) { f.Scope = "" }},
+		{"why", func(f *FactRecord) { f.Why = "" }},
+	}
+	for _, tc := range cases {
+		t.Run("missing="+tc.field, func(t *testing.T) {
+			t.Parallel()
+			f := full
+			tc.mut(&f)
+			if err := f.Validate(); err == nil {
+				t.Errorf("expected error for missing %q", tc.field)
+			}
+		})
 	}
 }

@@ -100,16 +100,23 @@ func EmittedTierDecisionFacts(plan *Plan) []FactRecord {
 			if change.Field == "ServiceMode" {
 				continue
 			}
+			tierContext := "Tier " + tierIndexStr(to.Index) + " (" + to.Label + ") — " + change.Field + " moves " + change.From + " → " + change.To + "."
 			out = append(out, FactRecord{
-				Topic:            "tier-" + tierIndexStr(to.Index) + "-" + tierFieldSlug(change.Field),
-				Kind:             FactKindTierDecision,
-				Scope:            "env/" + tierIndexStr(to.Index),
-				Phase:            "research",
-				Tier:             to.Index,
-				FieldPath:        change.Field,
-				ChosenValue:      change.To,
-				Alternatives:     change.From + " (at tier " + tierIndexStr(from.Index) + ")",
-				TierContext:      "Tier " + tierIndexStr(to.Index) + " (" + to.Label + ") — " + change.Field + " moves " + change.From + " → " + change.To + ".",
+				Topic:        "tier-" + tierIndexStr(to.Index) + "-" + tierFieldSlug(change.Field),
+				Kind:         FactKindTierDecision,
+				Scope:        "env/" + tierIndexStr(to.Index),
+				Phase:        "research",
+				Tier:         to.Index,
+				FieldPath:    change.Field,
+				ChosenValue:  change.To,
+				Alternatives: change.From + " (at tier " + tierIndexStr(from.Index) + ")",
+				TierContext:  tierContext,
+				// Run-32 F-B — populate Why with derived porter-rationale at
+				// engine-emit time so tier intros can render rationale instead
+				// of improvising from FieldPath/ChosenValue. fill-fact-slot can
+				// extend; null Why was the source of Defect #13 (yaml-field
+				// jargon in tier intros).
+				Why:              tierContext,
 				CandidateClass:   "scaffold-decision",
 				CandidateSurface: "ENV_IMPORT_COMMENTS",
 				CandidateHeading: change.Field + " at tier " + tierIndexStr(to.Index),
@@ -119,6 +126,7 @@ func EmittedTierDecisionFacts(plan *Plan) []FactRecord {
 
 		// Per-service mode deltas (the §5.3 helper).
 		for _, delta := range TierServiceModeDelta(from, to, plan) {
+			tierContext := "Tier " + tierIndexStr(to.Index) + " (" + to.Label + ") — " + delta.Service + " mode moves " + delta.From + " → " + delta.To + "."
 			out = append(out, FactRecord{
 				Topic:            "tier-" + tierIndexStr(to.Index) + "-" + delta.Service + "-mode",
 				Kind:             FactKindTierDecision,
@@ -129,7 +137,8 @@ func EmittedTierDecisionFacts(plan *Plan) []FactRecord {
 				FieldPath:        "services[name=" + delta.Service + "].mode",
 				ChosenValue:      delta.To,
 				Alternatives:     delta.From + " (at tier " + tierIndexStr(from.Index) + ")",
-				TierContext:      "Tier " + tierIndexStr(to.Index) + " (" + to.Label + ") — " + delta.Service + " mode moves " + delta.From + " → " + delta.To + ".",
+				TierContext:      tierContext,
+				Why:              tierContext, // Run-32 F-B — see whole-tier emit above.
 				CandidateClass:   "scaffold-decision",
 				CandidateSurface: "ENV_IMPORT_COMMENTS",
 				CandidateHeading: delta.Service + " " + delta.To + " at tier " + tierIndexStr(to.Index),

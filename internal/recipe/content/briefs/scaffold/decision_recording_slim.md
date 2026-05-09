@@ -73,9 +73,14 @@ guide.
   kind: porter_change
   why: NestJS app.listen(port) binds 127.0.0.1; L7 needs 0.0.0.0
   candidateClass: platform-invariant
-  candidateSurface: codebase-knowledge-base
+  candidateSurface: CODEBASE_KB   # canonical UPPER_SNAKE form
   citationGuide: http-support   # ← maps to a published guide id
 ```
+
+`candidateSurface` must be one of: `ROOT_README`, `ENV_README`,
+`ENV_IMPORT_COMMENTS`, `CODEBASE_IG`, `CODEBASE_KB`,
+`CODEBASE_CLAUDE`, `CODEBASE_ZEROPS_COMMENTS`. `record-fact` refuses
+other spellings.
 
 The list of valid `citationGuide` ids is in the scaffold brief's
 "Citation map" section (built from `CitationMap` in

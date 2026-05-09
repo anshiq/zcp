@@ -112,8 +112,15 @@ func TestBuildCodebaseContentBrief_ThreadsCitationGuides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildCodebaseContentBrief: %v", err)
 	}
-	if !strings.Contains(brief.Body, "### Citation guides for this recipe") {
-		t.Error("brief missing citation-guides section header")
+	// Run-32 Step 3 — header relabeled from "Citation guides for this
+	// recipe" (which read like a menu of options and primed Pattern #2
+	// slug verbalization) to a lookup-key list with explicit
+	// "never surface in published content" framing.
+	if !strings.Contains(brief.Body, "`zerops_knowledge` lookup keys") {
+		t.Error("brief missing zerops_knowledge lookup-keys section header (run-32 Step 3 relabel)")
+	}
+	if !strings.Contains(brief.Body, "NEVER surface in published content") {
+		t.Error("brief missing 'NEVER surface' framing on citation-guides")
 	}
 	// At least the well-known guides referenced throughout the run-17
 	// brief should appear in the threaded list.

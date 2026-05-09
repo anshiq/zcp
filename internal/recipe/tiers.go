@@ -31,23 +31,24 @@ type Tier struct {
 
 var tiers = [6]Tier{
 	{
-		// Run-23 fix-9 — audience-first label. Folder name (the
-		// spec-fixed "0 — AI Agent" published path) keeps its canonical
-		// shape; the audience Label that lands in tier README headings,
-		// brief intros, and engine fact strings names WHO the tier is
-		// for (porter brings coding agents into the dev loop), not
-		// WHAT the tier is.
-		Index: 0, Folder: "0 — AI Agent", Label: "Include Coding Agents", Suffix: "agent",
+		// Run-32 fix — canonical taxonomy. Earlier "Include Coding
+		// Agents" / "Include Cloud IDE" marketing labels (run-23 fix-9)
+		// drifted from the porter-facing names goldens use. Goldens
+		// (laravel-jetstream/README.md, recipes-side reference) use the
+		// short canonical "AI agent" / "Remote (CDE)" / etc. Folder
+		// path stays canonical too; Label tracks Folder's audience
+		// noun without the marketing prefix.
+		Index: 0, Folder: "0 — AI Agent", Label: "AI agent", Suffix: "agent",
 		RunsDevContainer: true, ServiceMode: "NON_HA",
 		RuntimeMinContainers: 1,
 		RuntimeMinRAM:        0.5, ManagedMinRAM: 0.25,
 	},
 	{
-		// Run-23 fix-9 — audience-first label. Folder stays canonical;
-		// audience Label names the developer affordance (porter brings
-		// a Cloud IDE into the loop, e.g. VS Code Remote / Cursor over
-		// SSH) rather than the protocol acronym ("Remote (CDE)").
-		Index: 1, Folder: "1 — Remote (CDE)", Label: "Include Cloud IDE", Suffix: "remote",
+		// Run-32 fix — canonical "Remote (CDE)" matches Folder; the
+		// earlier "Include Cloud IDE" run-23 marketing label is
+		// dropped. Porters scanning across recipes see consistent
+		// taxonomy.
+		Index: 1, Folder: "1 — Remote (CDE)", Label: "Remote (CDE)", Suffix: "remote",
 		RunsDevContainer: true, ServiceMode: "NON_HA",
 		RuntimeMinContainers: 1,
 		RuntimeMinRAM:        0.5, ManagedMinRAM: 0.25,

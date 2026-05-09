@@ -87,7 +87,14 @@ the multi-container failure shape.
 
 ### How to score
 
-Walk every KB bullet stem (the text between `**...**`):
+Walk every KB entry's stem-equivalent. Two KB shapes are valid; the
+stem-equivalent depends on shape:
+
+- **Flat bullet** — stem is the text between `**...**`.
+- **H3 sub-heading + paragraphs** — stem is the H3 heading text
+  (everything after `### `).
+
+Apply the same signal table to both:
 
 | Signal in stem | Score impact |
 |---|---|
@@ -98,8 +105,13 @@ Walk every KB bullet stem (the text between `**...**`):
 | Body opens with quoted error string OR observable wrong state | +0.5 |
 | Stem is recipe author directive only (no symptom signal) AND body's first sentence does NOT carry observable error | -1.5 |
 
-Aggregate per-bullet score: clamp to [7.0, 9.0]; surface score is the
-mean across all bullets.
+Aggregate per-entry score: clamp to [7.0, 9.0]; surface score is the
+mean across all entries.
+
+Shape is not scored on Criterion 1 — picking flat vs H3 is a
+substance call (short trap → flat; multi-paragraph mechanism + porter
+recovery + optional CAUTION callout → H3). Both shapes pass when the
+stem-equivalent carries the same symptom-first signals.
 
 Apply the same scoring to IG H3 headings (Surface 4) — fewer signals
 typically present (IG H3s often name the platform mechanism rather
@@ -223,11 +235,31 @@ codebase intro) are scored `n/a` and excluded from aggregate.
 
 **Why this matters**: the engine's `citations[]` field on a fragment
 manifest is invisible to the published reader. Porters read the
-markdown. If a KB bullet covers a topic on the Citation Map but
-doesn't *name* the relevant Zerops guide in the prose, the porter
-doesn't know there's a deeper resource to consult.
+markdown. When a topic on the Citation Map appears in a KB or IG body,
+the body must give the porter a clickable destination — a real
+markdown link with porter-readable descriptive link text — OR finish
+teaching the topic in-body so no link is needed. Naming the guide by
+topic without a URL ("the X guide on Zerops docs covers Y") leaves
+the porter with a pointer they can't follow.
 
-### 7.0 anchor — zero inline guide refs
+**Equally bad: using the internal `zerops_knowledge` corpus slug ID
+(`init-commands`, `env-var-model`, `managed-services-nats`,
+`rolling-deploys`, `cross-service-refs`, `object-storage`,
+`http-support`) as the link text.** The slug is the recipe-authoring
+engine's lookup vocabulary; porters never interact with that corpus
+and the slug ID isn't a porter-recognizable concept. A `[init-commands](url)`
+link with a real URL is still leakage — same forbidden middle ground
+with a URL bolted on.
+
+The goldens consistently use descriptive link text
+(`[Laravel documentation](https://laravel.com/docs/...)`,
+`[step-by-step tutorial](https://docs.zerops.io/...)`,
+`[zsc health-check](https://docs.zerops.io/...)`,
+`[multi-container setups](https://laravel.com/docs/...)`) or complete
+the explanation locally. Not one golden link uses a corpus slug as
+its visible label.
+
+### 7.0 anchor — zero citation, no URL, no in-body completion
 
 > **Decompose execOnce keys into migrate + seed** — A single combined
 > key marks the whole script succeeded even when the seed step
@@ -236,10 +268,11 @@ doesn't know there's a deeper resource to consult.
 > failure does not burn the migrate key.
 
 Topic ("init-commands per-deploy key shape") is on the Citation Map.
-Body never names the `init-commands` guide. Porter doesn't know there's
-a guide.
+Body neither links to the docs nor finishes the teaching in-body
+(the platform mechanism — per-deploy ledger, in-script-guard pitfall
+— is implied but not actually taught). Porter has no path forward.
 
-### 8.5 anchor — inline cite present, cite-by-name pattern
+### 7.0 anchor variant — topic-name handwave (forbidden middle ground)
 
 > **Decompose execOnce keys into migrate + seed** — A single combined
 > key marks the whole script succeeded even when the seed step
@@ -249,51 +282,123 @@ a guide.
 > only the failing step. The Zerops `init-commands` reference covers
 > per-deploy key shape and the in-script-guard pitfall.
 
-Final sentence names the guide (`init-commands`) and tells the porter
-what's in it (per-deploy key shape + in-script-guard pitfall). Cite
-is natural prose, not a stamped tag.
+Same shape as run-32's 25 instances. The trailing sentence names a
+guide by topic but provides no URL. Porter reads "the X reference
+covers Y" and has nowhere to click. This is the forbidden middle
+ground — score it 7.0, not 8.5.
 
-### 9.0 anchor — every Citation Map topic in body has a guide name + the cite tells the porter the *application-specific corollary*
+### 7.0 anchor variant — slug-name as link text (forbidden, even with URL)
 
 > **Decompose execOnce keys into migrate + seed** — A single combined
 > key marks the whole script succeeded even when the seed step
 > crashed, leaving a half-migrated state. Use two per-deploy keys
 > (`${appVersionId}-migrate` and `${appVersionId}-seed`) so a seed
-> failure does not burn the migrate key. The `init-commands` guide
-> covers per-deploy key shape and the in-script-guard pitfall; the
-> application-specific corollary here is that decomposing the keys
-> across the migrator vs the seeder lets you re-fire the seed
-> independently when its dataset changes — without re-applying
-> migrations that have already settled.
+> failure does not burn the migrate key. The
+> [init-commands](https://docs.zerops.io/zerops-yaml/specification#initcommands-)
+> reference covers per-deploy key shape and the in-script-guard
+> pitfall.
 
-Cite names the guide AND draws the line between the guide's general
-teaching and this recipe's specific decomposition pattern. Cite-by-
-name AND application-specific corollary AND the corollary is
-load-bearing (the porter learns *why this recipe* makes the choice
-the guide describes).
+Real URL, real markdown link — but the visible link text
+(`init-commands`) is the internal `zerops_knowledge` corpus slug ID
+the recipe-authoring engine uses as a lookup key. Porters never
+interact with that corpus and the slug isn't a porter-readable
+concept. The link is the topic-name handwave with a URL bolted on
+— score it 7.0, not 8.5.
+
+### 8.5 anchor — in-body completion (preferred shape for Zerops mechanics)
+
+> **Decompose execOnce keys into migrate + seed** — Zerops stamps
+> each `initCommands` key value into a per-deploy ledger and skips a
+> key whose value has already run; a single combined key marks the
+> whole script succeeded even when the seed step crashed, leaving a
+> half-migrated state. Use two per-deploy keys
+> (`${appVersionId}-migrate` and `${appVersionId}-seed`) so a seed
+> failure does not burn the migrate key — the next redeploy re-fires
+> only the failing step.
+
+The body teaches the platform mechanism (per-deploy ledger,
+in-script-guard semantics) directly. The porter has no need to leave
+the page.
+
+### 8.5 anchor — descriptive-labeled link variant
+
+> **Decompose execOnce keys into migrate + seed** — A single combined
+> key marks the whole script succeeded even when the seed step
+> crashed, leaving a half-migrated state. Use two per-deploy keys
+> (`${appVersionId}-migrate` and `${appVersionId}-seed`) so a seed
+> failure does not burn the migrate key. The
+> [per-deploy `initCommands` reference](https://docs.zerops.io/zerops-yaml/specification#initcommands-)
+> covers key shape and the in-script-guard pitfall.
+
+Same URL as the 7.0 variant above; the difference is the link text.
+*"per-deploy `initCommands` reference"* names the porter-recognizable
+concept (the directive's name and its semantic). The internal corpus
+slug (`init-commands`) doesn't appear on the page. Use this shape
+when the body would otherwise sprawl; in-body completion remains
+the preferred shape for Zerops platform mechanics.
+
+### 9.0 anchor — application-specific corollary (in-body OR descriptive link)
+
+> **Decompose execOnce keys into migrate + seed** — A single combined
+> key marks the whole script succeeded even when the seed step
+> crashed, leaving a half-migrated state. Use two per-deploy keys
+> (`${appVersionId}-migrate` and `${appVersionId}-seed`) so a seed
+> failure does not burn the migrate key. The
+> [per-deploy `initCommands` reference](https://docs.zerops.io/zerops-yaml/specification#initcommands-)
+> covers key shape and the in-script-guard pitfall; the corollary
+> here is that decomposing the keys across the migrator vs the
+> seeder lets you re-fire the seed independently when its dataset
+> changes — without re-applying migrations that have already
+> settled.
+
+Descriptive-labeled link AND the line between the platform's general
+teaching and this recipe's specific decomposition pattern. The
+corollary is load-bearing — the porter learns *why this recipe*
+makes the choice the platform describes. The 9.0 in-body variant
+drops the link entirely and tightens the corollary into the body
+prose.
 
 ### How to score
 
 Build the topic set: every KB bullet's stem + body opening sentence
 gets cross-referenced against `CitationMap` (defined in
 [`internal/recipe/citations.go`](../internal/recipe/citations.go) or
-equivalent). For every (bullet, citation-map-topic) match, check
-whether the bullet's body names the guide id.
+equivalent). For every (bullet, citation-map-topic) match, classify
+the body's resolution path:
 
-| Topic-on-map matches with inline cite | Score |
+- **Real markdown link with descriptive label** — body contains
+  `[descriptive label](https://...)` pointing at the relevant docs
+  URL; the visible link text is porter-readable prose
+  (`per-deploy initCommands reference`, `Zerops managed NATS service`,
+  `Laravel queues documentation`), not a corpus slug ID.
+- **In-body completion** — body teaches the platform mechanism
+  directly (no gesture at an external resource needed).
+- **Topic-name handwave** — body names the guide by topic ("the X
+  guide / reference covers Y") with no URL. Treat this as no
+  resolution.
+- **Slug-name link text** — link URL is real but the visible label
+  is an internal `zerops_knowledge` corpus slug
+  (`[init-commands](url)`, `[env-var-model](url)`,
+  `[managed-services-nats](url)`). Treat this as no resolution; it's
+  the topic-name handwave with a URL bolted on.
+- **No citation** — topic on map, body silent on the platform
+  mechanism.
+
+| Topic-on-map matches with descriptive-link OR in-body-complete | Score |
 |---|---|
 | 0% | 7.0 |
 | 1–49% | 7.5 |
 | 50–99% | 8.5 |
-| 100% AND ≥30% of cites carry the application-specific corollary phrasing | 9.0 |
+| 100% AND ≥30% of links carry the application-specific corollary phrasing | 9.0 |
 
-The "application-specific corollary" pattern: *"The X guide covers Y;
-the application-specific corollary is …"* (verbatim phrasing varies;
-the structure must be: name guide → name guide's general topic →
-distinguish recipe's specific application). Heuristic match:
-sentence containing the guide id AND containing one of "corollary",
-"specific to", "in this recipe", "applied here", or "the application-
-specific X is".
+Topic-name handwaves and slug-name link text both count as `0%` —
+they're the forbidden middle ground. The "application-specific corollary" pattern: *"The X
+[guide](url) covers Y; the application-specific corollary is …"*
+(verbatim phrasing varies; structure: real link → name guide's
+general topic → distinguish recipe's specific application).
+Heuristic match: sentence containing a markdown link to docs.zerops.io
+AND containing one of "corollary", "specific to", "in this recipe",
+"applied here", or "the application-specific X is".
 
 Surfaces where citation is inapplicable (root README, intros, yaml
 comments, CLAUDE.md) are scored `n/a`.
@@ -502,9 +607,10 @@ apidev KB #3 (symptom angle — natural-prose cross-reference):
 > subscription registers. The recommended wiring (separate
 > `user`/`pass` options with a credential-free `host:port` URL,
 > or `${broker_connectionString}` passed through unmodified) is
-> in the Integration Guide above; the `managed-services-nats`
-> guide on Zerops docs covers the cluster-failover behaviour for
-> the core pub/sub pattern this codebase uses.
+> in the Integration Guide above; the
+> [Zerops managed NATS service](https://docs.zerops.io/services/managed-services/nats)
+> reference covers the cluster-failover behaviour for the core
+> pub/sub pattern this codebase uses.
 
 apidev/zerops.yaml block comment (silent on the auth-violation
 mechanism — at most names the env-var composition):

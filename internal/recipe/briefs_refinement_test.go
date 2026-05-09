@@ -113,9 +113,14 @@ func TestBuildRefinementBrief_BodyUnderShrinkTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildRefinementBrief: %v", err)
 	}
-	const briefShrinkCap = 60 * 1024
+	// Run-32 phase 2 — soft cap raised 60→75 KB to accommodate the
+	// derived_rules.md atom (golden-grounded rule substrate added
+	// alongside embedded_rubric.md). Once dispatch tests confirm the
+	// rule substrate is the load-bearing scoring source, embedded_rubric
+	// can be retired and the cap pushed back down.
+	const briefShrinkCap = 75 * 1024
 	if brief.Bytes > briefShrinkCap {
-		t.Errorf("refinement brief %d bytes exceeds %d cap (F-24 shrink target)", brief.Bytes, briefShrinkCap)
+		t.Errorf("refinement brief %d bytes exceeds %d cap (F-24 shrink target; run-32 phase 2 raised to 75K)", brief.Bytes, briefShrinkCap)
 	}
 }
 

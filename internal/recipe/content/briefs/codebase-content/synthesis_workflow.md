@@ -97,6 +97,27 @@ The engine refuses incompatible (classification, fragmentId) pairs at
 
 Source: `docs/spec-content-surfaces.md` §349-362.
 
+## Codebase surfaces don't mention tiers
+
+The codebase README, zerops.yaml comments, KB, and IG are written ONCE
+per codebase and consumed at every tier (env-0 through env-5). Tier
+vocabulary belongs to env-content surfaces (root README, env intros,
+import.yaml comments) only.
+
+**Forbidden tokens on codebase surfaces** (case-insensitive): "tier 0"
+through "tier 5", "tier N", "the agent tier", "the CDE tier", "stage
+tier", "small-prod tier" / "small production tier", "HA tier" /
+"HA-prod tier", "production tier", "highly-available tier".
+
+If a codebase surface needs to describe tier-varying behaviour, name
+the field, not the tier — *"`minContainers: 2` in the production
+import.yaml gives the worker rolling-deploy headroom"*, not *"the
+worker runs minContainers: 2 at the small-prod tier"*.
+
+Genuinely tier-shaped facts (e.g. shared-codebase NATS subject naming
+differs at HA-prod) record on env-content (Surface 3 import.yaml
+comments at the HA-prod tier), not on codebase surfaces.
+
 ## Surface ownership — mechanisms on IG, field-choices on yaml comments
 
 The four codebase-content fragments do NOT share content equally. Each
@@ -281,24 +302,16 @@ why; you can change it for your needs" — not "this could maybe be one
 option among many."
 
 **Authoring-tool words leak agent perspective into porter content.**
-The porter operates with framework-canonical commands (`npm`,
-`composer`, `ssh`, `git`); they never invoke `zerops_dev_server`,
-`zerops_deploy`, `zcli`, or "the agent". When a comment needs to
-explain a dev-loop affordance, name the **outcome** + **canonical
-porter mechanism**, not the authoring tool that sets it up.
+The porter operates with `npm`, `composer`, `ssh`, `git`; they never
+invoke `zerops_dev_server`, `zerops_deploy`, `zcli`, or "the agent".
+Name the **outcome** + **canonical porter mechanism**, not the
+authoring tool that sets it up.
 
-**FAIL** (run-21 apidev/zerops.yaml dev start):
+**FAIL**: ``# `zsc noop --silent` keeps the container alive — the
+agent owns the long-running process via `zerops_dev_server`...`` —
+"agent owns" + "zerops_dev_server" both leak.
 
-```yaml
-# `zsc noop --silent` keeps the container alive without
-# starting the application — the agent owns the long-running
-# process via `zerops_dev_server` so code edits over SSHFS
-# don't force a full redeploy.
-```
-
-"the agent owns" + "via `zerops_dev_server`" both leak.
-
-**PASS** (laravel-showcase apidev/zerops.yaml dev start, voice-clean):
+**PASS** (laravel-showcase apidev/zerops.yaml dev start):
 
 ```yaml
 # `zsc noop --silent` keeps the container alive without binding
@@ -308,43 +321,65 @@ porter mechanism**, not the authoring tool that sets it up.
 # Code edits over SSHFS rebuild in place, no redeploy.
 ```
 
-The mechanism is named (zsc noop keeps the container alive), the
-porter's affordance is named (SSH in, run the framework's watcher),
-and no authoring-tool token appears.
+Mechanism named (zsc noop keeps container alive), porter affordance
+named (SSH in, run framework watcher), no authoring-tool token.
 
 ## Citation map (BINDING for KB and IG)
 
-When a topic appears on the Citation map AND in your KB/IG body, the
-body MUST name the guide in prose. The engine threads a `citations[]`
-field on every fragment manifest, but porters reading the published
-markdown never see it — the manifest is internal scaffolding. If the
-body doesn't *name* the guide, the porter reaches your framing without
-knowing the platform's deeper resource exists.
+When a Citation-map topic appears in your KB/IG body, the body MUST
+give the porter a path forward: complete the mechanism in-body, OR
+add a markdown link whose **link text is porter prose** (not an
+internal corpus slug ID).
 
-The full Citation guides for this recipe are listed below this atom
-(threaded by the composer when CitationMap is non-empty).
+**Internal corpus slug IDs (`env-var-model`, `init-commands`,
+`managed-services-nats`, `rolling-deploys`, `cross-service-refs`,
+`object-storage`, `http-support`)** are the recipe-engine's
+`zerops_knowledge` lookup keys. Porters never interact with that
+corpus. FORBIDDEN as: backticked nouns, topic-name handwaves with
+no URL, **link text** (`[init-commands](url)` = same leakage with
+a URL bolted on), section headings on porter-facing surfaces.
 
-**Cite-by-name pattern** — the 8.5 anchor:
+**Two acceptable shapes** — (1) **in-body completion** (preferred
+for Zerops mechanics): teach per-deploy ledger / project-scope env
+injection / L7 balancer / SIGTERM directly so the porter doesn't
+leave the page. (2) **markdown link with a descriptive label**:
+`[per-deploy initCommands](url)`, `[managed NATS service](url)`,
+`[Laravel documentation](url)`, `[Vite production build](url)`.
+Framework concerns → framework docs; Zerops mechanics → prefer
+in-body, fall back to descriptive-labeled docs.zerops.io link only
+when in-body teaching would sprawl. The jetstream golden's
+`[Laravel Jetstream]` / `[step-by-step tutorial]` /
+`[zsc health-check]` / `[multi-container setups]` are the
+calibration — never a corpus slug as link text.
 
-> *"The Zerops `init-commands` reference covers per-deploy key shape
-> and the in-script-guard pitfall."* — run-16 apidev KB
-> ("Decompose execOnce keys into migrate + seed")
+**8.5 anchor — in-body completion**:
 
-The final sentence names the guide AND tells the porter what's in the
-guide (per-deploy key shape + in-script-guard pitfall). Not "see
-init-commands"; not "(per init-commands)"; the guide id is named in
-prose.
+> *"Decompose execOnce keys into migrate + seed. Zerops stamps each
+> `key:` value into a per-deploy ledger and skips a key whose value
+> has already run; a single combined key marks the whole script
+> succeeded even when the seed step crashed. Two keys
+> (`${appVersionId}-migrate` / `${appVersionId}-seed`) re-fire only
+> the failing step."*
 
-**9.0 anchor — cite-by-name + application-specific corollary**:
+**8.5 anchor — descriptive-labeled link variant**:
 
-> *"The `init-commands` guide covers per-deploy key shape and the in-
-> script-guard pitfall; the application-specific corollary here is
-> that decomposing the keys across the migrator vs the seeder lets
-> you re-fire the seed independently when its dataset changes —
-> without re-applying migrations that have already settled."*
+> *"Decompose execOnce keys into migrate + seed so a seed failure
+> doesn't burn the migrate key. The
+> [per-deploy `initCommands` reference](https://docs.zerops.io/zerops-yaml/specification#initcommands-)
+> covers key shape and the in-script-guard pitfall."*
 
-Adds the line between the guide's general teaching and this recipe's
-specific application.
+`[init-commands](url)` with the same URL scores 7.0, not 8.5 —
+same URL, but the visible text leaks the corpus slug.
+
+**9.0 anchor** — (in-body OR descriptive link) + one sentence
+drawing the line between the platform's general mechanism and this
+recipe's application (e.g. *"the corollary here is that splitting
+the key across migrator and seeder lets you re-fire the seed
+independently when its dataset changes — without re-applying
+migrations that have already settled."*).
+
+If you don't know a real URL, complete the explanation in-body —
+don't punt to a topic name and don't substitute a corpus slug.
 
 **URL-link variant is forbidden on Surface 7** — yaml comments must
 inline the rationale. Phrases like "Read more about it here:",
@@ -463,6 +498,27 @@ If a symptom-first reshape is derivable from the fact's Why, do the
 reshape at record time. The engine's record-time slot-shape check
 refuses author-claim stems with a redirect to this atom (Tranche 2).
 
+## The IG scope test — platform-forced, not conventions
+
+Before authoring an IG H3: **if the porter ignores this IG item, does
+the deploy still succeed?** If yes, it's a convention — push to a yaml
+comment OR a KB entry. IG teaches what THE PLATFORM REQUIRES.
+
+**ARE IG items** (deploy fails without them): *"Add zerops.yaml"*;
+*"Bind to 0.0.0.0"* (L7 routes via VXLAN); *"Strip dist/ prefix in
+`deployFiles`"* (Nginx doc-root is fixed at `/var/www` on
+`base: static`).
+
+**NOT IG items**: *"Alias cross-service envs under your own keys"* —
+convention; deploys work without it (yaml comment or KB if a same-key
+shadow trap fires). *"Use predis over phpredis"* — library choice (KB:
+php-nginx lacks the C extension). *"NATS subject naming pattern"* —
+style.
+
+**Smell test.** Convention-flavored verbs: *"prefer"* / *"recommend"* /
+*"consider"* / *"adopt"*. Real IG verbs are imperative: *"add"* /
+*"bind"* / *"strip"* / *"trust"* / *"set"*.
+
 ## IG one mechanism per H3 (Surface 4)
 
 Every H3 covers exactly one platform-forced change. Fusing two or
@@ -535,42 +591,110 @@ The mechanism (CORS allowlist from env var) is right; the file
 anchor is scaffold-specific. A porter using Express, Fastify, or
 non-NestJS Node has no `src/main.ts`.
 
-**PASS** (laravel-showcase IG #2):
+**PASS** (NestJS apidev IG #2 — Node-family adapt-paths only):
 
 ```markdown
 Trust the reverse proxy so the application sees the porter's IP, not
-the L7 balancer's. Laravel: set `TrustProxies` middleware to `'*'`.
-Other frameworks: configure `trust proxy` (Express), `forwarded` (Go),
-or `RemoteIPHeader` (any).
+the L7 balancer's. NestJS (Express): `app.set('trust proxy', true)`.
+Other Node frameworks: `'trust proxy'` setting (Express),
+`trustProxy: true` option (Fastify).
 ```
 
 The mechanism (trust the reverse proxy) is named platform-side, the
-canonical config is shown in the host framework's idiom, and *adapt
-paths for other frameworks* are listed. Porter brings their code,
-porter knows where to apply.
+canonical config is shown in the host framework's idiom, and adapt
+paths stay within the codebase's language family.
+
+### Adapt-paths stay within the codebase's language family
+
+NestJS recipe → Node frameworks only (Express, Fastify). Laravel
+recipe → PHP only (Symfony, Lumen, raw PHP). Rails recipe → Ruby
+only (Sinatra, Hanami, raw Rack). Don't list Python (FastAPI,
+Django, uvicorn) / Go (`http.ListenAndServe`, `RemoteIPHeader`) /
+Rust adapt-paths in a recipe for a different language. The porter
+clones a NestJS recipe because they're working in Node — Python
+adapt-paths are noise; they don't help the porter port the teaching.
+
+**FAIL** (run-32 apidev IG #2 — cross-language slip):
+
+```markdown
+Trust the reverse proxy. NestJS: `app.set('trust proxy', true)`.
+Python (FastAPI/uvicorn): launch with `--proxy-headers`. Go:
+`r.RemoteAddr` after parsing `X-Forwarded-For`.
+```
+
+The Python and Go adapt-paths are noise — a porter on a NestJS
+codebase isn't switching to Python. Drop the cross-language listings.
 
 **Heuristic**: if your IG body names a `.ts` / `.js` / `.svelte` /
 `.php` file from the scaffold tree, replace with the platform-side
 mechanism + a one-line adapt path naming the framework feature
-("Express: `app.set('trust proxy', true)`", "any: search your
-framework's request-pipeline middleware list for the `trust-proxy`
-or `forwarded-headers` knob"). Code diffs are fine when they show the
-**framework idiom** (the `TrustProxies` middleware), not the
-**file location** (the scaffold's path to it).
+within the same language family. Code diffs are fine when they
+show the **framework idiom** (the `TrustProxies` middleware for
+Laravel; `app.set('trust proxy', true)` for Express/NestJS), not
+the **file location** (the scaffold's path to it).
+
+### IG items link to porter-recognizable config files
+
+Generic prose IG steps ("add the package", "configure the SPA")
+leave porters guessing where to make the change. Goldens link to
+porter-recognizable config files — `composer.json`, `package.json`,
+`cargo.toml`, `vite.config.ts` — using markdown link syntax:
+``[`composer.json`](composer.json)``.
+
+**FAIL**: *"Add Support For Object Storage by adding the
+league/flysystem-aws-s3-v3 package."* Porter has nowhere to start.
+
+**PASS**: *"Add [`league/flysystem-aws-s3-v3`](composer.json) and a
+new `s3` disk in [`config/filesystems.php`](config/filesystems.php)."*
+Two file anchors; porter knows what to open. Exception: when the
+framework config name IS the IG subject (*"Add zerops.yaml"*).
+
+### Post-IG concept bridge
+
+After the last IG item, include this section so porters wanting deeper
+Zerops fluency have an entry point. It sits between the IG end and the
+KB markers; goldens carry it.
+
+```markdown
+## Understand Zerops Core Concepts
+
+If you want to try integrating Zerops from scratch on a new
+<framework> project, check our
+[step-by-step tutorial](https://docs.zerops.io/frameworks/<framework>/introduction).
+```
+
+Replace `<framework>` with the codebase's framework family (laravel,
+nestjs, etc.); the Zerops docs tree mirrors the framework name.
 
 ## Step 3 — Author KB (Surface 5)
 
-For each `CandidateSurface=CODEBASE_KB` fact, emit one bullet in the
-single `codebase/<h>/knowledge-base` fragment. Format:
+For each `CandidateSurface=CODEBASE_KB` fact, emit one entry in the
+single `codebase/<h>/knowledge-base` fragment.
+
+### KB shape matches substance — flat bullet OR H3
+
+Two valid shapes; pick by substance:
+
+**1. Flat bullet** — `- **Stem** — 2-4 sentences (symptom + mechanism
++ fix).` Use for one-liner traps.
+
+**2. H3 sub-heading** — `### Topic` + 1-3 paragraphs + optional
+`> [!CAUTION]` callout + optional fenced shell example. Use when the
+mechanism spans multiple paragraphs, has a warning worth a callout,
+or has a runnable porter-recovery snippet. See
+laravel-jetstream-app/README.md `## Tips and Others` for the H3 +
+callout shape.
+
+A single KB section can mix both. Cap 8 entries (bullets + H3s
+combined). Cross-surface dedup: if IG already teaches a topic with
+code/diff, do NOT duplicate in KB.
+
+Format reference for the flat-bullet shape:
 
 ```
 - **<symptom-first or directive-tightly-mapped stem>** — 2-4 sentences
   explaining symptom + mechanism + fix at the platform level.
 ```
-
-Cap 8 bullets. Cross-surface dedup: if a topic is taught in IG (with
-code/diff), do NOT duplicate in KB. KB is for topics that DON'T have
-a codebase-side landing point.
 
 ### Pre-record classification — the 3-check discriminator
 
@@ -658,20 +782,22 @@ inline the guide name, the validator refuses.
 Mentions `MinIO`, `object-storage`, `forcePathStyle` — every one
 maps to the `object-storage` guide. None named in prose → refusal.
 
-**PASS** (run-21 worker KB, after fix):
+**PASS** (run-21 worker KB, after fix — descriptive-labeled link OR
+in-body completion; both pass):
 
 ```markdown
 - **Object-storage 403 on every request** — Zerops uses MinIO; the
   AWS SDK signs requests with virtual-hosted style by default but
   MinIO needs path style. Set `forcePathStyle: true`. The
-  `object-storage` guide covers the MinIO + region default + path-
-  style triplet for every S3 SDK family.
+  [Zerops object-storage service](https://docs.zerops.io/services/object-storage)
+  reference covers the MinIO + region default + path-style triplet
+  for every S3 SDK family.
 ```
 
-The trailing sentence names the `object-storage` guide AND tells the
-porter what's in it. The rule applies to KB only — IG already has
-its own citation rule (above), and yaml-comment fragments (Surface 7)
-follow the URL-link variant.
+Link text reads as porter prose, not the corpus slug. Equally valid:
+drop the link and finish in-body. Forbidden: topic-name handwave
+without URL, AND `[object-storage](url)` slug-name link text — same
+URL, but the visible text leaks the corpus slug.
 
 ## Step 4 — Author the whole commented zerops.yaml (Surface 7)
 
@@ -751,6 +877,31 @@ headings. Says what the codebase IS, not what Zerops does with it.
 Voice does NOT apply (factual catalog, like a top-of-README framing
 line).
 
+### The intro describes the STANDALONE APP
+
+The codebase intro frames the standalone application — framework +
+capability. The standalone app is what porters bring; they could run
+it on Heroku or bare Docker. The intro is recipe-platform-agnostic.
+
+**Anti-patterns** (recipe-internal wiring that does NOT belong in the
+intro): mount path ("Mounts under /api"); env-var alias names
+("JWT-ready via JWT_SECRET"); port number ("Runs on port 3000");
+inter-codebase coordination ("Owns the items schema, worker owns
+audit_log"); schema ownership / build-time constants; deploy wiring.
+
+**Good intro shape** — `[Framework]. [Capability list].`
+
+> *"NestJS REST API serving Items CRUD with Postgres, Redis cache,
+> NATS messaging, and S3 storage."*
+
+> *"SvelteKit SPA with auth, dashboards, and real-time updates."*
+
+> *"Background worker consuming NATS messages to process audit-log
+> writes and email dispatch."*
+
+The IG, KB, and zerops.yaml comments own the platform-side wiring
+story; the intro owns framework + capability only.
+
 ## Self-validate
 
 `zerops_recipe` is an **MCP tool** — invoke it as a JSON tool call,
@@ -772,47 +923,26 @@ re-invoking `zerops_recipe` with `action: record-fragment` and
 
 ## Friendly-authority voice scope — never on broken alternatives
 
-Friendly-authority phrasing ("Feel free to swap", "Configure this to
-use", "Bump this when") signals that an alternative path is
-supported and porter-controlled. Do NOT apply this voice to
-alternatives the scaffold or feature phase recorded as failing.
-
-If a `porter_change` fact says "Pattern A wires NATS via separate
-${broker_hostname}, ${broker_port}, ${broker_user}, ${broker_password}
-vars; Pattern B (single ${broker_connectionString}) crashes at boot
-because nats@2.29 hostPort() IPv6-misparses the auto-generated
-password" — you may NOT author "Feel free to swap to Pattern B" in
-any KB / IG / yaml-comment surface. The friendly-authority voice
-implies the alternative works; the recipe's own facts established it
-does not.
+Friendly-authority phrasing ("Feel free to swap", "Bump this when")
+signals an alternative is supported. Do NOT apply this voice to
+alternatives the scaffold or feature phase recorded as failing —
+search `zerops_recipe action=read-facts` for the topic; if a
+`porter_change` fact says the alternative fails, the friendly-
+authority template does not apply.
 
 Worked example — yaml comment:
 
 ```yaml
 # BAD — friendly-authority on a known-broken alternative.
 NATS_HOST: ${broker_hostname}
-NATS_PORT: ${broker_port}
-# Feel free to switch to Pattern B by replacing these with a
-# single NATS_URL: ${broker_connectionString}.
-NATS_USER: ${broker_user}
-NATS_PASS: ${broker_password}
+# Feel free to switch to Pattern B by replacing with a single
+# NATS_URL: ${broker_connectionString}.
 
-# GOOD — name the alternative as broken with the recipe's own
-# evidence, no friendly-authority hedge.
+# GOOD — name the alternative as broken with the recipe's evidence.
 NATS_HOST: ${broker_hostname}
-NATS_PORT: ${broker_port}
-NATS_USER: ${broker_user}
-NATS_PASS: ${broker_password}
 # Pattern A (separate vars). Pattern B (${broker_connectionString})
-# crashes at boot — nats@2.29 hostPort() IPv6-misparses the auto-
-# generated password's `-` characters by colon-count.
+# was rejected at scaffold — see facts log for the boot-crash trace.
 ```
-
-When unsure whether an alternative is broken: search the recorded
-facts (`zerops_recipe action=read-facts`) for the topic before
-authoring a "Feel free to" hedge. If a `porter_change` fact in scope
-says the alternative fails, the friendly-authority template does not
-apply.
 
 ## Cap reminders
 

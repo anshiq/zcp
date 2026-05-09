@@ -123,10 +123,27 @@ sufficient checklist.
    (author-claim). RIGHT: `Seed silently skipped after a partial-
    failure redeploy` (symptom-first — names what the porter actually
    sees).
-2. **Slug citations are inline prose, never noun-phrase.** WRONG:
-   ``the `env-var-model` guide covers ...`` (backticked slug as
-   noun). RIGHT: `the env-var-model guide on Zerops docs covers ...`
-   (inline prose; slug is referenced, not named as the subject).
+2. **Slug citations use descriptive link text OR in-body completion;
+   internal corpus slug IDs never appear in porter content.**
+   `env-var-model`, `init-commands`, `managed-services-nats`,
+   `rolling-deploys`, `cross-service-refs`, `object-storage` are
+   internal `zerops_knowledge` corpus slugs the recipe-authoring
+   engine uses to look up platform facts; porters never interact
+   with that corpus and the slug IDs aren't porter-recognizable.
+   WRONG (backticked slug as noun): ``the `env-var-model` guide
+   covers ...``. WRONG (topic-name handwave with no URL): `the
+   env-var-model guide on Zerops docs covers ...`. WRONG (slug
+   name as link text — same leakage with a URL bolted on):
+   `[env-var-model](https://docs.zerops.io/zerops-yaml/specification#envvariables-)`.
+   RIGHT (in-body completion — preferred for Zerops mechanics):
+   finish teaching the platform mechanism directly; no external
+   pointer needed. RIGHT (descriptive label as link text): `[per-key
+   env shape and cross-service aliases](https://docs.zerops.io/zerops-yaml/specification#envvariables-)`,
+   `[Laravel documentation](https://laravel.com/docs/12.x/queues)`,
+   `[managed NATS service](https://docs.zerops.io/services/managed-services/nats)`
+   — the link text reads as porter prose, not as a corpus key. The
+   jetstream golden's links (`[step-by-step tutorial]`, `[zsc
+   health-check]`, `[Laravel documentation]`) are the calibration.
 3. **Classification × surface refusal**: `intersection` is KB-only,
    never IG. If a fact records `candidateClass=intersection`, route
    the body to KB; for IG, restate the principle without the

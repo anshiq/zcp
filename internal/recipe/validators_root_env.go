@@ -113,14 +113,16 @@ func validateEnvREADME(_ context.Context, path string, body []byte, _ SurfaceInp
 				)))
 		}
 	}
-	// Run-22 §N14 / run-23 fix-9 — strip canonical tier-0 audience labels
-	// before the meta-voice scan. tier.Label is engine-emitted into the
-	// tier README (`# {TIER_LABEL}`, "{TIER_LABEL} tier — ...") and the
-	// meta-voice patrol's " agent " / "agent-" needles would otherwise
-	// fire on the tier name itself. Strip both the legacy "AI Agent" and
-	// the run-23 "Include Coding Agents" forms so back-compat content +
-	// freshly-emitted content both pass cleanly.
+	// Run-22 §N14 / run-23 fix-9 / run-32 — strip canonical tier-0
+	// audience labels before the meta-voice scan. tier.Label is
+	// engine-emitted into the tier README (`# {TIER_LABEL}`,
+	// "{TIER_LABEL} tier — ...") and the meta-voice patrol's
+	// " agent " / "agent-" needles would otherwise fire on the tier
+	// name itself. Strip the run-32 canonical "AI agent", the legacy
+	// "AI Agent", and the run-23 "Include Coding Agents" forms so all
+	// back-compat content + freshly-emitted content pass cleanly.
 	scanBody := strings.ReplaceAll(s, "AI Agent", "")
+	scanBody = strings.ReplaceAll(scanBody, "AI agent", "")
 	scanBody = strings.ReplaceAll(scanBody, "Include Coding Agents", "")
 	if containsAny(scanBody, metaVoiceWords) {
 		vs = append(vs, notice("meta-agent-voice", path,

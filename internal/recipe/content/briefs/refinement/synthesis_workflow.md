@@ -165,10 +165,22 @@ already catches many misroutings; refinement is the backstop:
     VXLAN routing.
 
     (ii) **Check inline citations** — does the body name a Zerops
-    guide (e.g. "the `env-var-model` guide on Zerops docs covers...")?
-    An inline guide cite means the bullet has a Zerops thread the
-    headline mechanism may have abstracted away. KEEP the bullet —
-    the cite is the porter's deeper-understanding pointer.
+    guide as a real markdown link with a porter-readable descriptive
+    label (e.g.
+    `[per-key env shape and cross-service aliases](https://docs.zerops.io/zerops-yaml/specification#envvariables-)`,
+    `[Zerops managed NATS service](https://docs.zerops.io/services/managed-services/nats)`)?
+    An inline link with a descriptive label means the bullet has a
+    Zerops thread the headline mechanism may have abstracted away.
+    KEEP the bullet — the link is the porter's deeper-understanding
+    pointer. Topic-name handwaves without a URL ("the `env-var-model`
+    guide covers...") do not count as a cite — they're the forbidden
+    middle ground per Criterion 3. **Slug-name link text** — a real
+    markdown link whose visible label is the internal corpus slug
+    (`[env-var-model](url)`, `[init-commands](url)`,
+    `[managed-services-nats](url)`) — also does not count: same
+    middle ground with a URL bolted on. Refinement Action 4 should
+    rewrite the link text to a descriptive label or convert to in-body
+    completion.
 
     (iii) **Apply the "would they hit this with different scaffold
     code?" test** — is the trap a property of the framework alone
@@ -198,12 +210,14 @@ already catches many misroutings; refinement is the backstop:
     Worked examples that FAIL the test (KEEP, because of body
     content the headline abstracts):
     - **"`X-Cache` header undefined in SPA"** with a body that ends
-      "the `env-var-model` guide covers the project-scope URL
-      constants that drive the allowed origins list" — the body has
-      a Zerops guide cite; the recipe wires project-scope env vars
-      (`FRONTEND_URL`, `DEV_FRONTEND_URL`) into the CORS
-      allow-list. Headline is CORS; body is Zerops × CORS. KEEP —
-      or reshape to lead with the project-scope-env angle.
+      "Zerops's project-scope env vars (`FRONTEND_URL`,
+      `DEV_FRONTEND_URL`) drive the allowed origins list — see the
+      [per-key env shape and cross-service aliases](https://docs.zerops.io/zerops-yaml/specification#envvariables-)
+      reference for project-scope vs cross-service alias semantics"
+      — the body has a Zerops link with a descriptive label; the
+      recipe wires project-scope env vars into the CORS allow-list.
+      Headline is CORS; body is Zerops × CORS. KEEP — or reshape to
+      lead with the project-scope-env angle.
     - **"`fetch().headers.get('X-Cache')` returns null"** with body
       that mentions only `Access-Control-Expose-Headers` and zero
       env vars/Zerops guides — pure W3C CORS. DROP.
@@ -257,7 +271,8 @@ block-level comments. Per `zerops://themes/refinement-references/cross_surface_d
      porters on Zerops use the dashboard or zcli).
 
    Worked example. ORIGINAL KB body (long, re-teaches the mechanism
-   the IG owns):
+   the IG owns; also leaks the corpus slug `managed-services-nats`
+   as link text):
    > **`NatsError: Authorization Violation` on startup** —
    > Hand-composing
    > `nats://${broker_user}:${broker_password}@${broker_hostname}:${broker_port}`
@@ -268,10 +283,12 @@ block-level comments. Per `zerops://themes/refinement-references/cross_surface_d
    > before any subscription registers. Either pass user/pass as
    > connect options with a credential-free `host:port` URL, or
    > pass `${broker_connectionString}` (the platform-built URL)
-   > directly. The `managed-services-nats` guide on Zerops docs
-   > covers both supported wiring patterns.
+   > directly. The
+   > [managed-services-nats](https://docs.zerops.io/services/managed-services/nats)
+   > guide covers both supported wiring patterns.
 
-   COLLAPSED (after Action 6 rule 3):
+   COLLAPSED (after Action 6 rule 3 — and the link text rewritten
+   to a descriptive label per Criterion 3):
    > **`NatsError: Authorization Violation` on startup** — Passing
    > `nats://user:pass@host:port` as the `servers` URL triggers
    > double authentication. The client parses the embedded
@@ -280,9 +297,10 @@ block-level comments. Per `zerops://themes/refinement-references/cross_surface_d
    > subscription registers. The recommended wiring (separate
    > `user`/`pass` options with a credential-free `host:port` URL,
    > or `${broker_connectionString}` passed through unmodified) is
-   > in the Integration Guide above; the `managed-services-nats`
-   > guide on Zerops docs covers the cluster-failover behaviour for
-   > the core pub/sub pattern this codebase uses.
+   > in the Integration Guide above; the
+   > [Zerops managed NATS service](https://docs.zerops.io/services/managed-services/nats)
+   > reference covers the cluster-failover behaviour for the core
+   > pub/sub pattern this codebase uses.
 
    The collapsed body retains: the symptom (search-anchor), the
    failure mechanism (one paragraph), the inline guide cite (porters

@@ -257,7 +257,10 @@ func TestBrief_Scaffold_UnderCap_WithDevLoop(t *testing.T) {
 func TestBrief_Scaffold_FrontendSPA_UnderTargetSize(t *testing.T) {
 	t.Parallel()
 
-	const targetCap = 43 * 1024
+	// Run-32 F-A — bumped 43→44 KB to accommodate the canonical
+	// candidateSurface enum teaching in decision_recording_slim.md.
+	// Closes the 9-spelling drift in captured run-32 facts.jsonl.
+	const targetCap = 44 * 1024
 	plan := syntheticShowcasePlan()
 	// app is the RoleFrontend codebase (largest scaffold brief shape —
 	// adds tier-fact table + build-tool-host-allowlist + spa-static).

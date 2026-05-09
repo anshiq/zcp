@@ -212,6 +212,31 @@ func Surfaces() []Surface {
 	}
 }
 
+// IsCanonicalSurface reports whether a surface string matches one of
+// the 7 canonical Surface values (run-32 F-A — lock candidateSurface
+// against the closed enum). Empty string returns false; callers that
+// allow optional surface should check for empty before calling.
+func IsCanonicalSurface(s string) bool {
+	switch Surface(s) {
+	case SurfaceRootREADME, SurfaceEnvREADME, SurfaceEnvImportComments,
+		SurfaceCodebaseIG, SurfaceCodebaseKB, SurfaceCodebaseCLAUDE,
+		SurfaceCodebaseZeropsComments:
+		return true
+	}
+	return false
+}
+
+// canonicalSurfaceListString returns a comma-joined list of all canonical
+// Surface values, used in validation error messages so the agent sees
+// the allowed set immediately.
+func canonicalSurfaceListString() string {
+	parts := make([]string, 0, 7)
+	for _, s := range Surfaces() {
+		parts = append(parts, string(s))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // ContractFor returns the SurfaceContract for a surface, or false if unknown.
 func ContractFor(s Surface) (SurfaceContract, bool) {
 	c, ok := surfaceContracts[s]

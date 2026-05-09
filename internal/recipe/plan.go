@@ -151,6 +151,17 @@ type Codebase struct {
 	// in its brief when it only consumes `${api_zeropsSubdomain}`.
 	// Run-21 R2-3.
 	ConsumesServices []string `json:"consumesServices,omitempty"`
+	// ProdRuntimeBase is the resolved `run.base` of this codebase's
+	// prod setup (e.g. "static" for a Vite SPA whose build base is
+	// "nodejs@22"). Engine-populated from `<SourceRoot>/zerops.yaml`
+	// at stitch-content time via parseProdRuntimeBaseFromYaml; falls
+	// back to BaseRuntime when empty (which preserves the symmetric
+	// case where build base == prod runtime, e.g. NestJS / Laravel).
+	// Used by the deliverable yaml emitter for `services[].type` so
+	// import.yaml declares the runtime the porter actually deploys
+	// against — the build/dev container is irrelevant once the prod
+	// build artifact lands.
+	ProdRuntimeBase string `json:"prodRuntimeBase,omitempty"`
 }
 
 // Service is a managed or utility service in the recipe (database, cache,

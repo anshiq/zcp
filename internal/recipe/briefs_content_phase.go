@@ -529,7 +529,16 @@ func appendSynthesisWorkflowBlock(b *strings.Builder, parts []string) []string {
 	if len(guides) == 0 {
 		return parts
 	}
-	b.WriteString("### Citation guides for this recipe\n\n")
+	// Run-32 Step 3 — relabel from "Citation guides for this recipe"
+	// (which read like a menu of options) to a lookup-key list with
+	// explicit "never surface in published content" framing. The
+	// original bullet header primed slug verbalization (Pattern #2):
+	// agents read the slug list as English-cased candidates and
+	// shipped `[managed NATS service]`, `[Zerops env-var model]` etc.
+	// in published link text. Slug ids are zerops_knowledge LOOKUP
+	// KEYS — never published as link labels or surface text.
+	b.WriteString("### `zerops_knowledge` lookup keys (internal taxonomy — NEVER surface in published content)\n\n")
+	b.WriteString("Use these slugs as the `query=` value when calling `zerops_knowledge`. They identify the embedded knowledge corpus topics; they are NOT terms the porter recognizes. In published prose, link text must name the SUBJECT, not the lookup key. Forbidden in any rendered content: backticked slug, slug-in-link-text, or English-cased translation (`[managed NATS service]`, `[Zerops env-var model]`).\n\n")
 	for _, g := range guides {
 		fmt.Fprintf(b, "- `%s`\n", g)
 	}

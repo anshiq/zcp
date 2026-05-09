@@ -84,6 +84,20 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		parts = append(parts, "briefs/refinement/embedded_rubric.md")
 	}
 
+	// Run-32 — derived rules atom: principle-shaped scoring substrate
+	// extracted from the laravel-jetstream + laravel-showcase goldens.
+	// Complements the rubric above; when the two disagree, cited
+	// golden evidence wins. Source + derivation (with rule-by-rule
+	// citations + the codex verification pass) in
+	// plans/run-32-rules-from-jetstream.md — the atom's rule IDs are
+	// stable per surface section but not strictly contiguous (some
+	// IDs were merged or cut during the verification pass).
+	if rules, err := readAtom("briefs/refinement/derived_rules.md"); err == nil {
+		b.WriteString(rules)
+		b.WriteString("\n\n")
+		parts = append(parts, "briefs/refinement/derived_rules.md")
+	}
+
 	// Run-23 F-25 — fetchable reference atoms catalog. The 7
 	// distillation atoms moved off the inline brief; the agent fetches
 	// the one matching the suspect class via `zerops_knowledge uri=...`

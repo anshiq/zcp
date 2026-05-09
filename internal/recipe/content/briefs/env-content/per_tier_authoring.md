@@ -3,6 +3,29 @@
 You author env-level surfaces (root + per-tier intros + import-comments)
 across 6 tiers (0..5). The brief carries:
 
+## Tier names are canonical, not marketing
+
+Use exactly these labels in root README rows, env intros, and tier
+README headings:
+
+| Index | Label |
+|-------|-------|
+| 0 | AI agent |
+| 1 | Remote (CDE) |
+| 2 | Local |
+| 3 | Stage |
+| 4 | Small Production |
+| 5 | Highly-available Production |
+
+Don't rewrite them — no marketing prefixes ("Include Coding Agents",
+"Cloud IDE Workspace"), no synonyms ("Production-HA", "AI-agent dev
+tier"), no abbreviations ("HA-Prod"). Porters scanning recipes expect
+identical taxonomy across the family. Folder paths
+(`0 — AI Agent`/`1 — Remote (CDE)`/...) are also canonical and engine-
+emitted; you read them, you don't rewrite them.
+
+
+
 - Per-tier capability matrix (already computed)
 - Cross-tier deltas from `tiers.go::Diff`
 - Engine-emitted `tier_decision` facts (one per cross-tier whole-tier

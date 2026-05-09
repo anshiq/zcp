@@ -142,7 +142,7 @@ func hasNounPhraseSlugCitation(body string) (match string, ok bool) {
 // citation. Steers the agent toward the canonical mechanism-citation
 // shape per spec §216 — inline prose linking to a `zerops_knowledge`
 // guide by docs URL, not by tool slug.
-const nounPhraseSlugRedirect = "noun-phrase slug citation %q — porters cannot resolve `<slug>` as a docs URL. Cite by mechanism, not by slug — e.g. \"see the rolling-deploys guide on Zerops docs\" or inline `[label](url)`. Spec §216."
+const nounPhraseSlugRedirect = "noun-phrase slug citation %q — porters cannot resolve `<slug>` as a docs URL. Cite as a real markdown link `[label](https://docs.zerops.io/...)` so the porter has a clickable destination, OR finish teaching the mechanism in-body so no link is needed. Topic-name handwaves (\"the X guide on Zerops docs covers Y\") are the forbidden middle ground — they name a guide the porter cannot reach. Spec §216."
 
 // kbBulletAuthoringRefusals walks one bullet collecting authoring-
 // discipline violations. The stem (text inside leading `**...**`) is

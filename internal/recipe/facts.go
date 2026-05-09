@@ -98,6 +98,17 @@ const (
 	FactKindContract            = "contract"
 	FactKindCurlVerification    = "curl_verification"
 	FactKindBrowserVerification = "browser_verification"
+	// FactKindNegation (run-32 F-D) records a deliberate ABSENCE — "this
+	// codebase does NOT consume managed-service X" or "this codebase
+	// does NOT author surface Y". Without this kind, dead env wiring
+	// (Defect #19: workerdev declares DB_HOST/PORT/USER/PASS but never
+	// imports TypeOrmModule) is invisible to the engine — there's no
+	// fact to read that says "skip the wiring." Engine-side consumption
+	// (e.g. cross-codebase coherence validator skipping a service for
+	// codebases with a recorded negation) lands in a follow-up; the
+	// schema landing first lets scaffold/feature agents start recording
+	// negations now.
+	FactKindNegation = "negation"
 )
 
 // Validate returns an error if any required field is empty for the
@@ -123,9 +134,37 @@ func (f FactRecord) Validate() error {
 		return f.validateCurlVerification()
 	case FactKindBrowserVerification:
 		return f.validateBrowserVerification()
+	case FactKindNegation:
+		return f.validateNegation()
 	default:
 		return fmt.Errorf("fact record has unknown kind %q", f.Kind)
 	}
+}
+
+// validateNegation enforces the negation shape (run-32 F-D). A negation
+// fact records a deliberate ABSENCE — "this codebase does NOT consume
+// service X" / "this codebase does NOT author CLAUDE.md". Required:
+//
+//   - Service: the absent subject (managed-service hostname, surface
+//     name, etc.). Must be non-empty.
+//   - Scope:   the codebase or scope this negation applies to (e.g.
+//     "worker", "appdev"). Must be non-empty.
+//   - Why:     porter-rationale for the absence. Must be non-empty.
+//
+// The negation kind is intentionally narrow: one absence-claim per
+// fact. Composite negations ("worker doesn't consume db OR cache") get
+// multiple records. This keeps cross-codebase coherence validators able
+// to read negations without parsing prose.
+func (f FactRecord) validateNegation() error {
+	switch "" {
+	case f.Service:
+		return errors.New("negation fact missing required field \"service\" (the absent subject)")
+	case f.Scope:
+		return errors.New("negation fact missing required field \"scope\" (the codebase scope)")
+	case f.Why:
+		return errors.New("negation fact missing required field \"why\" (porter-rationale for the absence)")
+	}
+	return nil
 }
 
 func (f FactRecord) validatePlatformTrap() error {
@@ -159,6 +198,15 @@ func (f FactRecord) validatePorterChange() error {
 	case f.CandidateSurface:
 		return errors.New("porter_change fact missing required field \"candidateSurface\"")
 	}
+	// Run-32 F-A — lock candidateSurface to the canonical Surface enum.
+	// Captured run-32 had 9 distinct spellings across kinds (CODEBASE_KB
+	// vs codebase-knowledge-base vs CODEBASE_KNOWLEDGE_BASE etc.) which
+	// silently misroutes facts through the surface-routing path. The
+	// scaffold-decision-recording atom previously taught kebab-case;
+	// canonical form is UPPER_SNAKE per surfaces.go:14-22.
+	if !IsCanonicalSurface(f.CandidateSurface) {
+		return fmt.Errorf("porter_change fact has non-canonical candidateSurface %q (expected one of: %s)", f.CandidateSurface, canonicalSurfaceListString())
+	}
 	return nil
 }
 
@@ -185,6 +233,14 @@ func (f FactRecord) validateTierDecision() error {
 		return errors.New("tier_decision fact missing required field \"fieldPath\"")
 	case f.ChosenValue:
 		return errors.New("tier_decision fact missing required field \"chosenValue\"")
+	}
+	// Run-32 F-B — Why is load-bearing for downstream tier-intro
+	// rendering. Engine-emitted shells exempt (engine populates Why at
+	// emit time per engine_emitted_facts.go; fill-fact-slot validates
+	// post-fill). Direct agent-recorded tier_decision records must
+	// carry Why.
+	if !f.EngineEmitted && f.Why == "" {
+		return errors.New("tier_decision fact missing required field \"why\"")
 	}
 	return nil
 }
