@@ -747,6 +747,31 @@ func handleRecordFragment(sess *Session, in RecipeInput, r RecipeResult) RecipeR
 		}
 	}
 
+	// Run-34 Fix 1 — refinement-time env-fragment persistence parity.
+	// `record-fragment mode=replace` on `env/<N>/intro` or
+	// `env/<N>/import-comments/<target>` lands in plan state via
+	// recordFragment / ApplyEnvComment, but without re-stitching the
+	// matching tier the published file on disk still holds the prior
+	// body. Mirrors the codebase wrapper above; refinement contract for
+	// env fragments is "best-effort" for revert (no snapshot/restore
+	// gate yet), but persistence-to-disk MUST happen regardless.
+	//
+	// Diagnosed in plans/run-34-validation.md §"Top 5 surprises" #1.
+	if wrapRefinement {
+		if tierIdx := envTierIndexFromFragmentID(in.FragmentID); tierIdx >= 0 {
+			if err := preStitchEnv(sess, tierIdx); err != nil {
+				r.Notices = append(r.Notices, Violation{
+					Code:     "refinement-env-stitch-failed",
+					Path:     in.FragmentID,
+					Severity: SeverityNotice,
+					Message: fmt.Sprintf(
+						"env-fragment Replace landed in plan state but on-disk stitch failed: %s. Re-run stitch-content to reconcile.",
+						err.Error()),
+				})
+			}
+		}
+	}
+
 	// Run-29 Fix #2 — IG scaffold-filename Notice. The legacy Blocking
 	// gate at validators_codebase.go:81-93 banned `migrate.ts` /
 	// `seed.ts` / `main.ts` / `api.ts` literals across ALL IG content,
@@ -1223,6 +1248,81 @@ func validateCodebaseSourceRoots(plan *Plan) error {
 			return fmt.Errorf("stitch refused: codebase %q has SourceRoot %q without 'dev' suffix (expected SSHFS dev slot, e.g. /var/www/%sdev). This indicates the gap-M regression — see docs/zcprecipator3/runs/10/ANALYSIS.md §3 gap M",
 				cb.Hostname, cb.SourceRoot, cb.Hostname)
 		}
+	}
+	return nil
+}
+
+// envTierIndexFromFragmentID returns the tier index encoded in an env
+// fragment id (`env/<N>/intro`, `env/<N>/import-comments/<target>`).
+// Returns -1 when id is not env-shaped or the index can't be parsed —
+// callers fall through to the codebase / non-env path. Run-34 Fix 1.
+func envTierIndexFromFragmentID(id string) int {
+	rest, ok := strings.CutPrefix(id, "env/")
+	if !ok {
+		return -1
+	}
+	slash := strings.IndexByte(rest, '/')
+	if slash <= 0 {
+		return -1
+	}
+	idx, err := parseTierIndex(rest[:slash])
+	if err != nil {
+		return -1
+	}
+	if _, ok := TierAt(idx); !ok {
+		return -1
+	}
+	return idx
+}
+
+// preStitchEnv re-renders ONE tier's env README + import.yaml from
+// in-memory plan state and writes both back to disk. Mirror of
+// preStitchCodebases for the env-fragment side: a refinement-time
+// `record-fragment mode=replace` on `env/<N>/intro` or
+// `env/<N>/import-comments/<target>` lands in plan state immediately,
+// but without this re-stitch the published file on disk still holds
+// the prior body. Pre-fix, every refinement env-fragment ACT was a
+// silent no-op.
+//
+// Diagnosed in plans/run-34-validation.md §"Top 5 surprises" #1
+// (six refinement ACTs on tier-prefix intros, none landed). Run-34 Fix 1.
+//
+// Scoped to one tier so a parallel-run refinement on tier 0 doesn't
+// re-emit tiers 1-5 (which would also re-write neighboring import.yamls
+// against an unrelated edit). Errors propagate to the caller; persist
+// failure surfaces as a record-fragment failure rather than a silent
+// disk/state divergence.
+func preStitchEnv(sess *Session, tierIndex int) error {
+	sess.mu.Lock()
+	plan := sess.Plan
+	outputRoot := sess.OutputRoot
+	sess.mu.Unlock()
+	if plan == nil {
+		return errors.New("nil plan")
+	}
+	if outputRoot == "" {
+		// Sessions without an output root (early bootstrap) have no disk
+		// surface to re-stitch; the in-memory plan state is the only
+		// truth and the caller carries it forward via stitch-content.
+		return nil
+	}
+	tier, ok := TierAt(tierIndex)
+	if !ok {
+		return fmt.Errorf("preStitchEnv: unknown tier index %d", tierIndex)
+	}
+	envBody, _, err := AssembleEnvREADME(plan, tierIndex)
+	if err != nil {
+		return fmt.Errorf("assemble env/%d README: %w", tierIndex, err)
+	}
+	if err := writeSurfaceFile(filepath.Join(outputRoot, tier.Folder, "README.md"), envBody); err != nil {
+		return err
+	}
+	// Re-emit the tier's import.yaml so per-host comments populated via
+	// `env/<N>/import-comments/<target>` (which routes through
+	// plan.EnvComments) land on disk. Goes through Session.EmitYAML so
+	// the write path stays single-source with stitch-content's loop.
+	if _, err := sess.EmitYAML(ShapeDeliverable, tierIndex); err != nil {
+		return fmt.Errorf("regenerate tier %d import.yaml: %w", tierIndex, err)
 	}
 	return nil
 }
