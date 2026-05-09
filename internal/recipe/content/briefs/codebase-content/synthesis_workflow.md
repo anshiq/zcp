@@ -204,35 +204,14 @@ the body has over-reached. Trim the body to the field-adjacent
 WHY-this-name-here / WHY-this-value-here, and let the cross-reference
 do the mechanism work.
 
-**BAD** — yaml comment cross-references but still restates mechanism
-prose KB owns (workerdev NATS pattern from run-29 dogfood evidence):
-
-```yaml
-- hostname: worker
-  envVariables:
-    # NATS Pattern A — separate host/port/user/pass aliases of the
-    # platform's auto-injects. Pattern B (single
-    # ${broker_connectionString}) works on the server side, but
-    # the recipe's NATS client (nats.js) has a hostPort() parser
-    # that misparses auto-generated passwords with `:` characters,
-    # so Pattern A sidesteps that by passing creds as connect
-    # options. Hand-composed `nats://user:pass@host:port` is also
-    # rejected — the NATS server returns Authorization Violation
-    # on first CONNECT because most clients double-auth (URL parse
-    # + SASL). The own-key-alias mechanism is in the Integration
-    # Guide; the Knowledge Base entry on the Authorization
-    # Violation crash covers the trap.
-    NATS_HOST: ${broker_hostname}
-    NATS_PORT: ${broker_port}
-    NATS_USER: ${broker_user}
-    NATS_PASS: ${broker_password}
-```
-
-The comment cross-references IG + KB at the end, but the body above
-restates the Pattern B failure mode prose KB owns AND the Authorization
-Violation cause prose KB also owns. Surface 7 violation: the cross-
+**BAD** — yaml comment cross-references IG + KB at the end but the
+body above restates the Pattern B failure mode prose KB owns AND the
+Authorization Violation cause prose KB also owns (workerdev NATS
+pattern from run-29 dogfood evidence: ~13-line comment teaching
+client parser failure, double-auth handshake, server reject sequence
+above the four `NATS_HOST/PORT/USER/PASS` mappings — the cross-
 reference ran out of work three lines in; the next ten lines were
-mechanism teaching that KB and IG together already deliver.
+mechanism teaching that KB and IG together already deliver).
 
 **GOOD** — short field-adjacent reason; cross-references do the work:
 
@@ -262,20 +241,12 @@ fulfills the contract by construction.
 
 ## Friendly-authority voice (Surface 7 + Surface 3)
 
-Both reference recipes speak TO the porter, not AT them. Examples:
+Both reference recipes speak TO the porter, not AT them. Representative phrasings (golden anchors):
 
-> *"Feel free to change this value to your own custom domain, after
-> setting up the domain access."* — laravel-jetstream zerops.yaml
-
-> *"Configure this to use real SMTP sinks in true production setups."*
-> — laravel-jetstream zerops.yaml
-
-> *"Replace with real SMTP credentials for production use."* —
-> laravel-showcase zerops.yaml
-
-> *"Disabling the subdomain access is recommended, after you set up
-> access through your own domain(s)."* — laravel-jetstream tier-4
-> import.yaml
+- *"Feel free to change this value to your own custom domain, after setting up the domain access."*
+- *"Configure this to use real SMTP sinks in true production setups."*
+- *"Replace with real SMTP credentials for production use."*
+- *"Disabling the subdomain access is recommended, after you set up access through your own domain(s)."*
 
 **Pattern**: declarative statement of fact + invitation to adapt +
 named porter signal that triggers the adapt path.
@@ -904,17 +875,33 @@ audit_log"); schema ownership / build-time constants; deploy wiring.
 The IG, KB, and zerops.yaml comments own the platform-side wiring
 story; the intro owns framework + capability only.
 
-## Self-validate (mid-phase stitch + rule-walk)
+## Step 6 — Self-review (MANDATORY before un-scoped complete-phase)
 
-`zerops_recipe` is an MCP tool. Before terminating: (1) scoped
-`complete-phase` (`phase: codebase-content`, `codebase: <host>`)
-writes `<SourceRoot>/README.md` + `zerops.yaml`; batch-fix on
-`ok:false` (F-48). (2) Read both assembled files as a porter would.
-(3) Walk against `derived_rules.md`: sibling-shape divergence,
-IG-KB redundancy, audience-model leaks (`${peer_alias}`, V1/V6,
-cross-recipe refs), tier-vocab on codebase surfaces, KB on
-already-fixed problems. (4) ACT via `record-fragment mode=replace`
-citing rule + preserving edit. (5) Un-scoped `complete-phase`.
+The only document-level audit before the codebase ships. Per-fragment
+validators CANNOT see assembled-doc properties (audience model,
+sibling consistency, required H2 sections RF1/PD1). Run-34: the one
+cc-content sub-agent that skipped this step (cc-content-api, 0 Reads
+of `/var/www/apidev/README.md`) shipped without RF1+PD1; cc-content-app
+(5 Reads) and cc-content-worker (7 Reads) didn't. Execute every step.
+
+a. **Stitch.** `complete-phase` SCOPED (`phase: codebase-content`,
+   `codebase: <self>`) — fires `preStitchCodebases`; fragments compose
+   to `<SourceRoot>/README.md` + `<SourceRoot>/zerops.yaml`. Batch-fix
+   `ok:false` (F-48).
+b. **Read assembled.** `Read <cb.SourceRoot>/README.md` AND `Read
+   <cb.SourceRoot>/zerops.yaml` end-to-end as a PORTER — top-to-bottom,
+   no compositional reasoning about which fragment authored which line.
+c. **Walk `derived_rules.md`** against the assembled output. V1-V6
+   apply everywhere; per-surface rules apply on the surface they name.
+   RF1 + PD1 required on api codebase. Rule fires on OUTPUT shape,
+   not on whether facts/source aligned.
+d. **ACT on every violation.** `record-fragment mode=replace`; cite
+   rule id + violating phrase + preserving edit (bias toward ACT;
+   snapshot/restore reverts wrong ACTs).
+e. **Un-scoped `complete-phase`** after every violation resolves.
+
+If any sub-step fails (tool refusal, ambiguous violation), surface the
+failure in your termination message. Do NOT silently skip.
 
 ## What you do NOT author
 
