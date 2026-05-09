@@ -363,6 +363,18 @@ func dispatch(_ context.Context, store *Store, in RecipeInput) RecipeResult {
 			r.Error = "record-fact: fact payload is required"
 			return r
 		}
+		// Run-34 Fix 3 — engine-side runtime gate for forbidden
+		// recipe-author voice tokens. Brief teaches REQUIRED → engine
+		// enforces REQUIRED. Refusal is BLOCKING (not a notice) so the
+		// agent cannot ignore the rule at runtime — empirically the
+		// notice signal was insufficient (12.8% strict-token
+		// contamination rate UNCHANGED from run-33 to run-34 even after
+		// the brief edits landed). Validate BEFORE RecordFact so a
+		// rejected fact never lands on facts.jsonl.
+		if err := validateFactVoiceTokens(*in.Fact); err != nil {
+			r.Error = err.Error()
+			return r
+		}
 		if err := sess.RecordFact(*in.Fact); err != nil {
 			r.Error = err.Error()
 			return r

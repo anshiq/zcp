@@ -62,7 +62,13 @@ func writeMinimalSimulationOpts(t *testing.T, root string, withYamlComments bool
 		// gate floor.
 		"codebase/api/integration-guide/1": "### 1. Read the zerops.yaml\n\nIntegration step one — read the zerops.yaml below.\n",
 		"codebase/api/integration-guide/2": "### 2. Wire the database\n\nAdd a `DATABASE_URL` env binding to your service config.\n",
-		"codebase/api/knowledge-base":      "## Operations\n\nAuthored knowledge-base body covering build, deploy, and run-time observations.\n",
+		// Un-slotted IG fragment carrying RF1+PD1 — required H2 sections
+		// on the canonical apps-repo (api codebase). Run-34 Fix 2 added
+		// `canonical-apps-repo-rf1-pd1` to CodebaseContentGates so the
+		// sim must seed both sections to keep the clean-corpus path
+		// passing the new gate.
+		"codebase/api/integration-guide": "## Recipe features\n\n- NestJS REST surface on Zerops Node.js runtime\n- Postgres managed service via `${db_*}`\n\n## Production vs. Development\n\n- Use highly-available Postgres (`mode: HA` on `db`)\n- Set `minContainers: 2` on `api` for rolling deploys\n",
+		"codebase/api/knowledge-base":    "## Operations\n\nAuthored knowledge-base body covering build, deploy, and run-time observations.\n",
 		// CLAUDE.md must clear the claude-md-too-short floor (>=200 bytes).
 		"codebase/api/claude-md": claudeMDFixtureBody,
 	}
