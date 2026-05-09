@@ -340,17 +340,19 @@ no URL, **link text** (`[init-commands](url)` = same leakage with
 a URL bolted on), section headings on porter-facing surfaces.
 
 **Two acceptable shapes** — (1) **in-body completion** (preferred
-for Zerops mechanics): teach per-deploy ledger / project-scope env
-injection / L7 balancer / SIGTERM directly so the porter doesn't
-leave the page. (2) **markdown link with a descriptive label**:
-`[per-deploy initCommands](url)`, `[managed NATS service](url)`,
-`[Laravel documentation](url)`, `[Vite production build](url)`.
-Framework concerns → framework docs; Zerops mechanics → prefer
-in-body, fall back to descriptive-labeled docs.zerops.io link only
-when in-body teaching would sprawl. The jetstream golden's
-`[Laravel Jetstream]` / `[step-by-step tutorial]` /
-`[zsc health-check]` / `[multi-container setups]` are the
-calibration — never a corpus slug as link text.
+for Zerops mechanics): teach the mechanism directly. (2) **markdown
+link with a descriptive label**: `[zero-downtime deploys with multi-
+container setups](url)`, `[Laravel documentation](url)`,
+`[Vite production build](url)`. Calibration: jetstream golden's
+`[Laravel Jetstream]` / `[step-by-step tutorial]` / `[zsc health-
+check]` / `[multi-container setups]`. **Slug-stem test (HARD)**: link
+text MUST NOT contain corpus slug stems (`rolling-deploys`, `init-
+commands`, `managed-services-*`, `env-var-*`, `subdomain-access`,
+`object-storage`, `build-from-git`) even wrapped with Zerops/managed
+prefix or `reference`/`guide`/`service` suffix. Forbidden:
+`[managed NATS service]`, `[Zerops object-storage service]`,
+`[Zerops rolling-deploys reference]`. Use a porter-recognized
+concept or in-body completion.
 
 **8.5 anchor — in-body completion**:
 
@@ -591,39 +593,36 @@ The mechanism (CORS allowlist from env var) is right; the file
 anchor is scaffold-specific. A porter using Express, Fastify, or
 non-NestJS Node has no `src/main.ts`.
 
-**PASS** (NestJS apidev IG #2 — Node-family adapt-paths only):
+**PASS** (NestJS apidev IG #2 — recipe-framework idiom only):
 
 ```markdown
 Trust the reverse proxy so the application sees the porter's IP, not
-the L7 balancer's. NestJS (Express): `app.set('trust proxy', true)`.
-Other Node frameworks: `'trust proxy'` setting (Express),
-`trustProxy: true` option (Fastify).
+the L7 balancer's. NestJS uses Express under the hood, so the
+canonical config is `app.set('trust proxy', true)` at bootstrap.
 ```
 
 The mechanism (trust the reverse proxy) is named platform-side, the
-canonical config is shown in the host framework's idiom, and adapt
-paths stay within the codebase's language family.
+canonical config is shown in the recipe's framework idiom, and zero
+alternatives are enumerated.
 
-### Adapt-paths stay within the codebase's language family
+### No alternative-framework enumeration
 
-NestJS recipe → Node frameworks only (Express, Fastify). Laravel
-recipe → PHP only (Symfony, Lumen, raw PHP). Rails recipe → Ruby
-only (Sinatra, Hanami, raw Rack). Don't list Python (FastAPI,
-Django, uvicorn) / Go (`http.ListenAndServe`, `RemoteIPHeader`) /
-Rust adapt-paths in a recipe for a different language. The porter
-clones a NestJS recipe because they're working in Node — Python
-adapt-paths are noise; they don't help the porter port the teaching.
+The IG teaches the recipe's framework. Don't enumerate other
+frameworks the porter could swap to — they're noise to a porter
+who cloned THIS recipe. Cite IG4 from `derived_rules.md`: zero
+adapt-paths in 291 lines of jetstream README. Drop "if you use X
+instead", "any Node HTTP framework", "Other Node frameworks", and
+cross-language listings entirely.
 
 **FAIL** (run-32 apidev IG #2 — cross-language slip):
 
 ```markdown
 Trust the reverse proxy. NestJS: `app.set('trust proxy', true)`.
-Python (FastAPI/uvicorn): launch with `--proxy-headers`. Go:
-`r.RemoteAddr` after parsing `X-Forwarded-For`.
+[Two more lines listing alternative frameworks/runtimes].
 ```
 
-The Python and Go adapt-paths are noise — a porter on a NestJS
-codebase isn't switching to Python. Drop the cross-language listings.
+The alternative listings are noise — the porter cloned a NestJS
+recipe. Drop them. Recipe-framework idiom only.
 
 **Heuristic**: if your IG body names a `.ts` / `.js` / `.svelte` /
 `.php` file from the scaffold tree, replace with the platform-side
@@ -789,15 +788,18 @@ in-body completion; both pass):
 - **Object-storage 403 on every request** — Zerops uses MinIO; the
   AWS SDK signs requests with virtual-hosted style by default but
   MinIO needs path style. Set `forcePathStyle: true`. The
-  [Zerops object-storage service](https://docs.zerops.io/services/object-storage)
+  [S3-compatible storage on Zerops MinIO backend](https://docs.zerops.io/services/object-storage)
   reference covers the MinIO + region default + path-style triplet
   for every S3 SDK family.
 ```
 
-Link text reads as porter prose, not the corpus slug. Equally valid:
-drop the link and finish in-body. Forbidden: topic-name handwave
-without URL, AND `[object-storage](url)` slug-name link text — same
-URL, but the visible text leaks the corpus slug.
+Link text reads as porter prose ("S3-compatible storage on Zerops
+MinIO backend" names the SUBJECT), not the corpus slug. Equally
+valid: drop the link and finish in-body. Forbidden: topic-name
+handwave without URL, `[object-storage](url)` slug-name link text,
+AND `[Zerops object-storage service]` shape — even with the URL
+bolted on, the visible text leaks the corpus slug stem (`object-
+storage`). The slug-stem test catches the evolved shape.
 
 ## Step 4 — Author the whole commented zerops.yaml (Surface 7)
 
@@ -817,7 +819,7 @@ routine), skip it.
 
 Fields that almost always deserve a comment:
 
-- `build.buildCommands` at production tiers — sequence rationale
+- `build.buildCommands` — sequence rationale
   (why `npm ci` not `npm install`, why `--omit=dev`).
 - `build.deployFiles` — what's shipped, what's not, why.
 - `build.cache` — what survives between builds and why it matters.
@@ -902,18 +904,17 @@ audit_log"); schema ownership / build-time constants; deploy wiring.
 The IG, KB, and zerops.yaml comments own the platform-side wiring
 story; the intro owns framework + capability only.
 
-## Self-validate
+## Self-validate (mid-phase stitch + rule-walk)
 
-`zerops_recipe` is an **MCP tool** — invoke it as a JSON tool call,
-not a shell command. The brief uses the shorthand
-`<tool> <action> <args>` to refer to a JSON invocation; the actual
-call shape is `{"action": "...", "slug": "...", ...}`.
-
-Invoke the `zerops_recipe` MCP tool with `action: complete-phase`,
-`phase: codebase-content`, and `codebase: <host>` to run codebase-
-scoped validators against your codebase only. Fix violations by
-re-invoking `zerops_recipe` with `action: record-fragment` and
-`mode: replace` until the gate passes, then terminate.
+`zerops_recipe` is an MCP tool. Before terminating: (1) scoped
+`complete-phase` (`phase: codebase-content`, `codebase: <host>`)
+writes `<SourceRoot>/README.md` + `zerops.yaml`; batch-fix on
+`ok:false` (F-48). (2) Read both assembled files as a porter would.
+(3) Walk against `derived_rules.md`: sibling-shape divergence,
+IG-KB redundancy, audience-model leaks (`${peer_alias}`, V1/V6,
+cross-recipe refs), tier-vocab on codebase surfaces, KB on
+already-fixed problems. (4) ACT via `record-fragment mode=replace`
+citing rule + preserving edit. (5) Un-scoped `complete-phase`.
 
 ## What you do NOT author
 

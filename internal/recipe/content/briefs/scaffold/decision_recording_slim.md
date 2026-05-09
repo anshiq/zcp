@@ -126,6 +126,26 @@ Worked example — BAD vs GOOD:
     separate servers/user/pass options.
 ```
 
+## Forbidden tokens in fact text fields
+
+Recipe-author voice in fact text propagates to porter prose at
+synthesis. Forbidden in `why` / `mechanism` / `fixApplied` /
+`surfaceHint` / `evidence`: `the agent`, `recipe author`,
+`scaffold sub-agent`, `feature sub-agent`, `during scaffold`,
+`during feature`, `we chose`, `we use`, `we set`, `record-fact`,
+`zerops_dev_server`. Record what's true about the porter's runtime,
+not about the recipe-construction process.
+
+```yaml
+# BAD — "we set" + "during scaffold" leak recipe-author voice.
+why: During scaffold we set app.listen('0.0.0.0', port).
+
+# GOOD — porter-runtime framing.
+why: NestJS app.listen(port) defaults to 127.0.0.1; Zerops's L7
+     balancer needs 0.0.0.0 so VXLAN-routed traffic reaches the
+     container's listener.
+```
+
 ## Skip rule
 
 Skip recording if `candidateClass ∈ {framework-quirk, library-metadata,

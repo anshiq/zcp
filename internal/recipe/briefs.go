@@ -121,6 +121,12 @@ import (
 // captured at close on the wired-stage URL via `zerops_browser` →
 // `["screenshot", "--full", "<outputRoot>/screenshots/dashboard-close.png"]`.
 //
+// Run-33 architectural fix #4 raised FeatureBriefCap 46 → 47 KB to
+// absorb the forbidden-tokens-in-fact-text block in
+// briefs/feature/decision_recording.md (cuts recipe-author voice
+// contamination at fact record time before it propagates to porter
+// prose at synthesis).
+//
 // Run-32 F-49 raised FeatureBriefCap 44 → 46 KB to absorb the new
 // `principles/codebase-name-vs-slot-hostname.md` atom (~870 bytes) —
 // pre-empts `complete-phase codebase='apidev'` traps where the
@@ -130,7 +136,7 @@ import (
 // feature + codebase-content + env-content composers.
 const (
 	ScaffoldBriefCap = 48 * 1024
-	FeatureBriefCap  = 46 * 1024
+	FeatureBriefCap  = 47 * 1024
 )
 
 // BriefKind identifies a sub-agent role. Scaffold + feature have
@@ -803,6 +809,14 @@ func BuildFinalizeBrief(plan *Plan) (Brief, error) {
 	atoms := []string{
 		"briefs/finalize/intro.md",
 		"briefs/finalize/validator_tripwires.md",
+		// Run-33 architectural fix #1 — golden-grounded rule substrate
+		// (finalize-scoped subset). V1-V6 voice + R1-R6 root + T1-T4
+		// tier README + TY1-TY5 tier import.yaml + Y8 + RF1 + PD1 only.
+		// IG / KB / per-codebase yaml-comment rules excluded (those
+		// surfaces aren't authored at finalize). Trimmed to fit the
+		// 14 KB FinalizeBriefCap; full rule set stays in the
+		// codebase-content / env-content / refinement composers.
+		"briefs/finalize/derived_rules_finalize.md",
 	}
 	for _, atom := range atoms {
 		body, err := readAtom(atom)

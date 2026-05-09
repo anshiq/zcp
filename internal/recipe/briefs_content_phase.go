@@ -230,6 +230,16 @@ func BuildEnvContentBrief(plan *Plan, parent *ParentRecipe, facts []FactRecord) 
 		parts = append(parts, "principles/codebase-name-vs-slot-hostname.md")
 	}
 
+	// Run-33 architectural fix #1 — golden-grounded rule substrate.
+	// Voice + IG6 Zerops-forced + tier-vocab forbidden rules visible at
+	// authoring time, not just refinement. Multi-file path is production;
+	// single-file kept in sync.
+	if atom, err := readAtom("briefs/refinement/derived_rules.md"); err == nil {
+		b.WriteString(atom)
+		b.WriteString("\n\n")
+		parts = append(parts, "briefs/refinement/derived_rules.md")
+	}
+
 	// Per-tier capability matrix (already computed) + cross-tier deltas.
 	b.WriteString("## Per-tier capability matrix\n\n")
 	tiers := Tiers()
@@ -496,6 +506,11 @@ func appendCodebaseContentAtoms(b *strings.Builder, parts []string, plan *Plan, 
 	// the codebase-content agent reaches for the slot hostname
 	// (`apidev`/`workerdev`) it sees on SSHFS mounts.
 	parts = appendAtomIfFound(b, parts, "principles/codebase-name-vs-slot-hostname.md")
+	// Run-33 architectural fix #1 — golden-grounded rule substrate.
+	// Voice + IG6 Zerops-forced + KB shape + Y15 density rules visible
+	// at authoring time, not just refinement. Multi-file path is the
+	// production composer; single-file kept in sync to avoid drift.
+	parts = appendAtomIfFound(b, parts, "briefs/refinement/derived_rules.md")
 	return parts
 }
 

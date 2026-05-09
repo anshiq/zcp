@@ -103,8 +103,10 @@ func TestRefinementRubric_ForbidsTierPromotionNarrative(t *testing.T) {
 }
 
 // TestBuildRefinementBrief_TeachesTierPromotionGuard — sanity that
-// the rubric reaches the refinement brief end-to-end, not just the
-// embedded atom file.
+// the tier-promotion-narrative teaching reaches the refinement brief
+// end-to-end. Run-33 fix #2 retired embedded_rubric.md; Y8 + T4 in
+// derived_rules.md now carry the same principle (no tier-promotion
+// narrative in yaml comments / tier README).
 func TestBuildRefinementBrief_TeachesTierPromotionGuard(t *testing.T) {
 	t.Parallel()
 	plan := &Plan{Slug: "x", Codebases: []Codebase{{Hostname: "api"}}}
@@ -112,11 +114,13 @@ func TestBuildRefinementBrief_TeachesTierPromotionGuard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildRefinementBrief: %v", err)
 	}
-	if !strings.Contains(brief.Body, "Tier-promotion narrative") {
-		t.Errorf("refinement brief missing `Tier-promotion narrative` rubric section")
-	}
-	if !strings.Contains(brief.Body, `\bpromote\b.*\btier\b`) {
-		t.Errorf("refinement brief missing tier-promotion regex anchor")
+	for _, anchor := range []string{
+		"Y8 — no tier-promotion narrative",
+		"T4 — no tier-promotion narrative",
+	} {
+		if !strings.Contains(brief.Body, anchor) {
+			t.Errorf("refinement brief missing tier-promotion anchor %q", anchor)
+		}
 	}
 }
 

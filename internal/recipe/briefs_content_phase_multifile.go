@@ -143,6 +143,13 @@ func buildCodebaseContentBriefMultiFileWithFraming(plan *Plan, cb Codebase, pare
 		return Brief{}, err
 	}
 
+	// Part 5b/5c — naming + rules-from-goldens parts. Extracted to keep
+	// buildCodebaseContentBriefMultiFileWithFraming under the maintidx
+	// threshold after run-33 fix #1 added the rules part.
+	if err := writeNamingAndRulesParts(w); err != nil {
+		return Brief{}, err
+	}
+
 	// Part 6 — context (codebase metadata, facts, parent baseline,
 	// pointer block, sibling note). When facts overflow, split.
 	if err := w.StartPart("context", "codebase metadata, filtered facts, parent recipe baseline, sibling note"); err != nil {
@@ -288,6 +295,13 @@ func buildEnvContentBriefMultiFileWithFraming(plan *Plan, parent *ParentRecipe, 
 		return Brief{}, err
 	}
 
+	// Part 3b/3c — naming + rules-from-goldens parts. Same reasoning as
+	// codebase-content's Part 5b/5c — keep the env-content composer
+	// under the maintidx threshold after run-33 fix #1.
+	if err := writeNamingAndRulesParts(w); err != nil {
+		return Brief{}, err
+	}
+
 	// Part 4 — context. WriteOrSplit handles overflow into a fresh
 	// `context-tail` part. Practically the env-content context fits
 	// comfortably under the cap in the run-31 fixture (~10 KB), but the
@@ -380,18 +394,11 @@ func buildRefinementBriefMultiFileWithFraming(plan *Plan, parent *ParentRecipe, 
 		return Brief{}, err
 	}
 
-	// Part 3 — embedded rubric (~31 KB; the largest atom in the brief).
-	if err := w.StartPart("rubric", "embedded rubric — five criteria, three anchors each"); err != nil {
-		return Brief{}, err
-	}
-	if err := w.WriteOptionalAtom("briefs/refinement/embedded_rubric.md"); err != nil {
-		return Brief{}, err
-	}
-
-	// Part 3b — derived rules atom (run-32 phase 2). Golden-grounded
-	// principle-shaped scoring substrate (~10 KB) extracted from
-	// laravel-jetstream + laravel-showcase. Own part because Part 3 is
-	// already at PerPartTokenCeiling with the rubric alone.
+	// Part 3 — derived rules atom (run-33 architectural fix #2 retired
+	// the legacy embedded_rubric.md; rule-walk against the stitched
+	// output is the primary scoring lens). Golden-grounded
+	// principle-shaped substrate extracted from laravel-jetstream +
+	// laravel-showcase.
 	if err := w.StartPart("rules-from-goldens", "golden-grounded rule substrate — principle-shaped scoring rules"); err != nil {
 		return Brief{}, err
 	}
@@ -725,7 +732,7 @@ func renderRefinementStitchedPointerBlock(plan *Plan, parent *ParentRecipe, runD
 	}
 	var b strings.Builder
 	b.WriteString("## Stitched output to refine\n\n")
-	b.WriteString("Read each path; refine fragments where you can cite the violated rubric criterion, the exact fragment, and the preserving edit.\n\n")
+	b.WriteString("Read each path; refine fragments where you can cite the violated rule, the exact fragment, and the preserving edit.\n\n")
 	if runDir != "" {
 		b.WriteString("**Root**\n\n")
 		fmt.Fprintf(&b, "- `%s/README.md` — root README\n", runDir)
@@ -744,4 +751,27 @@ func renderRefinementStitchedPointerBlock(plan *Plan, parent *ParentRecipe, runD
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// writeNamingAndRulesParts emits the naming + rules-from-goldens parts
+// shared by the codebase-content and env-content multi-file composers.
+// Extracted to keep both composer functions under the maintidx
+// threshold after run-33 architectural fix #1 added the rules part.
+//
+// `naming` carries the codebase-name-vs-slot-hostname principle (own
+// part to keep the prior yaml-style part under PerPartTokenCeiling);
+// `rules-from-goldens` carries the golden-grounded rule substrate
+// (V1-V6 voice + IG6 Zerops-forced + KB shapes + Y8/Y15 yaml rules)
+// visible at authoring time, not just at refinement.
+func writeNamingAndRulesParts(w *partWriter) error {
+	if err := w.StartPart("naming", "codebase name vs slot hostname (recipe-MCP vs filesystem path duality)"); err != nil {
+		return err
+	}
+	if err := w.WriteOptionalAtom("principles/codebase-name-vs-slot-hostname.md"); err != nil {
+		return err
+	}
+	if err := w.StartPart("rules-from-goldens", "golden-grounded rule substrate — principle-shaped scoring rules"); err != nil {
+		return err
+	}
+	return w.WriteOptionalAtom("briefs/refinement/derived_rules.md")
 }

@@ -3,8 +3,14 @@
 Conditionally appended to the codebase-content brief when this recipe
 is the showcase tier and this codebase is a separate worker codebase
 (`plan.Tier == "showcase" && cb.IsWorker`). At showcase tier the
-worker runs at `minContainers ≥ 2` from tier 4 onwards, so the
-multi-replica failure modes are first-class KB concerns.
+worker runs at `minContainers ≥ 2` once the recipe is in
+production-shaped scaling, so the multi-replica failure modes are
+first-class KB concerns. **Codebase-surface vocab note**: KB body
+text addresses the porter's runtime contract directly — `at
+minContainers ≥ 2 and above`, `under production-shaped scaling`,
+or simply `when the worker scales past one replica`. Tier numbers
+(`tier 0`..`tier 5`) and tier names belong on env-content surfaces
+(tier READMEs / import.yamls), never on codebase READMEs / KB.
 
 The corresponding **code shape** taught to the feature sub-agent at
 authoring time lives at
@@ -20,9 +26,9 @@ appear in the worker KB:
 
 ### Queue-group / consumer-group semantics under multi-replica
 
-The worker has multiple replicas (`minContainers: 2` from tier 4). If
-the broker subscription does NOT join a queue group (NATS) or
-consumer group (Kafka, RabbitMQ), every replica receives every
+The worker has multiple replicas once `minContainers ≥ 2`. If
+the broker subscription does NOT join a queue group (the recipe-
+specific term varies by broker), every replica receives every
 message → duplicated work → corrupted state.
 
 The KB stem names the broker, the term "queue group" (or library

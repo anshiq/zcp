@@ -76,22 +76,14 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		parts = append(parts, "briefs/refinement/synthesis_workflow.md")
 	}
 
-	// Quality rubric — embedded inline rather than via Read so the
-	// sub-agent never needs to leave the brief context.
-	if rubric, err := readAtom("briefs/refinement/embedded_rubric.md"); err == nil {
-		b.WriteString(rubric)
-		b.WriteString("\n\n")
-		parts = append(parts, "briefs/refinement/embedded_rubric.md")
-	}
-
-	// Run-32 — derived rules atom: principle-shaped scoring substrate
-	// extracted from the laravel-jetstream + laravel-showcase goldens.
-	// Complements the rubric above; when the two disagree, cited
-	// golden evidence wins. Source + derivation (with rule-by-rule
-	// citations + the codex verification pass) in
-	// plans/run-32-rules-from-jetstream.md — the atom's rule IDs are
-	// stable per surface section but not strictly contiguous (some
-	// IDs were merged or cut during the verification pass).
+	// Run-33 architectural fix #2 — `derived_rules.md` is now the
+	// primary scoring substrate; the legacy rubric (`embedded_rubric.md`,
+	// 5 criteria × 3 anchors each, line-count/pattern shaped) is
+	// retired. Pattern-shaped anchors missed principle-shaped failures
+	// (audience-model, tier-prefix intros, slug-stem leakage); rule-walk
+	// against the stitched output is closer to how a porter would read
+	// and apply rules. Source + derivation in
+	// plans/run-32-rules-from-jetstream.md.
 	if rules, err := readAtom("briefs/refinement/derived_rules.md"); err == nil {
 		b.WriteString(rules)
 		b.WriteString("\n\n")

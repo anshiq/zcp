@@ -140,14 +140,86 @@ sufficient checklist.
    pointer needed. RIGHT (descriptive label as link text): `[per-key
    env shape and cross-service aliases](https://docs.zerops.io/zerops-yaml/specification#envvariables-)`,
    `[Laravel documentation](https://laravel.com/docs/12.x/queues)`,
-   `[managed NATS service](https://docs.zerops.io/services/managed-services/nats)`
+   `[step-by-step NestJS tutorial](https://docs.zerops.io/frameworks/nestjs/introduction)`
    — the link text reads as porter prose, not as a corpus key. The
    jetstream golden's links (`[step-by-step tutorial]`, `[zsc
-   health-check]`, `[Laravel documentation]`) are the calibration.
+   health-check]`, `[Laravel documentation]`, `[multi-container
+   setups]`) are the calibration. **Slug-stem test**: if the link text
+   contains a corpus slug stem (`rolling-deploys`, `init-commands`,
+   `managed-services-*`, `env-var-model`, `env-var-references`,
+   `env-var-secrets`, `subdomain-access`, `object-storage`,
+   `build-from-git`, etc.) — even when dressed as English with a
+   Zerops/managed prefix — it FAILS. Forbidden shapes include
+   `[managed NATS service]`, `[Zerops object-storage service]`,
+   `[Zerops env-var model]`, `[Zerops rolling-deploys reference]`,
+   `[per-deploy init-commands reference]`. Replace with a porter-
+   recognized concept or in-body completion.
 3. **Classification × surface refusal**: `intersection` is KB-only,
    never IG. If a fact records `candidateClass=intersection`, route
    the body to KB; for IG, restate the principle without the
    intersection class.
+
+## Canonical apps-repo sections (api codebase only)
+
+For multi-codebase recipes, the **api codebase is the canonical apps-
+repo** — the apidev/README.md anchors the "what this recipe gives you"
+narrative for porters browsing the catalog. Two recipe-level sections
+live ONLY on the api codebase README, NOT on app/worker/etc.
+
+If your codebase has role `api` (single-codebase recipes implicitly
+qualify; multi-codebase recipes: only the codebase whose role string is
+exactly `api`), append two H2 sections at the END of your IG fragment
+body, BEFORE the `## Understand Zerops Core Concepts` concept bridge:
+
+### `## Recipe features`
+
+A bulleted list of ~6-8 bullets framing what the recipe SETS UP, in
+plain English. Each bullet names a service or capability + what
+platform service it runs on. Bold the platform service / capability
+name. See `derived_rules.md` RF1 for the full rule + jetstream-shaped
+worked example. Sample shape (paraphrased from jetstream):
+
+```markdown
+## Recipe features
+
+- NestJS api running on a load-balanced **Zerops Node.js** service
+- Zerops **PostgreSQL 18** service as primary database
+- Zerops **Valkey 7.2** (Redis-compatible) service for read-through
+  cache
+- Zerops **NATS 2.12** message broker for the worker queue
+- Zerops **Object Storage** (S3-compatible) service for uploads
+- Zerops **Meilisearch 1.20** service for full-text search
+- Cross-service URLs composed from `${zeropsSubdomainHost}` so the
+  SPA's API URL resolves at provision time
+- Logs accessible through Zerops GUI; built-in **environment variables**
+  system carries every cross-service alias
+```
+
+### `## Production vs. Development`
+
+Three bullets max. Names HA migration paths the porter takes when
+scaling, with concrete yaml-edit syntax per bullet so the porter can
+find the exact field. See `derived_rules.md` PD1 for the full rule.
+Sample shape (paraphrased from jetstream):
+
+```markdown
+## Production vs. Development
+
+- Use highly-available versions of the managed services (change `mode`
+  from `NON_HA` to `HA` in the recipe YAML for `db`, `cache`, and
+  `broker` service sections)
+- Run multiple replicas of the api and worker for rolling-deploy
+  resilience (add `minContainers: 2` in the recipe YAML for the `api`
+  and `worker` service sections)
+- Replace the placeholder `<@generateRandomString(<32>)>` for
+  `APP_SECRET` with a stable production secret
+```
+
+These sections render in the IG fragment body but read as recipe-level
+content; the porter scrolling apidev/README.md sees them right after
+the IG and before the KB. Non-api codebase agents (app, worker, etc.)
+SKIP these sections entirely — they don't author recipe-level
+narrative.
 
 ## Complete-phase gate
 

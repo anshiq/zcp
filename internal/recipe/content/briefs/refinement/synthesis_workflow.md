@@ -1,18 +1,26 @@
 # Refinement synthesis workflow
 
-You walk every stitched fragment in the run output and decide for each
-whether to ACT (replace via `record-fragment mode=replace`) or HOLD.
-The decision is rubric-driven — `embedded_rubric.md` is the contract;
-the seven reference distillation atoms (KB shapes, IG one-mechanism,
+You read every stitched document in the run output and ACT (replace
+via `record-fragment mode=replace`) on every rule violation you find.
+The scoring substrate is `derived_rules.md` — golden-grounded
+principle-shaped rules. Walk the rules against the documents, not
+the other way around: don't pattern-match anchor shapes; read each
+document end-to-end as a porter would, then walk every rule and ACT
+on every hit.
+
+Run-33 architectural fix #2 retired the legacy 5-criteria rubric
+(`embedded_rubric.md`); pattern anchors missed principle-shaped
+failures (audience-model, tier-prefix intros, slug-stem leakage).
+Rule-walk against the stitched output catches those.
+
+The seven reference distillation atoms (KB shapes, IG one-mechanism,
 voice patterns, yaml comments, citations, trade-offs, refinement
-thresholds) live on the discovery channel. Fetch the one matching the
-class you're investigating via:
+thresholds) live on the discovery channel — useful for deeper context
+on a specific class:
 
     zerops_knowledge uri=zerops://themes/refinement-references/<name>
 
-The brief lists every fetchable URI under "Reference atoms — fetch on
-demand" with a one-line description per atom. Don't preload them all;
-fetch the atom WHEN you're scoring a suspect against its criterion.
+The brief lists every fetchable URI. Fetch on demand; don't preload.
 
 ## Fragment id reads BARE codebase name (not slot hostname)
 
@@ -59,270 +67,92 @@ Run-32's refinement agent burned a wrong-path `ls` round-trip on
 mount at `apidev/`/`appdev/`/`workerdev/`. Keep the two forms
 straight: filesystem = slot, MCP = bare.
 
-## Refinement actions, by criterion
+## Rule-walk against the stitched documents
 
-### Criterion 1 — Stem shape (KB)
+Read every stitched document end-to-end (root README, env READMEs +
+import.yaml, codebase READMEs + zerops.yaml + CLAUDE.md). Read as a
+porter would — top-to-bottom, no special context. Then walk EVERY
+rule in `derived_rules.md` against EVERY document. ACT on every
+violation; cite the rule id + the exact phrase + the preserving edit
+in your `record-fragment mode=replace` body.
 
-Walk every `codebase/<h>/knowledge-base` fragment. For each `- **stem**
-— body`:
+### How to walk
 
-1. Score the stem against `zerops://themes/refinement-references/kb_shapes` Pass examples.
-2. If the stem is symptom-first OR directive-tightly-mapped (body
-   carries the observable in its first sentence), HOLD.
-3. If the stem is author-claim AND a symptom-first reshape is
-   derivable from the body's mechanism + observable, ACT — replace
-   the bullet with the reshape.
-4. If the stem is author-claim AND no symptom-first reshape is
-   derivable (the body lacks an observable failure mode), HOLD and
-   record a notice: "fact-recording teaching gap — the deploy-phase
-   agent didn't capture the observable; can't refine without it."
+1. **Universal voice rules (V1-V6) apply to every porter-facing
+   surface.** V1 (porter-clones-and-runs framing — never recipe-author
+   voice), V2 (names what the recipe IS), V3 (slug-stem test — link
+   text never carries corpus slugs), V4 (porter-actionable
+   phrasings), V5 (defer to docs when sprawl), V6 (no authoring
+   vocabulary). Walk every fragment for V-rule violations.
+2. **Per-surface rules apply on the surface they name.** R1-R6 root
+   README, T1-T4 tier README, TY1-TY5 tier import.yaml, IG1-IG6
+   apps-repo Integration Guide, KB1/KB3-KB6 apps-repo Knowledge
+   Base, Y1-Y15 apps-repo zerops.yaml, RF1/PD1 "Recipe features" +
+   "Production vs Development".
+3. **For each violation, ACT** — `record-fragment mode=replace` with
+   the corrected body. Cite the rule id + the violating phrase + the
+   preserving edit. Bias toward ACT — snapshot/restore reverts wrong
+   ACTs automatically (any new blocking violation flips the body
+   back to your pre-Replace state).
 
-### Criterion 2 — Voice (Surface 7 zerops.yaml + Surface 3 tier yaml)
+### Violation patterns to look for
 
-Walk every `codebase/<h>/zerops-yaml` whole-yaml fragment (one per
-codebase, owns every block-level comment in that codebase's
-zerops.yaml) AND every tier `import.yaml` service-block comment.
-Count friendly-authority phrasings per `zerops://themes/refinement-references/voice_patterns`
-"The heuristic":
+These are the audience-model failures pattern-anchors miss:
 
-1. If the fragment carries ≥1 phrasing tied to a named porter signal,
-   HOLD.
-2. If the fragment carries 0 phrasings AND a porter-adapt path is
-   namable from the field semantics + recorded facts, ACT — read the
-   current whole-yaml body, edit the relevant block-level comment in
-   place, and `record-fragment mode=replace
-   fragmentId=codebase/<h>/zerops-yaml fragment=<full yaml with edited
-   comments>`. Anchor the new phrasing on the 4 reference shapes
-   (Feel free to / Configure this to / Replace ... with / Disabling
-   ... is recommended).
-3. If 0 phrasings AND no adapt path is namable (the field has only one
-   valid value, e.g. `httpSupport: true` on a public port), HOLD.
-4. NEVER touch KB / CLAUDE.md / Root README — voice criterion is
-   `n/a` on those surfaces.
+- **Tier-prefix intros** (T2 / R2 / RF1 / PD1 violations) — "Tier 0
+  — AI Agent" / "Tier 5 — Highly-available Production" as lead text
+  in env intros. The framing names the tier instead of the delta.
+- **`${peer_alias}` raw in prose** (V1/V6 violations) — token like
+  `${apistage_zeropsSubdomain}` sitting unwrapped in IG/KB body
+  prose without porter-recognizable framing. Porter doesn't know
+  what `apistage` means; cite the alias as "the api stage's
+  subdomain URL" instead.
+- **KB describing already-fixed problems** (KB6 violation) — yaml
+  ships `synchronize: false` already, yet KB warns about TypeORM
+  schema corruption. The recipe yaml prevents this trap; KB names
+  traps the porter STILL hits AFTER cloning + deploying.
+- **Cross-recipe references** (V1 / RF1) — "parent recipe
+  nestjs-minimal" in prose. The porter reads ONE recipe; the parent
+  graph is engine-internal vocabulary.
+- **Slug-stem leakage** (V3 violation) — `[Zerops rolling-deploys
+  reference]` / `[managed NATS service]` link text. Porter doesn't
+  know corpus slugs; rewrite to porter concept or in-body completion.
+- **Recipe-author voice** (V1 / V6 violations) — "during scaffold",
+  "the agent owns", "we chose", "recipe author". Strip authoring
+  vocabulary; reframe in porter-runtime terms.
+- **IG steps that are recipe-internal conventions** (IG6 violation) —
+  "Alias cross-service env vars under your own keys" — convention,
+  not Zerops-forced. The cloned recipe yaml already aliases them.
+  IG steps must be Zerops-forced or recipe-feature-specific.
+- **Tier-vocab on codebase surfaces** — codebase README/IG/KB/yaml
+  comments are read at every tier; "tier 5" / "stage" / "small
+  prod" tokens belong to env-content surfaces only.
 
-### Criterion 3 — Citations (KB + IG)
+### Cross-surface non-duplication
 
-Walk every KB bullet and IG H3 body. Cross-check the topic against
-the recipe's CitationMap (threaded into the codebase-content brief
-under "Citation guides for this recipe"):
+Build a per-codebase topic-by-mechanism index across IG H3 + KB
+bullet stems + zerops.yaml block comments. Each topic on EXACTLY
+ONE surface:
 
-1. If the topic IS on the Citation Map AND the body cites the guide
-   by name in prose, HOLD.
-2. If the topic IS on the Citation Map AND the body lacks the cite,
-   ACT — append the cite-by-name pattern from
-   `zerops://themes/refinement-references/citations` Pass 1 (final sentence: "The Zerops
-   `<guide>` reference covers ..."). Be precise about the guide id.
-3. If the topic is NOT on the Citation Map (or the recipe has no
-   citationGuides at all), HOLD.
+- IG owns porter-transferable mechanisms (one mechanism per H3).
+- KB owns post-deploy symptoms — symptom-first or
+  directive-tightly-mapped stem.
+- zerops.yaml comments own field-adjacent WHY-choices, not
+  mechanism teaching (cross-reference IG instead).
 
-### Criterion 4 — Trade-off two-sidedness (KB)
+When a topic spans surfaces, ACT to consolidate per surface
+ownership (collapse the duplicating body to the natural-prose
+cross-reference). KB can complement IG when KB carries a UNIQUE
+symptom angle (HTTP code, quoted error string, observable
+wrong-state) IG doesn't surface.
 
-Walk every KB bullet body. Per `zerops://themes/refinement-references/trade_offs`:
+### CLAUDE.md leakage
 
-1. If the body names both the chosen path AND the rejected
-   alternative (with the consequence of the rejected one), HOLD.
-2. If the body names only the chosen path AND the rejected
-   alternative is namable from the recorded facts, ACT — extend the
-   body with the rejected-alternative consequence in one clause.
-3. If only the chosen path is namable (no real alternative), HOLD.
-
-### Criterion 5 — Classification × surface routing
-
-Walk every fragment. The record-time refusal at `slot_shape.go`
-already catches many misroutings; refinement is the backstop:
-
-1. If a KB bullet carries content that belongs in IG (a code diff,
-   a recipe-preference), ACT — move the principle to IG (or HOLD
-   with notice if the move requires a NEW IG item, which exceeds
-   refinement scope).
-1a. If a KB bullet's mechanism is pure framework or pure spec quirk
-    (the trap fires regardless of where the framework runs; Zerops
-    contributes nothing structural), ACT: drop the bullet. Spec
-    §337-345 routes framework-quirks and spec-quirks to DISCARD.
-
-    The discard test (apply ALL three before dropping):
-
-    (i) **Walk the bullet's full body** — not just the stem. Look for
-    ANY mention of Zerops-side mechanisms, **abstract or concrete**.
-    Concrete: explicit env-var names (`${db_*}`, `${broker_*}`,
-    `${zeropsSubdomainHost}`, project-scope constants like
-    `${API_URL}`/`${FRONTEND_URL}`/`${DEV_*}`), `zerops.yaml` directives, named managed
-    services. Abstract: phrasings like "project-scope URL constants",
-    "the L7 balancer", "the auto-injected cross-service var",
-    "container lifecycle", "the platform's deploy primitive" — these
-    reference Zerops mechanisms without naming the specific token.
-    **Both shapes count for check (i).** A bullet whose body
-    abstractly references a Zerops mechanism is intersection content;
-    only bullets whose bodies make zero reference (concrete or
-    abstract) to any Zerops-side concept fail check (i).
-
-    Mechanism categories that count when referenced abstractly OR
-    concretely: env-var injection (project-scope or cross-service),
-    L7 balancer behavior, container lifecycle (rolling deploys,
-    SIGTERM, init-commands, app-version key), managed service
-    interaction (the recipe's specific service or the category),
-    deploy primitives (`zsc`, yaml directives, subdomain access),
-    VXLAN routing.
-
-    (ii) **Check inline citations** — does the body name a Zerops
-    guide as a real markdown link with a porter-readable descriptive
-    label (e.g.
-    `[per-key env shape and cross-service aliases](https://docs.zerops.io/zerops-yaml/specification#envvariables-)`,
-    `[Zerops managed NATS service](https://docs.zerops.io/services/managed-services/nats)`)?
-    An inline link with a descriptive label means the bullet has a
-    Zerops thread the headline mechanism may have abstracted away.
-    KEEP the bullet — the link is the porter's deeper-understanding
-    pointer. Topic-name handwaves without a URL ("the `env-var-model`
-    guide covers...") do not count as a cite — they're the forbidden
-    middle ground per Criterion 3. **Slug-name link text** — a real
-    markdown link whose visible label is the internal corpus slug
-    (`[env-var-model](url)`, `[init-commands](url)`,
-    `[managed-services-nats](url)`) — also does not count: same
-    middle ground with a URL bolted on. Refinement Action 4 should
-    rewrite the link text to a descriptive label or convert to in-body
-    completion.
-
-    (iii) **Apply the "would they hit this with different scaffold
-    code?" test** — is the trap a property of the framework alone
-    (any user of NestJS hits it; any user of CORS hits it), or does
-    it require the recipe's specific Zerops wiring to manifest? If
-    the latter (e.g. requires the recipe to inject a project-scope
-    URL into the CORS allow-list), it's intersection — KEEP.
-
-    Drop ONLY when (i) AND (ii) AND (iii) all return "no Zerops
-    thread". A single Zerops anchor anywhere — body mention OR
-    inline cite OR scaffold-shape dependency — flips this to KEEP
-    (or to "reshape body to lead with the Zerops thread", which is
-    a separate Action: see rule 4).
-
-    Worked examples that pass all three checks (DROP):
-    - **`@sveltejs/vite-plugin-svelte@^5` peer-requires Vite 6, not
-      Vite 5** — npm registry metadata. No env injection, no
-      balancer behavior, no managed service. No inline Zerops cite.
-      Same trap fires on Vercel, Netlify, bare Docker. DROP.
-    - **`createApplicationContext` plus `app.listen()` crashes**
-      when the body teaches ONLY the NestJS factory-method contract
-      with no Zerops yaml-shape consequence. (Counter-case: a body
-      that ALSO teaches "no `ports`, no `healthCheck`, no
-      `readinessCheck` in zerops.yaml because the worker has no
-      HTTP surface" — that IS intersection; KEEP.)
-
-    Worked examples that FAIL the test (KEEP, because of body
-    content the headline abstracts):
-    - **"`X-Cache` header undefined in SPA"** with a body that ends
-      "Zerops's project-scope env vars (`FRONTEND_URL`,
-      `DEV_FRONTEND_URL`) drive the allowed origins list — see the
-      [per-key env shape and cross-service aliases](https://docs.zerops.io/zerops-yaml/specification#envvariables-)
-      reference for project-scope vs cross-service alias semantics"
-      — the body has a Zerops link with a descriptive label; the
-      recipe wires project-scope env vars into the CORS allow-list.
-      Headline is CORS; body is Zerops × CORS. KEEP — or reshape to
-      lead with the project-scope-env angle.
-    - **"`fetch().headers.get('X-Cache')` returns null"** with body
-      that mentions only `Access-Control-Expose-Headers` and zero
-      env vars/Zerops guides — pure W3C CORS. DROP.
-
-    The discriminator is the BODY content, not the stem keyword.
-    Two bullets with similar X-Cache stems can have opposite
-    verdicts depending on what the body teaches.
-
-    If dropping would bring KB below the 5-bullet floor (spec §214),
-    HOLD with notice: "framework-quirk drop blocked by KB floor;
-    upstream codebase-content classification gap."
-2. If a CLAUDE.md fragment carries Zerops-platform content
-   (managed-service hostnames, env-var aliases), the record-time
-   check should have refused already; if it slipped through, ACT —
-   strip the leakage. Don't re-author the Zerops-related content
-   here; the codebase-content sub-agent owns IG/KB/yaml-comments.
-3. Cross-check operational content: if a CLAUDE.md fragment carries
-   build/run/test commands but the project has none of those, HOLD
-   (there's nothing to fix).
-
-### Criterion 6 — Cross-surface non-duplication (IG + KB + zerops.yaml)
-
-Build a per-codebase topic-by-mechanism index. Walk each topic across
-the codebase's IG H3 headings + KB bullet stems + zerops.yaml
-block-level comments. Per `zerops://themes/refinement-references/cross_surface_dedup`:
-
-1. If the topic appears on EXACTLY ONE surface, HOLD.
-2. If the topic appears on IG (positive shape) AND KB (symptom angle)
-   AND the KB carries a UNIQUE symptom angle (an HTTP code, quoted
-   error string, observable wrong-state different from what IG names),
-   HOLD. KB legitimately complements IG when the angles diverge.
-3. If the topic appears on IG (positive shape) AND KB (symptom angle)
-   but the KB symptom restates IG's mechanism rather than carrying a
-   unique angle, ACT: rewrite the KB body so it:
-   (a) opens with the symptom — exactly the phrase a porter searches
-       for, no meta-tag;
-   (b) confirms the mechanism in 1-2 plain sentences (one breath of
-       "this is what's happening"), without re-teaching the fix;
-   (c) closes by gesturing at where the fix lives — naturally, in
-       prose, naming the *topic* that lives there ("the recommended
-       wiring pattern is in the Integration Guide above") rather
-       than item-number anchors ("see IG #3").
-
-   Forbidden meta-decoration in the rewritten body:
-   - Opener "Symptom of..." (classification-talk; goldens never use
-     this).
-   - Closer "Search anchor: ..." (meta-tag; goldens never use this).
-   - Item-number cross-references like "see IG #3" or "fix lives at
-     IG #2" (mechanical; goldens integrate cross-refs in prose).
-   - Non-Zerops tooling names (`kubectl`, `docker-compose`, etc. —
-     porters on Zerops use the dashboard or zcli).
-
-   Worked example. ORIGINAL KB body (long, re-teaches the mechanism
-   the IG owns; also leaks the corpus slug `managed-services-nats`
-   as link text):
-   > **`NatsError: Authorization Violation` on startup** —
-   > Hand-composing
-   > `nats://${broker_user}:${broker_password}@${broker_hostname}:${broker_port}`
-   > and passing it as `servers` to a NATS client triggers a
-   > double-auth: the client parses the embedded credentials AND
-   > issues a separate SASL exchange with the same values, the
-   > server rejects the second attempt, and the worker crashes
-   > before any subscription registers. Either pass user/pass as
-   > connect options with a credential-free `host:port` URL, or
-   > pass `${broker_connectionString}` (the platform-built URL)
-   > directly. The
-   > [managed-services-nats](https://docs.zerops.io/services/managed-services/nats)
-   > guide covers both supported wiring patterns.
-
-   COLLAPSED (after Action 6 rule 3 — and the link text rewritten
-   to a descriptive label per Criterion 3):
-   > **`NatsError: Authorization Violation` on startup** — Passing
-   > `nats://user:pass@host:port` as the `servers` URL triggers
-   > double authentication. The client parses the embedded
-   > credentials, then issues a separate SASL exchange with the same
-   > values, and the server rejects the second attempt before any
-   > subscription registers. The recommended wiring (separate
-   > `user`/`pass` options with a credential-free `host:port` URL,
-   > or `${broker_connectionString}` passed through unmodified) is
-   > in the Integration Guide above; the
-   > [Zerops managed NATS service](https://docs.zerops.io/services/managed-services/nats)
-   > reference covers the cluster-failover behaviour for the core
-   > pub/sub pattern this codebase uses.
-
-   The collapsed body retains: the symptom (search-anchor), the
-   failure mechanism (one paragraph), the inline guide cite (porters
-   who want depth still get the pointer), and a natural prose
-   pointer at the IG ("is in the Integration Guide above") without
-   item-number decoration.
-4. If the topic appears on IG AND zerops.yaml block comment AND the
-   yaml comment re-explains the same mechanism the IG already names,
-   ACT: replace the yaml block comment with the field-level decision
-   (the WHY of the field value), drop the mechanism re-teach. Voice
-   criterion may apply to the new shape.
-5. If the topic appears on KB AND zerops.yaml block comment with no IG
-   item, ACT: pick the more porter-relevant surface (zerops.yaml if
-   the porter would adapt the field; KB if the porter would search for
-   the symptom). Drop the other.
-6. If acting would drop KB below the 5-bullet floor (spec §214), HOLD
-   with notice: "dedup blocked by KB floor; backfill from facts.jsonl
-   exceeds refinement scope." (This is the rare honest HOLD; most
-   recipes have unique gotchas to surface.)
-
-The criterion is structural, not voice — apply it before or after the
-voice pass; order doesn't matter.
+If a CLAUDE.md fragment carries Zerops-platform content
+(managed-service hostnames, env-var aliases), strip the leakage —
+do NOT re-author Zerops content there (the codebase-content
+sub-agent owns IG/KB/yaml-comments). If CLAUDE.md fragment carries
+build/run/test commands the project doesn't have, HOLD (no fix).
 
 ## Showcase tier worker supplements
 
@@ -375,8 +205,8 @@ naming the violation that fired.
 
 For env / root fragments the wrapper does not fire — slot-shape is
 the only safety net at record time. Apply the edit threshold (cite
-the violated rubric criterion + the exact fragment + the preserving
-edit); HOLD when any of the three is fuzzy.
+the violated rule + the exact fragment + the preserving edit); HOLD
+when any of the three is fuzzy.
 
 Either way: do NOT loop. One attempt per fragment.
 
@@ -389,5 +219,5 @@ call:
 zerops_recipe action=complete-phase phase=refinement
 ```
 
-The phase has no exit gates beyond the rubric audit logged in the
-notice stream.
+The phase has no exit gates beyond the rule-walk audit logged in
+the notice stream.

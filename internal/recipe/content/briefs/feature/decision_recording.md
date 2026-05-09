@@ -27,6 +27,15 @@ per-class surface routing.
 Record. The classifier auto-routes; redundant records are cheaper than
 losing teaching that took 10 minutes to figure out at deploy time.
 
+## Forbidden tokens in fact text
+
+Recipe-author voice in fact text contaminates porter prose at synthesis.
+Forbidden in `why`/`mechanism`/`fixApplied`/`surfaceHint`/`evidence`:
+`the agent`, `recipe author`, `scaffold sub-agent`, `feature sub-agent`,
+`during scaffold`, `during feature`, `we chose`, `we use`, `we set`,
+`record-fact`, `zerops_dev_server`. BAD/GOOD pattern in
+`scaffold/decision_recording_slim.md`.
+
 ## Close-out batch-fix discipline
 
 `complete-phase phase=feature codebase=<host>` returns the FULL
@@ -40,27 +49,30 @@ run-32's feature-backend hit on `scaffold-yaml-leaked-comment`
 post-feature. The mechanic mirrors scaffold's close-out; see
 `briefs/feature/content_extension.md` for the full rule.
 
-## Per-feature commits
+## Per-feature commits — use the safe template, never the naked form
 
 Each feature kind (crud, cache-demo, queue-demo, storage-upload,
-search-items) commits independently:
-
-```
-git commit -m 'feature(<kind>): <one-line summary>'
-```
-
-A porter scrolling git history sees the narrative shape — one commit
-per feature. Don't bundle commits across feature kinds; that erases
-the per-feature commit signal.
-
-**Pre-check before commit.** Run `git status --porcelain` first; if
-the output is empty, skip the commit (nothing to commit; `git
-commit` exits 1 on a clean working tree and cancels every parallel
-tool call in the same Claude message as collateral). Shape:
+search-items) commits independently. **Use this exact shell template**
+for every commit you issue (copy-paste; substitute `<slot>`,
+`<SourceRoot>`, `<kind>`, `<summary>`):
 
 ```
 ssh <slot> "cd <SourceRoot> && [ -n \"\$(git status --porcelain)\" ] && git add -A && git commit -m 'feature(<kind>): <summary>' || echo 'no changes to commit'"
 ```
+
+The `[ -n "$(git status --porcelain)" ]` guard returns false on a
+clean working tree and the `||` branch echoes a no-op message,
+keeping the exit code at 0. Without the guard, `git commit` exits 1
+on a clean tree and **cancels every parallel tool call in the same
+Claude message as collateral** — run-32 and run-33 both lost batches
+this way. **Forbidden form**: `ssh <slot> "git add -A && git commit
+-m '...'"`. The naked form is run-33's regression — features-frontend
+issued six naked commits despite the brief teaching above. The
+guarded template is the only acceptable shape.
+
+A porter scrolling git history sees the narrative shape — one commit
+per feature. Don't bundle commits across feature kinds; that erases
+the per-feature commit signal.
 
 ## Worked examples — feature-phase porter_change shapes
 

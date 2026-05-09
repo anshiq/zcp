@@ -39,12 +39,17 @@ func TestBuildRefinementBrief_AssemblesCoreAtoms(t *testing.T) {
 	for _, want := range []string{
 		"phase_entry/refinement.md",
 		"briefs/refinement/synthesis_workflow.md",
-		"briefs/refinement/embedded_rubric.md",
+		"briefs/refinement/derived_rules.md",
 		"reference_atom_catalog",
 	} {
 		if !slices.Contains(brief.Parts, want) {
 			t.Errorf("brief.Parts missing %q; got %v", want, brief.Parts)
 		}
+	}
+	// Run-33 architectural fix #2 — embedded_rubric.md retired in
+	// favor of rule-walk against stitched output via derived_rules.md.
+	if slices.Contains(brief.Parts, "briefs/refinement/embedded_rubric.md") {
+		t.Errorf("brief.Parts unexpectedly carries embedded_rubric.md (retired in run-33 fix #2)")
 	}
 }
 
@@ -118,28 +123,50 @@ func TestBuildRefinementBrief_BodyUnderShrinkTarget(t *testing.T) {
 	// alongside embedded_rubric.md). Once dispatch tests confirm the
 	// rule substrate is the load-bearing scoring source, embedded_rubric
 	// can be retired and the cap pushed back down.
-	const briefShrinkCap = 75 * 1024
+	// Run-33 — bumped 75 → 76 KB to fit Y13 (causal-command-sequence
+	// rule restored from run-32-rules-from-jetstream.md:405). Cap
+	// drops back when Change 2 retires embedded_rubric (~35 KB).
+	const briefShrinkCap = 76 * 1024
 	if brief.Bytes > briefShrinkCap {
 		t.Errorf("refinement brief %d bytes exceeds %d cap (F-24 shrink target; run-32 phase 2 raised to 75K)", brief.Bytes, briefShrinkCap)
 	}
 }
 
-func TestBuildRefinementBrief_EmbedsRubric(t *testing.T) {
+// TestBuildRefinementBrief_EmbedsDerivedRules — run-33 architectural
+// fix #2. The embedded rubric (5 criteria × 3 anchors each) is retired;
+// rule-walk against stitched output (golden-grounded principle-shaped
+// rules in derived_rules.md) is the primary scoring substrate.
+func TestBuildRefinementBrief_EmbedsDerivedRules(t *testing.T) {
 	t.Parallel()
 	plan := &Plan{Slug: "x", Codebases: []Codebase{{Hostname: "api"}}}
 	brief, err := BuildRefinementBrief(plan, nil, "/run", nil)
 	if err != nil {
 		t.Fatalf("BuildRefinementBrief: %v", err)
 	}
+	// derived_rules.md is now the substrate — assert representative
+	// rule ids land in the brief body.
 	for _, anchor := range []string{
+		"V1 — porter-clones-and-runs",
+		"V3 — link text references real concepts",
+		"V6 — no authoring vocabulary",
+		"IG6 — every IG step",
+		"R1 — short",
+	} {
+		if !strings.Contains(brief.Body, anchor) {
+			t.Errorf("brief missing derived-rules anchor %q", anchor)
+		}
+	}
+	// Rubric criterion anchors must be absent — the rubric atom is no
+	// longer loaded into the brief.
+	for _, forbidden := range []string{
 		"Criterion 1",
 		"Criterion 2",
 		"Criterion 3",
 		"Criterion 4",
 		"Criterion 5",
 	} {
-		if !strings.Contains(brief.Body, anchor) {
-			t.Errorf("brief missing rubric anchor %q", anchor)
+		if strings.Contains(brief.Body, forbidden) {
+			t.Errorf("brief unexpectedly carries rubric anchor %q (retired in run-33 fix #2)", forbidden)
 		}
 	}
 }
@@ -354,19 +381,19 @@ func TestBuildRefinementBrief_EvictionPreservesRubricBlocks(t *testing.T) {
 	for _, want := range []string{
 		"phase_entry/refinement.md",
 		"briefs/refinement/synthesis_workflow.md",
-		"briefs/refinement/embedded_rubric.md",
+		"briefs/refinement/derived_rules.md",
 		"reference_atom_catalog",
 		"stitched-output-pointer-block",
 	} {
 		if !slices.Contains(brief.Parts, want) {
-			t.Errorf("brief.Parts missing rubric block %q after eviction; got %v", want, brief.Parts)
+			t.Errorf("brief.Parts missing teaching block %q after eviction; got %v", want, brief.Parts)
 		}
 	}
 	for _, anchor := range []string{
-		"Criterion 1",
+		"V1 — porter-clones-and-runs",
 	} {
 		if !strings.Contains(brief.Body, anchor) {
-			t.Errorf("rubric anchor %q evicted unexpectedly", anchor)
+			t.Errorf("derived-rules anchor %q evicted unexpectedly", anchor)
 		}
 	}
 }
