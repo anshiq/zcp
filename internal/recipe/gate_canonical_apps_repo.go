@@ -138,11 +138,18 @@ func forbidRF1PD1OnNonCanonicalAppsRepos(plan *Plan) []Violation {
 	if plan == nil {
 		return nil
 	}
+	// Mirror the presence gate's early return: when no canonical
+	// apps-repo can be identified, the absence gate has nothing to
+	// compare against. Without this, an empty canonicalHostname would
+	// match no codebase via `cb.Hostname == ""`, and the gate would
+	// scan every non-worker codebase and emit a violation referencing
+	// the canonical as `(``)`. Pinned by
+	// TestForbidRF1PD1OnNonCanonicalAppsRepos_NoCanonicalAppsRepo_NoOp.
 	canonical, ok := plan.CanonicalAppsRepoCodebase()
-	canonicalHostname := ""
-	if ok {
-		canonicalHostname = canonical.Hostname
+	if !ok {
+		return nil
 	}
+	canonicalHostname := canonical.Hostname
 	var out []Violation
 	for _, cb := range plan.Codebases {
 		if cb.Hostname == canonicalHostname {
@@ -188,10 +195,29 @@ func forbidRF1PD1OnNonCanonicalAppsRepos(plan *Plan) []Violation {
 // containsHeading reports whether body has a markdown H2 line whose
 // title matches want (case-insensitive). Matches `^## <title>` only;
 // does not match deeper headings or inline mentions.
+//
+// Skips lines inside fenced code blocks (```...```) so an IG step that
+// quotes the literal heading text inside a code fence (e.g. teaching
+// the porter what RF1 looks like) doesn't trip the heading scan. The
+// false positive matters most on the absence gate
+// (forbidRF1PD1OnNonCanonicalAppsRepos): a fenced quote of the heading
+// text would otherwise block the close. Pinned by
+// TestContainsHeading_HeadingInsideCodeFence_NotMatched +
+// TestForbidRF1PD1OnNonCanonicalAppsRepos_RF1InCodeFence_NotFalsePositive.
 func containsHeading(body, want string) bool {
 	wantLower := strings.ToLower(want)
+	inFence := false
 	for line := range strings.SplitSeq(body, "\n") {
 		trimmed := strings.TrimRight(line, " \t\r")
+		// Track fence state on the trimmed line. ```yaml / ```ts /
+		// bare ``` all open or close; the prefix check covers all.
+		if strings.HasPrefix(strings.TrimLeft(trimmed, " \t"), "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		if strings.EqualFold(trimmed, want) {
 			return true
 		}

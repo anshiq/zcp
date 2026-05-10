@@ -330,6 +330,142 @@ func TestForbidRF1PD1OnNonCanonicalAppsRepos_PreScaffold_NoOp(t *testing.T) {
 	}
 }
 
+// TestForbidRF1PD1OnNonCanonicalAppsRepos_NoCanonicalAppsRepo_NoOp —
+// when CanonicalAppsRepoCodebase() returns ok=false (worker-only plan,
+// or two non-worker codebases without an api role and without a single
+// non-worker), the absence gate has no canonical to compare against
+// and must no-op. Without the early-return guard, the gate would scan
+// every non-worker codebase against an empty canonicalHostname and
+// emit violations referencing the canonical hostname as the empty
+// string.
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_NoCanonicalAppsRepo_NoOp(t *testing.T) {
+	t.Parallel()
+	// Worker-only plan — CanonicalAppsRepoCodebase() returns ok=false.
+	// Even if a worker codebase carried RF1 (it doesn't here), the gate
+	// must not fire. Worker is also skipped by the gate's own RoleWorker
+	// branch; this case isolates the no-canonical path.
+	plan := &Plan{
+		Slug: "worker-only", Framework: "synth",
+		Codebases: []Codebase{
+			{Hostname: "worker", Role: RoleWorker, BaseRuntime: "nodejs@22", IsWorker: true, SourceRoot: "/var/www/workerdev"},
+		},
+	}
+	if violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan); len(violations) > 0 {
+		t.Errorf("worker-only plan should produce no absence-gate violation; got %+v", violations)
+	}
+
+	// Two non-worker codebases, neither with RoleAPI — also no canonical.
+	// CanonicalAppsRepoCodebase() takes the count==1 non-worker branch
+	// only when exactly one non-worker exists; with two, it falls through
+	// to ok=false. The absence gate must skip rather than scan against
+	// an empty canonical.
+	plan2 := &Plan{
+		Slug: "no-api", Framework: "synth",
+		Codebases: []Codebase{
+			{Hostname: "front", Role: RoleFrontend, BaseRuntime: "nodejs@22", SourceRoot: "/var/www/frontdev"},
+			{Hostname: "monolith", Role: RoleMonolith, BaseRuntime: "nodejs@22", SourceRoot: "/var/www/monolithdev"},
+		},
+		Fragments: map[string]string{
+			fragmentIDCodebaseZeropsYAML("front"):    "zerops:\n  - setup: prod\n    run:\n      base: nodejs@22\n      start: npm start\n",
+			fragmentIDCodebaseZeropsYAML("monolith"): "zerops:\n  - setup: prod\n    run:\n      base: nodejs@22\n      start: npm start\n",
+			"codebase/front/integration-guide":       "## Recipe features\n\n- forbidden in canonical-only world but no canonical here\n",
+			"codebase/monolith/integration-guide":    "## Production vs. Development\n\n- same\n",
+		},
+	}
+	if violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan2); len(violations) > 0 {
+		t.Errorf("plan with no canonical apps-repo should produce no absence-gate violation; got %+v", violations)
+	}
+}
+
+// TestForbidRF1PD1OnNonCanonicalAppsRepos_RF1InCodeFence_NotFalsePositive —
+// an IG step that quotes the literal heading text inside a fenced code
+// block (e.g. teaching the porter what RF1 looks like) must NOT trip
+// the absence gate. Pre-fix containsHeading scanned every line
+// including those inside ``` fences, so a markdown code-block sample
+// of `## Recipe features` would block the close on every non-canonical
+// apps-repo.
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_RF1InCodeFence_NotFalsePositive(t *testing.T) {
+	t.Parallel()
+	plan := canonicalAppsRepoTestPlan(t, "## Recipe features\n\n- canonical retains\n## Production vs. Development\n\n- canonical retains\n")
+	// Author the app codebase's IG with RF1 + PD1 ONLY inside fenced
+	// code blocks — this is what an explanatory teaching step looks
+	// like, not actual recipe-level content.
+	plan.Fragments["codebase/app/integration-guide"] = "### 2. Example heading shapes you'll see\n\nFor reference, the canonical apps-repo carries:\n\n```markdown\n## Recipe features\n\n- bullet\n\n## Production vs. Development\n\n- bullet\n```\n\nThese sections live on the api codebase only.\n"
+	violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan)
+	if len(violations) > 0 {
+		t.Errorf("absence gate must not fire on heading-text inside code fences; got %+v", violations)
+	}
+}
+
+// TestRequireRF1PD1OnCanonicalAppsRepo_RF1InCodeFence_NotFalsePositive —
+// presence gate must STILL FIRE when the only RF1/PD1 in the canonical
+// apps-repo is inside a code fence (teaching example, not real
+// section). A fenced quote is not a real H2 in the rendered TOC, so
+// the porter doesn't see those sections — the gate enforces real H2s.
+// Pre-fix containsHeading would have spuriously passed this test
+// because it didn't track fence state.
+func TestRequireRF1PD1OnCanonicalAppsRepo_RF1InCodeFence_NotFalsePositive(t *testing.T) {
+	t.Parallel()
+	// Canonical IG body has RF1 + PD1 ONLY inside fenced code blocks.
+	// Fence-aware containsHeading correctly reports them as missing.
+	plan := canonicalAppsRepoTestPlan(t,
+		"### 2. Example heading shapes\n\n```markdown\n## Recipe features\n\n- example\n\n## Production vs. Development\n\n- example\n```\n",
+	)
+	violations := requireRF1PD1OnCanonicalAppsRepo(plan)
+	if len(violations) != 2 {
+		t.Errorf("expected RF1+PD1 missing violations when only fenced examples exist; got %+v", violations)
+	}
+}
+
+// TestContainsHeading_HeadingInsideCodeFence_NotMatched — direct unit
+// test of containsHeading's fence-aware behavior. Pinning the helper
+// directly so a future containsHeading refactor doesn't lose the
+// fence-skip property without surfacing on the gate-level tests
+// (which exercise multiple layers).
+func TestContainsHeading_HeadingInsideCodeFence_NotMatched(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "real H2 above a fence — matched",
+			body: "## Recipe features\n\n- bullet\n\n```\nirrelevant\n```\n",
+			want: true,
+		},
+		{
+			name: "H2 only inside fence — not matched",
+			body: "Intro paragraph.\n\n```markdown\n## Recipe features\n```\n",
+			want: false,
+		},
+		{
+			name: "H2 only inside language-tagged fence — not matched",
+			body: "Intro paragraph.\n\n```yaml\n## Recipe features\n```\n",
+			want: false,
+		},
+		{
+			name: "H2 outside fence after a fence closes — matched",
+			body: "```\ncode\n```\n\n## Recipe features\n",
+			want: true,
+		},
+		{
+			name: "H2 inside fence + real H2 after — matched (real H2 wins)",
+			body: "```markdown\n## Recipe features\n```\n\n## Recipe features\n",
+			want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := containsHeading(tc.body, "## Recipe features")
+			if got != tc.want {
+				t.Errorf("containsHeading(...) = %v, want %v\nbody:\n%s", got, tc.want, tc.body)
+			}
+		})
+	}
+}
+
 // TestCompletePhase_ForbidsRF1PD1OnNonCanonicalAppsRepos — the wired-in
 // gate: un-scoped main-agent `complete-phase phase=codebase-content`
 // refuses when a non-canonical apps-repo's assembled README carries
