@@ -204,7 +204,7 @@ func TestMergePlan_PersistsToDisk(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	sess := NewSession("synth-showcase", log, dir, nil)
+	sess := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	if err := mergePlan(sess, &Plan{Framework: "synth", Tier: "showcase"}); err != nil {
 		t.Fatalf("mergePlan: %v", err)

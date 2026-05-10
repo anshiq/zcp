@@ -18,16 +18,21 @@ import (
 // Store holds live Sessions keyed by slug. One ZCP process may host
 // several recipe runs; Store serializes access.
 type Store struct {
-	mu        sync.Mutex
-	sessions  map[string]*Session
-	mountRoot string
+	mu            sync.Mutex
+	sessions      map[string]*Session
+	mountRoot     string
+	engineVersion string
 }
 
 // NewStore returns an empty store whose chain resolver reads from
 // mountRoot (typically the zeropsio/recipes clone + zerops-recipe-apps
 // mount).
-func NewStore(mountRoot string) *Store {
-	return &Store{sessions: map[string]*Session{}, mountRoot: mountRoot}
+func NewStore(mountRoot string, engineVersion ...string) *Store {
+	version := "dev"
+	if len(engineVersion) > 0 && engineVersion[0] != "" {
+		version = engineVersion[0]
+	}
+	return &Store{sessions: map[string]*Session{}, mountRoot: mountRoot, engineVersion: version}
 }
 
 // Get returns an existing session by slug or false.
@@ -146,7 +151,7 @@ func (s *Store) OpenOrCreate(slug, outputRoot string) (*Session, error) {
 	if err != nil && !errors.Is(err, ErrNoParent) {
 		return nil, fmt.Errorf("resolve chain: %w", err)
 	}
-	sess := NewSession(slug, log, outputRoot, parent)
+	sess := NewSession(slug, s.engineVersion, log, outputRoot, parent)
 	sess.MountRoot = s.mountRoot
 	// Rehydrate Plan from disk when plan.json exists. Cross-process
 	// continuity: dispatched sub-agents share outputRoot with the main
@@ -866,7 +871,10 @@ func mergePlan(sess *Session, incoming *Plan) error {
 	sess.mu.Lock()
 	cur := sess.Plan
 	if cur == nil {
-		cur = &Plan{Slug: sess.Slug}
+		cur = &Plan{Slug: sess.Slug, EngineVersion: sess.EngineVersion}
+	}
+	if cur.EngineVersion == "" {
+		cur.EngineVersion = sess.EngineVersion
 	}
 	if incoming.Framework != "" {
 		cur.Framework = incoming.Framework

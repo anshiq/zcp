@@ -18,7 +18,7 @@ func TestCompletePhaseFinalize_AutoAdvancesToRefinement(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	sess := NewSession("synth-showcase", log, dir, nil)
+	sess := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	// Walk the whole phase ladder up to + including finalize so the
 	// session ends with Current=PhaseFinalize, Completed[finalize]=true.
@@ -74,7 +74,7 @@ func TestCompletePhaseEarlierPhases_DoNotAutoAdvance(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	sess := NewSession("synth-showcase", log, dir, nil)
+	sess := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	for _, p := range []Phase{
 		PhaseResearch, PhaseProvision, PhaseScaffold, PhaseFeature,

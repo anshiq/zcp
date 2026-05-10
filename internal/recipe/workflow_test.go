@@ -10,7 +10,7 @@ func TestSession_EnterPhase_MustBeAdjacentForward(t *testing.T) {
 
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	// Cannot skip research → scaffold.
 	if err := s.EnterPhase(PhaseScaffold); err == nil {
@@ -29,7 +29,7 @@ func TestPhase_AdjacentForward_CodebaseContentAfterFeature(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 	for _, p := range []Phase{PhaseProvision, PhaseScaffold, PhaseFeature} {
 		if _, _, err := s.CompletePhase(nil); err != nil {
 			t.Fatalf("CompletePhase %q: %v", s.Current, err)
@@ -50,7 +50,7 @@ func TestPhase_AdjacentForward_EnvContentAfterCodebaseContent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 	for _, p := range []Phase{PhaseProvision, PhaseScaffold, PhaseFeature, PhaseCodebaseContent} {
 		if _, _, err := s.CompletePhase(nil); err != nil {
 			t.Fatalf("CompletePhase %q: %v", s.Current, err)
@@ -71,7 +71,7 @@ func TestPhase_AdjacentForward_FinalizeAfterEnvContent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 	for _, p := range []Phase{PhaseProvision, PhaseScaffold, PhaseFeature, PhaseCodebaseContent, PhaseEnvContent} {
 		if _, _, err := s.CompletePhase(nil); err != nil {
 			t.Fatalf("CompletePhase %q: %v", s.Current, err)
@@ -92,7 +92,7 @@ func TestPhase_NonAdjacent_FeatureSkipsToFinalize_Errors(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 	for _, p := range []Phase{PhaseProvision, PhaseScaffold, PhaseFeature} {
 		if _, _, err := s.CompletePhase(nil); err != nil {
 			t.Fatalf("CompletePhase %q: %v", s.Current, err)
@@ -114,7 +114,7 @@ func TestSession_PhaseFlow(t *testing.T) {
 
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	// Use a no-op gate set so CompletePhase succeeds.
 	gates := []Gate{}
@@ -142,7 +142,7 @@ func TestSession_CompletePhase_BlocksOnViolation(t *testing.T) {
 
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	failing := Gate{
 		Name: "always-fails",
@@ -171,7 +171,7 @@ func TestSession_CompletePhase_NoticeDoesNotBlock(t *testing.T) {
 
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	noticeOnly := Gate{
 		Name: "advisory",
@@ -200,7 +200,7 @@ func TestSession_CompletePhase_DefaultSeverityBlocks(t *testing.T) {
 
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	s := NewSession("synth-showcase", log, dir, nil)
+	s := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	// Zero-value Severity must keep historical blocking behavior.
 	zeroSeverity := Gate{

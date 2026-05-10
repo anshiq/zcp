@@ -22,10 +22,11 @@ type Gate struct {
 // GateContext carries the data gates need: the plan, the recipe output
 // tree root on disk, an optional facts-log, and optional parent recipe.
 type GateContext struct {
-	Plan       *Plan
-	OutputRoot string
-	FactsLog   *FactsLog
-	Parent     *ParentRecipe
+	Plan          *Plan
+	OutputRoot    string
+	FactsLog      *FactsLog
+	Parent        *ParentRecipe
+	EngineVersion string
 }
 
 // RunGates runs every gate and collects violations. Violations do not
@@ -43,6 +44,7 @@ func RunGates(gates []Gate, ctx GateContext) []Violation {
 // presence) are added by gatesForPhase on top of this base.
 func DefaultGates() []Gate {
 	return []Gate{
+		{Name: "engine-version-stamped", Run: gateEngineVersionStamped},
 		{Name: "citations-timestamped", Run: gateCitationsTimestamped},
 		{Name: "fact-required-fields", Run: gateFactsValid},
 	}

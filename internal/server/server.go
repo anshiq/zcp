@@ -155,7 +155,7 @@ func (s *Server) registerTools() {
 			mountRoot = filepath.Join(home, "recipes")
 		}
 	}
-	recipeStore := recipe.NewStore(mountRoot)
+	recipeStore := recipe.NewStore(mountRoot, Version)
 
 	// Shared HTTP client for readiness probes (post-deploy subdomain
 	// auto-enable, post-subdomain L7 warmup). 15 s ceiling matches the

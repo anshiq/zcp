@@ -14,7 +14,8 @@ import (
 // fact is carried in Codebases / Services / EnvComments, which the agent
 // populates during research and scaffold phases.
 type Plan struct {
-	Slug string `json:"slug"`
+	Slug          string `json:"slug"`
+	EngineVersion string `json:"engineVersion,omitempty"`
 	// Name is the human-readable recipe title rendered in markdown
 	// surface H1s ("NestJS Showcase", "Laravel Jetstream"). Optional —
 	// when empty, HumanName derives it from Slug + Framework using

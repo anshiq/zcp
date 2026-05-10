@@ -18,7 +18,7 @@ func TestCompletePhaseFinalize_RefusesWithoutRefinementDispatch(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	sess := NewSession("synth-showcase", log, dir, nil)
+	sess := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	for _, p := range []Phase{
 		PhaseResearch, PhaseProvision, PhaseScaffold, PhaseFeature,
@@ -72,7 +72,7 @@ func TestCompletePhaseFinalize_OkWhenRefinementDispatched(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	sess := NewSession("synth-showcase", log, dir, nil)
+	sess := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	for _, p := range []Phase{
 		PhaseResearch, PhaseProvision, PhaseScaffold, PhaseFeature,
@@ -100,7 +100,7 @@ func TestCompletePhaseRefinement_FlipsClosedFlagAndWritesMarker(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
-	sess := NewSession("synth-showcase", log, dir, nil)
+	sess := NewSession("synth-showcase", "dev", log, dir, nil)
 
 	for _, p := range []Phase{
 		PhaseResearch, PhaseProvision, PhaseScaffold, PhaseFeature,

@@ -156,7 +156,7 @@ func TestFeatureClose_RefusesWithoutScreenshotFact(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	log := OpenFactsLog(filepath.Join(root, "facts.jsonl"))
-	sess := NewSession("synth-showcase", log, root, nil)
+	sess := NewSession("synth-showcase", "dev", log, root, nil)
 	for _, p := range []Phase{PhaseResearch, PhaseProvision, PhaseScaffold, PhaseFeature} {
 		if err := sess.EnterPhase(p); err != nil {
 			t.Fatalf("EnterPhase(%s): %v", p, err)

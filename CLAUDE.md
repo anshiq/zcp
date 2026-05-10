@@ -231,6 +231,10 @@ Spec: `docs/spec-architecture.md` — per-package mapping + examples.
   `zerops_subdomain action=enable` in happy path. Pinned by
   `TestServiceEligible_*`, `TestMaybeAutoEnable_ServiceStackIsNotHttp_BenignSkip`.
   Spec: `spec-workflows.md §4.8` + O3.
+- **Engine version stamps the plan** — every fresh recipe session writes
+  `plan.EngineVersion = server.Version` before the first `WritePlan()`;
+  any complete-phase refuses when missing or mismatched against the running
+  binary. Pinned by `TestGateEngineVersionStamped_*`.
 - **Export-for-buildFromGit is a single-repo self-referential snapshot** —
   `zerops_workflow workflow="export"` is a stateless three-call narrowing
   (scope-prompt → classify-prompt → publish-ready / validation-failed) keyed

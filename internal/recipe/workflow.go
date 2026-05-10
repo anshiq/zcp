@@ -58,6 +58,10 @@ type Session struct {
 	FactsLog   *FactsLog
 	Parent     *ParentRecipe
 	OutputRoot string
+	// EngineVersion is the running zcp binary version that authored this
+	// session. It is threaded into GateContext so recipe gates never import
+	// internal/server.
+	EngineVersion string
 	// MountRoot is the recipes-mount root (typically the
 	// zeropsio/recipes clone directory) used by the chain Resolver and
 	// the scaffold brief's reachable-recipe-slug enumeration. Empty
@@ -82,15 +86,19 @@ type Session struct {
 
 // NewSession bootstraps a session at PhaseResearch with an empty plan.
 // FactsLog + OutputRoot are caller-supplied (handlers know the run dir).
-func NewSession(slug string, factsLog *FactsLog, outputRoot string, parent *ParentRecipe) *Session {
+func NewSession(slug, engineVersion string, factsLog *FactsLog, outputRoot string, parent *ParentRecipe) *Session {
+	if engineVersion == "" {
+		engineVersion = devEngineVersion
+	}
 	return &Session{
-		Slug:       slug,
-		Current:    PhaseResearch,
-		Plan:       &Plan{Slug: slug},
-		FactsLog:   factsLog,
-		Parent:     parent,
-		OutputRoot: outputRoot,
-		Completed:  map[Phase]bool{},
+		Slug:          slug,
+		Current:       PhaseResearch,
+		Plan:          &Plan{Slug: slug, EngineVersion: engineVersion},
+		FactsLog:      factsLog,
+		Parent:        parent,
+		OutputRoot:    outputRoot,
+		EngineVersion: engineVersion,
+		Completed:     map[Phase]bool{},
 	}
 }
 
@@ -132,10 +140,11 @@ func (s *Session) CompletePhase(gates []Gate) (blocking, notices []Violation, er
 		return nil, nil, nil // already complete
 	}
 	ctx := GateContext{
-		Plan:       s.Plan,
-		OutputRoot: s.OutputRoot,
-		FactsLog:   s.FactsLog,
-		Parent:     s.Parent,
+		Plan:          s.Plan,
+		OutputRoot:    s.OutputRoot,
+		FactsLog:      s.FactsLog,
+		Parent:        s.Parent,
+		EngineVersion: s.EngineVersion,
 	}
 	blocking, notices = PartitionBySeverity(RunGates(gates, ctx))
 	if len(blocking) > 0 {
@@ -173,10 +182,11 @@ func (s *Session) CompletePhaseScoped(gates []Gate, codebase string) (blocking, 
 		return nil, nil, fmt.Errorf("codebase %q not in plan", codebase)
 	}
 	ctx := GateContext{
-		Plan:       &scopedPlan,
-		OutputRoot: s.OutputRoot,
-		FactsLog:   s.FactsLog,
-		Parent:     s.Parent,
+		Plan:          &scopedPlan,
+		OutputRoot:    s.OutputRoot,
+		FactsLog:      s.FactsLog,
+		Parent:        s.Parent,
+		EngineVersion: s.EngineVersion,
 	}
 	blocking, notices = PartitionBySeverity(RunGates(gates, ctx))
 	return blocking, notices, nil
