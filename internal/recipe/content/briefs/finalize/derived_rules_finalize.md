@@ -33,13 +33,8 @@ Trimmed copy of `briefs/refinement/derived_rules.md` — rules finalize actors a
 - **TY2 — per-service comment is 1-2 sentences naming SERVICE ROLE.**
 - **TY3 — optional services explicitly marked optional.** "Feel free to remove this service, if you wish to stage-test."
 - **TY4 — comments name framework-canonical effects.** "Used by the Laravel app to store data" — not "consumed by api codebase".
-- **TY5 — non-default `priority` justified in human terms.**
+- **TY5 — justify non-default priority for databases + object-storage.**
 
 ## zerops.yaml — finalize-relevant subset
 
 - **Y8 — no tier-promotion narrative in yaml comments.**
-
-## "Recipe features" + "Production vs Development"
-
-- **RF1 — "Recipe features" is ~8 bullets** framed by what the recipe SETS UP, not what porters can do.
-- **PD1 — "Production vs Development" is 3 bullets max.** Names HA migration paths porters take when scaling. Not a tier-promotion narrative.

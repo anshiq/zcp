@@ -228,12 +228,8 @@ func readCodebaseYAMLForHost(plan *Plan, hostname string) (string, error) {
 // Run-34 Fix 2 — un-slotted body always appended. Pre-fix, the legacy
 // `codebase/<h>/integration-guide` body was OVERWRITTEN whenever any
 // slotted slot existed; that silently dropped un-slotted append-mode
-// content (e.g. cc-content-api recorded RF1+PD1+`## Understand Zerops
-// Core Concepts` H2 sections under the un-slotted key with bodyBytes:
-// 1684 ok:true — engine acked but apidev README shipped without
-// those sections). Now: slots concatenate first, then any un-slotted
-// body appends after, so order-of-recording can never silently lose
-// content.
+// content. Now: slots concatenate first, then any un-slotted body
+// appends after, so order-of-recording can never silently lose content.
 //
 // Engine-emitted IG #1 (Adding zerops.yaml) is stamped by injectIGItem1
 // AFTER substitution, so author slots are always n>=2 in practice; the
@@ -271,10 +267,8 @@ func mergeSlottedIGFragments(fragments map[string]string, hostname string) map[s
 		b.WriteString(strings.TrimSpace(s.body))
 	}
 	// Append un-slotted body (if any). Append, not overwrite — slotted
-	// items carry numbered IG steps; the un-slotted body typically
-	// carries adjacent H2 sections (`## Recipe features`,
-	// `## Production vs. Development`, `## Understand Zerops Core
-	// Concepts`) the agent records via the legacy single-fragment id.
+	// items carry numbered IG steps; the un-slotted body preserves
+	// legacy single-fragment content recorded beside numbered slots.
 	unslottedKey := "codebase/" + hostname + "/integration-guide"
 	if existing := strings.TrimSpace(fragments[unslottedKey]); existing != "" {
 		if b.Len() > 0 {

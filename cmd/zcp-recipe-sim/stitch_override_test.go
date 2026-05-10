@@ -49,7 +49,7 @@ func TestStitch_LoadsRefinementSubdir(t *testing.T) {
 	}
 	const refMarker = "REFINEMENT KB OVERRIDE: load-bearing refinement-only token"
 	mustWrite(t, filepath.Join(refDir, "codebase__api__knowledge-base.md"),
-		"## Operations\n\n"+refMarker+"\n")
+		"### Operations\n\n"+refMarker+"\n")
 
 	if err := runStitch([]string{"-dir", dir, "-rounds", "1"}); err != nil {
 		t.Fatalf("runStitch: %v", err)
@@ -124,7 +124,7 @@ func TestStitch_RefinementOverridesCodebaseContent(t *testing.T) {
 		t.Fatalf("mkdir refinement: %v", err)
 	}
 	mustWrite(t, filepath.Join(refDir, "codebase__api__knowledge-base.md"),
-		"## Operations\n\n"+refMarker+"\n")
+		"### Operations\n\n"+refMarker+"\n")
 
 	if err := runStitch([]string{"-dir", dir, "-rounds", "1"}); err != nil {
 		t.Fatalf("runStitch: %v", err)

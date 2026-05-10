@@ -136,6 +136,7 @@ func CodebaseContentGates() []Gate {
 		{Name: "cross-surface-duplication", Run: gateCrossSurfaceDuplication},
 		{Name: "cross-recipe-duplication", Run: gateCrossRecipeDuplication},
 		{Name: "zerops-yaml-schema", Run: gateZeropsYamlSchema},
+		{Name: "kb-h3-required", Run: gateRequireH3InKnowledgeBaseFragment},
 		// Run-22 R2-WK-1 + R2-WK-2 — source-scanning gate for showcase-
 		// tier worker codebases. Refuses codebase-content complete-phase
 		// when worker source has naked `nc.subscribe(SUBJECT)` (no queue
@@ -143,22 +144,11 @@ func CodebaseContentGates() []Gate {
 		// `await sub.drain()`. Both are deploy-breaking patterns at tier
 		// 4-5 (minContainers: 2).
 		{Name: "worker-subscription", Run: gateWorkerSubscription},
-		// Run-34 Fix 2 — engine-side teeth for the brief teaching that
-		// the canonical apps-repo (api codebase for multi-codebase
-		// recipes; lone non-worker for single-codebase) MUST carry
-		// `## Recipe features` (RF1) + `## Production vs. Development`
-		// (PD1) H2 sections. Pre-fix, brief taught REQUIRED but a single
-		// agent skip silently shipped an incomplete README. Pinned by
-		// TestRequireRF1PD1OnCanonicalAppsRepo_*.
-		{Name: "canonical-apps-repo-rf1-pd1", Run: gateRequireRF1PD1OnCanonicalAppsRepo},
-		// v9.79.0 Fix 1 — closes the absence axis on non-canonical
-		// apps-repos. Run-37 surfaced the regression: substrate fixes
-		// 3-5 caused the agent to over-apply RF1+PD1 onto every apps-
-		// repo. Brief teaches canonical-only → engine enforces canonical-
-		// only on both axes (presence on canonical via the gate above;
-		// absence on siblings via this gate). Pinned by
-		// TestForbidRF1PD1OnNonCanonicalAppsRepos_*.
-		{Name: "non-canonical-apps-repo-no-rf1-pd1", Run: gateForbidRF1PD1OnNonCanonicalAppsRepos},
+		// v9.80.0 Fix 5 — apps-repo READMEs are codebase-integration
+		// surfaces only. Recipe-level RF1/PD1/Understand H2 sections
+		// are forbidden on every apps-repo, including the canonical api
+		// codebase and workers.
+		{Name: "apps-repo-no-recipe-level-sections", Run: gateForbidRecipeLevelSectionsOnAppsRepos},
 	}
 }
 
@@ -243,6 +233,9 @@ func EnvGates() []Gate {
 	return []Gate{
 		{Name: "env-imports-present", Run: gateEnvImportsPresent},
 		{Name: "env-surface-validators", Run: gateEnvSurfaceValidators},
+		{Name: "db-comment-tradeoff-lead", Run: gateForbidTradeoffLeadOnDbComment},
+		{Name: "priority-justification", Run: gateRequirePriorityJustification},
+		{Name: "object-storage-priority", Run: gateRequireObjectStoragePriority},
 	}
 }
 

@@ -30,9 +30,8 @@ threshold holds. Below the threshold, you do not act.
 You walk `derived_rules.md` rule-by-rule against every stitched
 document. The rules are golden-grounded principles (V1-V6 universal
 voice; R1-R6 root README; T1-T4 tier README; TY1-TY5 tier
-import.yaml; IG1-IG6 apps-repo Integration Guide; KB1/KB3-KB6 KB;
-Y1-Y15 zerops.yaml; RF1/PD1 "Recipe features" + "Production vs
-Development"). For every stitched fragment:
+import.yaml (+object-storage priority); IG1-IG6 apps-repo Integration Guide; KB1/KB3-KB6 KB;
+Y1-Y15 zerops.yaml). For every stitched fragment:
 
 1. Read the fragment end-to-end as a porter would — top-to-bottom,
    no special context.
@@ -47,9 +46,8 @@ Walk every rule against every document REGARDLESS of how the
 fragment got there. The rule fires on the OUTPUT shape, not on
 whether the agent's facts/source happened to align — a fragment
 that scores clean on every Voice phrasing can still violate IG6
-(generic best practice the cloned yaml already does), V6
-(authoring vocabulary), or RF1/PD1 (missing required H2 sections
-on the api codebase README).
+(generic best practice the cloned yaml already does) or V6
+(authoring vocabulary).
 
 ## The refinement edit threshold
 

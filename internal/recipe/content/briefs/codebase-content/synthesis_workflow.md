@@ -619,45 +619,17 @@ new `s3` disk in [`config/filesystems.php`](config/filesystems.php)."*
 Two file anchors; porter knows what to open. Exception: when the
 framework config name IS the IG subject (*"Add zerops.yaml"*).
 
-### Post-IG concept bridge
-
-After the last IG item, include this section so porters wanting deeper
-Zerops fluency have an entry point. It sits between the IG end and the
-KB markers; goldens carry it.
-
-```markdown
-## Understand Zerops Core Concepts
-
-If you want to try integrating Zerops from scratch on a new
-<framework> project, check our
-[step-by-step tutorial](https://docs.zerops.io/frameworks/<framework>/introduction).
-```
-
-Replace `<framework>` with the codebase's framework family (laravel,
-nestjs, etc.); the Zerops docs tree mirrors the framework name.
-
 ## Step 3 — Author KB (Surface 5)
 
 For each `CandidateSurface=CODEBASE_KB` fact, emit one entry in the
 single `codebase/<h>/knowledge-base` fragment.
 
-### KB shape matches substance — flat bullet OR H3
+### KB shape is H3-rooted
 
-Two valid shapes; pick by substance:
-
-**1. Flat bullet** — `- **Stem** — 2-4 sentences (symptom + mechanism
-+ fix).` Use for one-liner traps.
-
-**2. H3 sub-heading** — `### Topic` + 1-3 paragraphs + optional
-`> [!CAUTION]` callout + optional fenced shell example. Use when the
-mechanism spans multiple paragraphs, has a warning worth a callout,
-or has a runnable porter-recovery snippet. See
-laravel-jetstream-app/README.md `## Tips and Others` for the H3 +
-callout shape.
-
-A single KB section can mix both. Cap 8 entries (bullets + H3s
-combined). Cross-surface dedup: if IG already teaches a topic with
-code/diff, do NOT duplicate in KB.
+Start the fragment with `### Topic`, then use paragraphs and/or bullets.
+Optional `> [!CAUTION]` callouts and fenced shell examples are fine
+when the mechanism warrants them. Cross-surface dedup: if IG already
+teaches a topic with code/diff, do NOT duplicate in KB.
 
 Format reference for the flat-bullet shape:
 
@@ -879,10 +851,8 @@ story; the intro owns framework + capability only.
 
 The only document-level audit before the codebase ships. Per-fragment
 validators CANNOT see assembled-doc properties (audience model,
-sibling consistency, required H2 sections RF1/PD1). Run-34: the one
-cc-content sub-agent that skipped this step (cc-content-api, 0 Reads
-of `/var/www/apidev/README.md`) shipped without RF1+PD1; cc-content-app
-(5 Reads) and cc-content-worker (7 Reads) didn't. Execute every step.
+sibling consistency, forbidden recipe-level H2 sections, cross-surface
+duplication). Execute every step.
 
 a. **Stitch.** `complete-phase` SCOPED (`phase: codebase-content`,
    `codebase: <self>`) — fires `preStitchCodebases`; fragments compose
@@ -893,8 +863,7 @@ b. **Read assembled.** `Read <cb.SourceRoot>/README.md` AND `Read
    no compositional reasoning about which fragment authored which line.
 c. **Walk `derived_rules.md`** against the assembled output. V1-V6
    apply everywhere; per-surface rules apply on the surface they name.
-   RF1 + PD1 required on api codebase. Rule fires on OUTPUT shape,
-   not on whether facts/source aligned.
+   Rule fires on OUTPUT shape, not on whether facts/source aligned.
 d. **ACT on every violation.** `record-fragment mode=replace`; cite
    rule id + violating phrase + preserving edit (bias toward ACT;
    snapshot/restore reverts wrong ACTs).

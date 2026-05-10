@@ -811,8 +811,8 @@ func BuildFinalizeBrief(plan *Plan) (Brief, error) {
 		"briefs/finalize/validator_tripwires.md",
 		// Run-33 architectural fix #1 — golden-grounded rule substrate
 		// (finalize-scoped subset). V1-V6 voice + R1-R6 root + T1-T4
-		// tier README + TY1-TY5 tier import.yaml + Y8 + RF1 + PD1 only.
-		// IG / KB / per-codebase yaml-comment rules excluded (those
+		// tier README + TY1-TY5 tier import.yaml + Y8 only. IG / KB /
+		// per-codebase yaml-comment rules excluded (those
 		// surfaces aren't authored at finalize). Trimmed to fit the
 		// 14 KB FinalizeBriefCap; full rule set stays in the
 		// codebase-content / env-content / refinement composers.

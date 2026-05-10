@@ -85,10 +85,9 @@ in your `record-fragment mode=replace` body.
    phrasings), V5 (defer to docs when sprawl), V6 (no authoring
    vocabulary). Walk every fragment for V-rule violations.
 2. **Per-surface rules apply on the surface they name.** R1-R6 root
-   README, T1-T4 tier README, TY1-TY5 tier import.yaml, IG1-IG6
+   README, T1-T4 tier README, TY1-TY5 tier import.yaml (+object-storage priority), IG1-IG6
    apps-repo Integration Guide, KB1/KB3-KB6 apps-repo Knowledge
-   Base, Y1-Y15 apps-repo zerops.yaml, RF1/PD1 "Recipe features" +
-   "Production vs Development".
+   Base, Y1-Y15 apps-repo zerops.yaml.
 3. **For each violation, ACT** — `record-fragment mode=replace` with
    the corrected body. Cite the rule id + the violating phrase + the
    preserving edit. Bias toward ACT — snapshot/restore reverts wrong
@@ -99,7 +98,7 @@ in your `record-fragment mode=replace` body.
 
 These are the audience-model failures pattern-anchors miss:
 
-- **Tier-prefix intros** (T2 / R2 / RF1 / PD1 violations) — "Tier 0
+- **Tier-prefix intros** (T2 / R2 violations) — "Tier 0
   — AI Agent" / "Tier 5 — Highly-available Production" as lead text
   in env intros. The framing names the tier instead of the delta.
 - **`${peer_alias}` raw in prose** (V1/V6 violations) — token like
@@ -111,7 +110,7 @@ These are the audience-model failures pattern-anchors miss:
   ships `synchronize: false` already, yet KB warns about TypeORM
   schema corruption. The recipe yaml prevents this trap; KB names
   traps the porter STILL hits AFTER cloning + deploying.
-- **Cross-recipe references** (V1 / RF1) — "parent recipe
+- **Cross-recipe references** (V1) — "parent recipe
   nestjs-minimal" in prose. The porter reads ONE recipe; the parent
   graph is engine-internal vocabulary.
 - **Slug-stem leakage** (V3 violation) — `[Zerops rolling-deploys

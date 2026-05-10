@@ -87,9 +87,10 @@ func runGatesAfterStitch(name string, plan *recipe.Plan, absDir, envDir string) 
 	// gate fires false `env-import-missing` against
 	// `<absDir>/<tier>/import.yaml` (which doesn't exist).
 	ctx := recipe.GateContext{
-		Plan:       plan,
-		OutputRoot: filepath.Join(absDir, "environments"),
-		FactsLog:   factsLog,
+		Plan:          plan,
+		OutputRoot:    filepath.Join(absDir, "environments"),
+		FactsLog:      factsLog,
+		EngineVersion: "dev",
 	}
 	violations := recipe.RunGates(gates, ctx)
 	blocking, notices := recipe.PartitionBySeverity(violations)
