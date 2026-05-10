@@ -14,9 +14,10 @@ import (
 
 // TestAssembleEnvREADME_V9_79_BannerShape pins the new L1 + L2 across
 // every tier. Tier 0 ("AI Agent") tests the article ("an") + acronym
-// preservation; tier 1 ("Remote") tests the simple sentence-case path;
-// tier 4 ("Small Production") + tier 5 ("Highly-available Production")
-// test multi-word lowercase. Tier 3 is the canonical Stage smoke.
+// preservation; tier 1 ("Remote (CDE)") tests parenthesized acronym
+// preservation; tier 4 ("Small Production") + tier 5 ("Highly-available
+// Production") test multi-word lowercase. Tier 3 is the canonical
+// Stage smoke.
 func TestAssembleEnvREADME_V9_79_BannerShape(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -34,8 +35,8 @@ func TestAssembleEnvREADME_V9_79_BannerShape(t *testing.T) {
 		{
 			name:        "tier_1_Remote_CDE_lowercases_first_word_preserves_CDE_acronym",
 			tierIndex:   1,
-			wantTitleH1: "# NestJS Showcase — Remote Environment",
-			wantBanner:  "This is a remote environment for [NestJS Showcase (info + deploy)](https://app.zerops.io/recipes/nestjs-showcase?environment=remote-cde) recipe on [Zerops](https://zerops.io).",
+			wantTitleH1: "# NestJS Showcase — Remote (CDE) Environment",
+			wantBanner:  "This is a remote (CDE) environment for [NestJS Showcase (info + deploy)](https://app.zerops.io/recipes/nestjs-showcase?environment=remote-cde) recipe on [Zerops](https://zerops.io).",
 		},
 		{
 			name:        "tier_3_Stage_lowercases_to_stage",
@@ -113,7 +114,7 @@ func TestTierLabelLower(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
 		"AI Agent":                    "AI agent",
-		"Remote":                      "remote",
+		"Remote (CDE)":                "remote (CDE)",
 		"Local":                       "local",
 		"Stage":                       "stage",
 		"Small Production":            "small production",
@@ -131,7 +132,7 @@ func TestTierArticle(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
 		"AI Agent":                    "an",
-		"Remote":                      "a",
+		"Remote (CDE)":                "a",
 		"Local":                       "a",
 		"Stage":                       "a",
 		"Small Production":            "a",

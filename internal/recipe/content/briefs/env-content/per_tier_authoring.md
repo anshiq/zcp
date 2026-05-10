@@ -11,7 +11,7 @@ README headings:
 | Index | Label |
 |-------|-------|
 | 0 | AI Agent |
-| 1 | Remote |
+| 1 | Remote (CDE) |
 | 2 | Local |
 | 3 | Stage |
 | 4 | Small Production |

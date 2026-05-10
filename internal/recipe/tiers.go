@@ -35,7 +35,7 @@ var tiers = [6]Tier{
 		// Agents" / "Include Cloud IDE" marketing labels (run-23 fix-9)
 		// drifted from the porter-facing names goldens use. Goldens
 		// (laravel-jetstream/README.md, recipes-side reference) use the
-		// short canonical "AI Agent" / "Remote" / etc. Folder
+		// short canonical "AI Agent" / "Remote (CDE)" / etc. Folder
 		// path stays canonical too; Label tracks Folder's audience
 		// noun without the marketing prefix.
 		Index: 0, Folder: "0 — AI Agent", Label: "AI Agent", Suffix: "agent",
@@ -44,12 +44,11 @@ var tiers = [6]Tier{
 		RuntimeMinRAM:        0.5, ManagedMinRAM: 0.25,
 	},
 	{
-		// v9.80.0 fix — canonical inline label is "Remote"; the
-		// "(CDE)" disambiguator stays in the folder path only. The
+		// Run-32 fix — canonical "Remote (CDE)" matches Folder; the
 		// earlier "Include Cloud IDE" run-23 marketing label is
 		// dropped. Porters scanning across recipes see consistent
 		// taxonomy.
-		Index: 1, Folder: "1 — Remote (CDE)", Label: "Remote", Suffix: "remote",
+		Index: 1, Folder: "1 — Remote (CDE)", Label: "Remote (CDE)", Suffix: "remote",
 		RunsDevContainer: true, ServiceMode: "NON_HA",
 		RuntimeMinContainers: 1,
 		RuntimeMinRAM:        0.5, ManagedMinRAM: 0.25,
