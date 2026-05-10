@@ -47,6 +47,8 @@ var unreplacedTokenRE = regexp.MustCompile(`\{[A-Z][A-Z0-9_]*\}`)
 // Handlebars `{FILENAME}`, Svelte `{#if}`) and is legitimate.
 var engineBoundKeys = map[string]bool{
 	"SLUG":        true,
+	"NAME":        true,
+	"ROLE_LABEL":  true,
 	"FRAMEWORK":   true,
 	"HOSTNAME":    true,
 	"TIER_LABEL":  true,
@@ -117,10 +119,19 @@ func AssembleCodebaseREADME(plan *Plan, hostname string) (string, []string, erro
 	if err != nil {
 		return "", nil, err
 	}
+	// V3 fix — codebase README title is `# Zerops x <NAME>[ <ROLE>]`
+	// (jetstream-shape, slug-stem stripped). NAME is the human-readable
+	// recipe name; ROLE_LABEL adds " API"/" Frontend"/" Worker" only on
+	// multi-codebase recipes. Single-line H1 — markers are redundant
+	// because the engine already knows the human name from plan.json,
+	// and downstream tooling (recipe page render) reads the plan
+	// directly rather than extracting from rendered markdown.
 	body := replaceTokens(tpl, map[string]string{
-		"SLUG":      plan.Slug,
-		"FRAMEWORK": plan.Framework,
-		"HOSTNAME":  hostname,
+		"SLUG":       plan.Slug,
+		"NAME":       HumanName(plan),
+		"ROLE_LABEL": CodebaseRoleLabel(plan, hostname),
+		"FRAMEWORK":  plan.Framework,
+		"HOSTNAME":   hostname,
 	})
 	prefix := "codebase/" + hostname
 	// Run-16 §6.7 — slotted IG fragments: walk
@@ -477,6 +488,7 @@ func renderRootTokens(tpl string, plan *Plan) string {
 	}
 	return replaceTokens(tpl, map[string]string{
 		"SLUG":      plan.Slug,
+		"NAME":      HumanName(plan),
 		"FRAMEWORK": plan.Framework,
 		"TIER_LIST": rows.String(),
 	})

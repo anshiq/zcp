@@ -14,7 +14,14 @@ import (
 // fact is carried in Codebases / Services / EnvComments, which the agent
 // populates during research and scaffold phases.
 type Plan struct {
-	Slug           string                       `json:"slug"`
+	Slug string `json:"slug"`
+	// Name is the human-readable recipe title rendered in markdown
+	// surface H1s ("NestJS Showcase", "Laravel Jetstream"). Optional —
+	// when empty, HumanName derives it from Slug + Framework using
+	// the framework-label lookup. Set by the research-phase sub-agent
+	// when the slug-derived form is wrong (e.g. brand casing the agent
+	// knows but the slug-stem can't carry).
+	Name           string                       `json:"name,omitempty"`
 	Framework      string                       `json:"framework,omitempty"`
 	Tier           string                       `json:"tier,omitempty"`
 	Research       ResearchResult               `json:"research"`

@@ -89,43 +89,232 @@ authority; this list reflects the tokens currently in scope.
 3. **Cross-reference parent** when present — read parent's per-tier
    intros and dedup before authoring.
 
+## Lead pattern — `**TierName**` + verb + audience purpose (intros) / `Deploy/Spin up X, used by Y` (per-service)
+
+This section sets the **lead voice** for every env-content surface.
+The voice rules below (friendly-authority phrasings, within-tier
+adapt knobs, closure-of-expectation guards) describe SECONDARY
+shape — what comes after the lead. **Get the lead right first; the
+rest is decoration.**
+
+`derived_rules.md` V1 + T2 + TY1 + TY2 score the assembled output
+against the jetstream-golden voice — names what the recipe service
+IS in plain English first, reaches for mechanism precision (yaml
+field names, scaling math) only when porter-actionable. Run-34 +
+run-35 evidence: tier intros + per-service yaml comments shipped
+with implementation-shape lead ("Single-node PostgreSQL — restoring
+from snapshot means downtime…", "Production setup on shared CPU
+with single-instance managed services and 0.25 GB free-RAM
+headroom…") instead of the jetstream lead pattern. Refinement
+caught some; many shipped because the authoring brief's PASS
+examples were the same engineering-spec voice. This section
+realigns authoring with the scoring substrate.
+
+### Tier README intro lead pattern (Surface 2 — `env/<N>/intro`)
+
+Lead with `**Tier name** environment <verb> <audience purpose>`.
+Verb is one of `provides` / `allows` / `supports` / `uses` /
+`offers` (porter-card framing). The **audience purpose** comes
+first; implementation specs (single-instance, dedicated CPU,
+managed-RAM floor) come second only when porter-actionable at this
+surface.
+
+Worked GOOD (jetstream tier 3):
+
+> ***Stage** environment uses the same configuration as production,
+> but runs on the lowest scaling settings.*
+
+Worked GOOD (jetstream tier 0):
+
+> ***AI agent** environment provides a development space for AI
+> agents to build and version the app. Comes with a dev service
+> with the source code and necessary development tools, a staging
+> service, email & SMTP testing tool, and a low-resource databases
+> and storage.*
+
+Worked GOOD (jetstream tier 4):
+
+> ***Small production** environment offers a production-ready
+> setup optimized for moderate throughput.*
+
+Worked BAD (run-35 tier 3):
+
+> *Production setup on shared CPU with single-instance managed
+> services and a 0.25 GB free-RAM headroom buffer on every
+> container, sized for rehearsal traffic and QA runs against
+> snapshots-only durability.*
+
+Worked BAD (run-35 tier 0):
+
+> *Agent workspace shape — single-instance managed services on
+> shared CPU with the smallest managed RAM, dev-runtime containers
+> for every codebase, and project-level secrets generated once at
+> import. Sized for end-to-end iteration without juggling
+> production-shaped scale.*
+
+The BAD intros lead with implementation-shape descriptors and
+state specs as facts. The GOOD intros lead with the tier name in
+boldface + a verb that says what the tier DOES + the audience the
+tier is FOR. Specs come second, briefly, when porter-actionable.
+
+### Tier yaml head comment lead pattern (Surface 3 — `env/<N>/import-comments/project`)
+
+The top-of-file yaml comment **mirrors the tier README intro**.
+Same body, same voice — the README has markdown bold (`**Stage**`),
+the yaml comment elides the bold but keeps the same prose.
+
+Worked GOOD (jetstream tier 3 yaml head):
+
+```yaml
+# Stage environment uses the same configuration as production,
+# but runs on the lowest scaling settings.
+```
+
+Worked BAD (run-35 tier 3 yaml head — dives into project-envVars):
+
+```yaml
+# Same single-slot project envs as tier 2 — APP_SECRET regenerated
+# at import; API_URL / FRONTEND_URL resolve to the bare api/app
+# subdomains. Replace these with your own hostnames once you swap
+# subdomain access for a custom stage domain.
+```
+
+The BAD shape skips the tier mission and dives into a project-envs
+block explanation. That belongs in the project-envVars body, NOT
+the file head. The head is the tier's identity card. **Mirror the
+README intro.**
+
+### Per-service yaml comment lead pattern (Surface 3 — `env/<N>/import-comments/<host>`)
+
+Lead with imperative + service identity + role/relationship.
+Verb is `Deploy` / `Spin up` / (or the service-name shape `Single
+node X`/`Single-instance X` ONLY when followed immediately by
+`used by Y for Z`). The **what-it's-for-the-porter** clause comes
+first; mechanism precision (priority, vertical autoscaling
+fields) comes second only when porter-actionable.
+
+Worked GOOD (jetstream tier 3 db):
+
+```yaml
+# Deploy single node PostgreSQL database,
+# used by the Laravel app to store data. Automatic,
+# encrypted backups are enabled by default.
+```
+
+Worked GOOD (jetstream tier 3 cache):
+
+```yaml
+# Spin up Valkey in single-node mode.
+# Valkey is an open-source Redis-compatible
+# key/value storage for caching, sessions, queues, etc.
+```
+
+Worked GOOD (jetstream tier 0 db, with relationship):
+
+```yaml
+# Deploy low-resource PostgreSQL database,
+# used by the app to store data. Both the staged
+# 'appstage' service and AI agents from 'appdev'
+# typically connect to this database.
+```
+
+Worked BAD (run-35 tier 3 db — descriptor + tradeoff lead):
+
+```yaml
+# Single-instance Postgres — restoring from snapshot still means
+# downtime, the rehearsal-grade tradeoff at stage. The 0.25 GB
+# minFreeRamGB headroom keeps query bursts off the swap path;
+# bump verticalAutoscaling.minRam when stage workload pushes
+# query latency past your SLO.
+```
+
+The BAD lead opens with the tradeoff (`restoring from snapshot
+still means downtime`) and the scaling math (`minFreeRamGB
+headroom keeps query bursts off the swap path`). The porter
+hasn't been told what this service is FOR before the comment
+dives into the operational tradeoff. The GOOD lead names the
+imperative (`Deploy`), the service identity (`single node
+PostgreSQL database`), the role (`used by the Laravel app to
+store data`), and ONE porter-relevant fact (`encrypted backups
+are enabled by default`). Tradeoffs and bump-knob tails come
+SECOND when they apply — never first.
+
+### Acceptable MIX shape (lead with descriptor + immediate role)
+
+When the imperative `Deploy/Spin up X` shape would feel awkward
+(e.g. tier 0/1 dev-pair runtime where the operational concern
+genuinely is the workspace shape), the acceptable MIX shape leads
+with the service descriptor + an em-dash + an immediate role
+clause:
+
+```yaml
+# Single-node PostgreSQL — used by the api codebase to store
+# items + job logs. Snapshots-only durability at this rehearsal
+# tier; bump `verticalAutoscaling.minRam` if your stage workload
+# pushes query latency.
+```
+
+The descriptor leads, but the very next clause names what the
+service is FOR. Adapt-knob tail (`bump verticalAutoscaling.minRam
+if…`) comes last. Run-32 sim-3 used this MIX shape on most
+managed-service blocks. Acceptable; not as crisp as jetstream
+GOOD but porter-comprehensible. The BAD shape — descriptor +
+em-dash + tradeoff/scaling-math lead with no role clause — is
+forbidden.
+
 ## Voice
 
-Friendly authority, declarative, present-tense, porter-facing. State
-the platform mechanism, name the tradeoff, end on the porter signal
-that triggers a change. Never "we chose X", never "during scaffold".
+Friendly authority, declarative, present-tense, porter-facing.
+**Lead with what the service IS in the porter's vocabulary** (see
+Lead pattern section above); state the platform mechanism, name
+the tradeoff, end on the porter signal that triggers a change.
+Never "we chose X", never "during scaffold".
 
-PASS — production-tier APP_KEY block:
+PASS — production-tier APP_KEY block (project-envs body, not file head):
 
 > *APP_KEY — production encryption key shared across all app and
 > worker containers. Critical for session validity when the L7
 > balancer distributes requests across multiple containers.*
 
 Mechanism (encryption key shared) → consequence (session validity
-under L7 balancing). Two sentences, no field narration.
+under L7 balancing). Two sentences, no field narration. The file
+head still mirrors the README intro per the Lead pattern section
+above; this PASS shape applies inside the project-envs body where
+each project-level env carries its own causal block.
 
-PASS — tier-0 PostgreSQL block:
+PASS — tier-0 PostgreSQL block (jetstream-GOOD lead):
 
-> *PostgreSQL — single instance with the smallest managed RAM.
-> Snapshots run, but there is no replica — restoring means downtime,
-> which is acceptable because tier-0 data is disposable. Priority 10
-> ensures it accepts connections before any runtime initCommand fires
-> migrations.*
+> *Deploy low-resource PostgreSQL database, used by the api
+> codebase to store the items table and per-deploy migration
+> markers. Both the agent workstation (`apidev`) and the staged
+> service (`apistage`) connect to this database; priority 10
+> guarantees Postgres accepts connections before any
+> initCommand-driven migration runs.*
 
-Names the mode (single instance, NON_HA implied), the operational
-consequence (manual-restore window), the audience (tier-0 data is
-disposable), and the priority's effect (initCommand ordering).
+Imperative (`Deploy`) → service identity (`low-resource
+PostgreSQL database`) → role (`used by the api codebase to store
+…`) → relationship (`Both A and B connect`) → priority's effect.
+The within-tier-knob (`bump verticalAutoscaling.minRam if…`) is
+omitted here because tier 0 is the workspace tier where porter
+adapt paths don't apply (see "Tier-specific carve-outs" below).
 
-PASS — tier-4 small-prod app block:
+PASS — tier-4 small-prod app block (jetstream-GOOD lead):
 
-> *Small production — minContainers: 2 guarantees two app containers
-> at all times, enabling rolling deploys with zero downtime (one
-> container serves traffic while the other rebuilds). Zerops
-> autoscales RAM within verticalAutoscaling bounds to absorb traffic
-> spikes without manual intervention.*
+> *Run two app replicas on shared CPU — minContainers: 2 keeps
+> rolling deploys zero-downtime (one container serves traffic
+> while the other rebuilds). Bump verticalAutoscaling.maxRam when
+> monitoring shows containers approaching the current ceiling.*
 
-Mechanism (two containers always running) → outcome (rolling deploys
-without downtime) → operational reality (autoscaling absorbs spikes).
+Imperative (`Run two app replicas`) → mechanism (`minContainers:
+2 keeps rolling deploys zero-downtime`) → outcome (`one container
+serves traffic while the other rebuilds`) → adapt-knob tail (`bump
+verticalAutoscaling.maxRam when…`) tied to a within-tier porter
+signal. **Note**: `minContainers` is NOT a within-tier adapt knob —
+the within-tier-scope rules below (line ~370) reserve `minContainers`
+for cross-tier ladder design points. The PASS lead names tier-4's
+`minContainers: 2` mechanism but does NOT invite the porter to bump
+it; bumping past the ladder design point graduates the porter to
+tier 5 by re-importing, not by editing this yaml.
 
 ## Friendly-authority phrasing — the adapt-path contract
 

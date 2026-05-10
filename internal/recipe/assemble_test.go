@@ -50,7 +50,10 @@ func TestAssemble_TemplateRendersStructuralData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AssembleRootREADME: %v", err)
 	}
-	if !strings.Contains(out, "# laravel-showcase") {
+	// Title now uses RecipeHumanName-derived form per V3 fix
+	// (slug-stem leak removed); jetstream-golden shape is "<NAME> Recipe"
+	// for the root README.
+	if !strings.Contains(out, "# Laravel Showcase Recipe") {
 		t.Errorf("title not rendered; got:\n%s", out)
 	}
 	if !strings.Contains(out, "https://app.zerops.io/recipes/laravel-showcase?environment=small-production") {
