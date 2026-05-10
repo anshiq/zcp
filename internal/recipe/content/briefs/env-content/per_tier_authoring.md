@@ -10,8 +10,8 @@ README headings:
 
 | Index | Label |
 |-------|-------|
-| 0 | AI agent |
-| 1 | Remote (CDE) |
+| 0 | AI Agent |
+| 1 | Remote |
 | 2 | Local |
 | 3 | Stage |
 | 4 | Small Production |
@@ -126,7 +126,7 @@ Worked GOOD (jetstream tier 3):
 
 Worked GOOD (jetstream tier 0):
 
-> ***AI agent** environment provides a development space for AI
+> ***AI Agent** environment provides a development space for AI
 > agents to build and version the app. Comes with a dev service
 > with the source code and necessary development tools, a staging
 > service, email & SMTP testing tool, and a low-resource databases

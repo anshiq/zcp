@@ -21,7 +21,7 @@ A NestJS application connected to PostgreSQL, running on Zerops.
 <!-- #ZEROPS_EXTRACT_END:intro# -->
 ` + fakeDeployButtons() + `
 - **AI Agent** [[info]](/0)
-- **Remote (CDE)** [[info]](/1)
+- **Remote** [[info]](/1)
 - **Local** [[info]](/2)
 - **Stage** [[info]](/3)
 - **Small Production** [[info]](/4)

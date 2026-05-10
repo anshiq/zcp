@@ -508,8 +508,8 @@ func renderRootTokens(tpl string, plan *Plan) string {
 //
 // Examples:
 //
-//	"AI agent"                    → "AI agent"
-//	"Remote (CDE)"                → "remote (CDE)"
+//	"AI Agent"                    → "AI agent"
+//	"Remote"                      → "remote"
 //	"Stage"                       → "stage"
 //	"Small Production"            → "small production"
 //	"Highly-available Production" → "highly-available production"

@@ -13,8 +13,8 @@ import (
 // back-link line — the CTA lives in the L2 banner sentence link.
 
 // TestAssembleEnvREADME_V9_79_BannerShape pins the new L1 + L2 across
-// every tier. Tier 0 ("AI agent") tests the article ("an") + acronym
-// preservation; tier 1 ("Remote (CDE)") tests parenthesized acronym;
+// every tier. Tier 0 ("AI Agent") tests the article ("an") + acronym
+// preservation; tier 1 ("Remote") tests the simple sentence-case path;
 // tier 4 ("Small Production") + tier 5 ("Highly-available Production")
 // test multi-word lowercase. Tier 3 is the canonical Stage smoke.
 func TestAssembleEnvREADME_V9_79_BannerShape(t *testing.T) {
@@ -28,14 +28,14 @@ func TestAssembleEnvREADME_V9_79_BannerShape(t *testing.T) {
 		{
 			name:        "tier_0_AI_agent_uses_an_article_and_preserves_AI_acronym",
 			tierIndex:   0,
-			wantTitleH1: "# NestJS Showcase — AI agent Environment",
+			wantTitleH1: "# NestJS Showcase — AI Agent Environment",
 			wantBanner:  "This is an AI agent environment for [NestJS Showcase (info + deploy)](https://app.zerops.io/recipes/nestjs-showcase?environment=ai-agent) recipe on [Zerops](https://zerops.io).",
 		},
 		{
 			name:        "tier_1_Remote_CDE_lowercases_first_word_preserves_CDE_acronym",
 			tierIndex:   1,
-			wantTitleH1: "# NestJS Showcase — Remote (CDE) Environment",
-			wantBanner:  "This is a remote (CDE) environment for [NestJS Showcase (info + deploy)](https://app.zerops.io/recipes/nestjs-showcase?environment=remote-cde) recipe on [Zerops](https://zerops.io).",
+			wantTitleH1: "# NestJS Showcase — Remote Environment",
+			wantBanner:  "This is a remote environment for [NestJS Showcase (info + deploy)](https://app.zerops.io/recipes/nestjs-showcase?environment=remote-cde) recipe on [Zerops](https://zerops.io).",
 		},
 		{
 			name:        "tier_3_Stage_lowercases_to_stage",
@@ -112,8 +112,8 @@ func TestAssembleEnvREADME_V9_79_NoBackLink(t *testing.T) {
 func TestTierLabelLower(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"AI agent":                    "AI agent",
-		"Remote (CDE)":                "remote (CDE)",
+		"AI Agent":                    "AI agent",
+		"Remote":                      "remote",
 		"Local":                       "local",
 		"Stage":                       "stage",
 		"Small Production":            "small production",
@@ -130,8 +130,8 @@ func TestTierLabelLower(t *testing.T) {
 func TestTierArticle(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"AI agent":                    "an",
-		"Remote (CDE)":                "a",
+		"AI Agent":                    "an",
+		"Remote":                      "a",
 		"Local":                       "a",
 		"Stage":                       "a",
 		"Small Production":            "a",
