@@ -104,6 +104,87 @@ func requireRF1PD1OnCanonicalAppsRepo(plan *Plan) []Violation {
 	return out
 }
 
+// gateForbidRF1PD1OnNonCanonicalAppsRepos wraps
+// forbidRF1PD1OnNonCanonicalAppsRepos for the GateContext signature.
+// Registered in CodebaseContentGates + FinalizeGates so duplicated
+// sections surface at the earliest close where they MUST be absent
+// (codebase-content owns content authoring; finalize re-runs codebase
+// gates per spec §G).
+func gateForbidRF1PD1OnNonCanonicalAppsRepos(ctx GateContext) []Violation {
+	return forbidRF1PD1OnNonCanonicalAppsRepos(ctx.Plan)
+}
+
+// forbidRF1PD1OnNonCanonicalAppsRepos returns blocking violations when
+// a non-canonical apps-repo's assembled README contains RF1
+// (`## Recipe features`) or PD1 (`## Production vs. Development`).
+// These recipe-level sections belong on the canonical apps-repo only —
+// duplicating them onto sibling apps-repos splits ownership and confuses
+// porters reading multi-codebase recipes ("which one is authoritative?").
+//
+// Run-37 regression motivation: substrate fixes 3-5 in v9.78.0 caused
+// the agent to over-apply RF1+PD1 stitching onto every apps-repo, not
+// just the canonical one; the existing presence gate at
+// requireRF1PD1OnCanonicalAppsRepo doesn't catch this because it only
+// checks presence on canonical, not absence on others. Brief teaches
+// canonical-only → engine enforces canonical-only.
+//
+// Worker codebases are skipped (RoleWorker — no apps-repo README owns
+// recipe-level sections; the "## Understand Zerops Core Concepts" link
+// is the only recipe-level content workers carry).
+//
+// Pre-scaffold codebases (no SourceRoot) skip the gate — same reason
+// as the presence gate: the README can't assemble without a SourceRoot.
+func forbidRF1PD1OnNonCanonicalAppsRepos(plan *Plan) []Violation {
+	if plan == nil {
+		return nil
+	}
+	canonical, ok := plan.CanonicalAppsRepoCodebase()
+	canonicalHostname := ""
+	if ok {
+		canonicalHostname = canonical.Hostname
+	}
+	var out []Violation
+	for _, cb := range plan.Codebases {
+		if cb.Hostname == canonicalHostname {
+			continue
+		}
+		if cb.Role == RoleWorker || cb.IsWorker {
+			continue
+		}
+		if cb.SourceRoot == "" {
+			continue
+		}
+		body, _, err := AssembleCodebaseREADME(plan, cb.Hostname)
+		if err != nil {
+			continue
+		}
+		readmePath := filepath.Join(cb.SourceRoot, "README.md")
+		if containsHeading(body, rf1HeadingTitle) {
+			out = append(out, Violation{
+				Code:     "non-canonical-apps-repo-has-rf1",
+				Path:     readmePath,
+				Severity: SeverityBlocking,
+				Message: fmt.Sprintf(
+					"non-canonical apps-repo (%s) README contains forbidden H2 %q. The canonical apps-repo (%s) owns this recipe-level section per briefs/refinement/derived_rules.md §RF1; duplicating it onto sibling apps-repos splits ownership. Remove the section from `codebase/%s/integration-guide` (or the un-slotted fragment that authored it) and rerun `complete-phase phase=codebase-content`.",
+					cb.Hostname, rf1HeadingTitle, canonicalHostname, cb.Hostname,
+				),
+			})
+		}
+		if containsHeading(body, pd1HeadingTitle) {
+			out = append(out, Violation{
+				Code:     "non-canonical-apps-repo-has-pd1",
+				Path:     readmePath,
+				Severity: SeverityBlocking,
+				Message: fmt.Sprintf(
+					"non-canonical apps-repo (%s) README contains forbidden H2 %q. The canonical apps-repo (%s) owns this recipe-level section per briefs/refinement/derived_rules.md §PD1; duplicating it onto sibling apps-repos splits ownership. Remove the section from `codebase/%s/integration-guide` (or the un-slotted fragment that authored it) and rerun `complete-phase phase=codebase-content`.",
+					cb.Hostname, pd1HeadingTitle, canonicalHostname, cb.Hostname,
+				),
+			})
+		}
+	}
+	return out
+}
+
 // containsHeading reports whether body has a markdown H2 line whose
 // title matches want (case-insensitive). Matches `^## <title>` only;
 // does not match deeper headings or inline mentions.

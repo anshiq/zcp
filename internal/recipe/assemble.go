@@ -46,14 +46,16 @@ var unreplacedTokenRE = regexp.MustCompile(`\{[A-Z][A-Z0-9_]*\}`)
 // this set is fragment-authored code (JS template literal `${API_URL}`,
 // Handlebars `{FILENAME}`, Svelte `{#if}`) and is legitimate.
 var engineBoundKeys = map[string]bool{
-	"SLUG":        true,
-	"NAME":        true,
-	"ROLE_LABEL":  true,
-	"FRAMEWORK":   true,
-	"HOSTNAME":    true,
-	"TIER_LABEL":  true,
-	"TIER_SUFFIX": true,
-	"TIER_LIST":   true,
+	"SLUG":             true,
+	"NAME":             true,
+	"ROLE_LABEL":       true,
+	"FRAMEWORK":        true,
+	"HOSTNAME":         true,
+	"TIER_LABEL":       true,
+	"TIER_LABEL_LOWER": true, // v9.79.0 — sentence-form lowercased label, acronyms preserved
+	"TIER_ARTICLE":     true, // v9.79.0 — "a"/"an" before TIER_LABEL_LOWER
+	"TIER_SUFFIX":      true,
+	"TIER_LIST":        true,
 }
 
 // AssembleRootREADME renders the root README for a recipe. Returns the
@@ -86,10 +88,13 @@ func AssembleEnvREADME(plan *Plan, tierIndex int) (string, []string, error) {
 		return "", nil, err
 	}
 	body := replaceTokens(tpl, map[string]string{
-		"SLUG":        plan.Slug,
-		"FRAMEWORK":   plan.Framework,
-		"TIER_LABEL":  tier.Label,
-		"TIER_SUFFIX": tierDeploySuffix(tier),
+		"SLUG":             plan.Slug,
+		"NAME":             HumanName(plan),
+		"FRAMEWORK":        plan.Framework,
+		"TIER_LABEL":       tier.Label,
+		"TIER_LABEL_LOWER": tierLabelLower(tier.Label),
+		"TIER_ARTICLE":     tierArticle(tier.Label),
+		"TIER_SUFFIX":      tierDeploySuffix(tier),
 	})
 	prefix := fmt.Sprintf("env/%d", tierIndex)
 	body, missing, err := substituteFragmentMarkers(body, plan.Fragments, prefix)
@@ -492,6 +497,81 @@ func renderRootTokens(tpl string, plan *Plan) string {
 		"FRAMEWORK": plan.Framework,
 		"TIER_LIST": rows.String(),
 	})
+}
+
+// tierLabelLower returns the sentence-form of a tier label. Preserves
+// acronyms (all-uppercase words like "AI", "(CDE)") and lowercases the
+// first letter of words that contain any lowercase letter. Used by the
+// env README L2 banner sentence ("This is a stage environment for…",
+// "This is an AI agent environment for…") so the article + label
+// combine into natural English.
+//
+// Examples:
+//
+//	"AI agent"                    → "AI agent"
+//	"Remote (CDE)"                → "remote (CDE)"
+//	"Stage"                       → "stage"
+//	"Small Production"            → "small production"
+//	"Highly-available Production" → "highly-available production"
+func tierLabelLower(label string) string {
+	parts := strings.Fields(label)
+	for i, p := range parts {
+		if hasLowerASCII(p) {
+			parts[i] = lowerFirstASCII(p)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// tierArticle returns "a" or "an" depending on whether the tier label's
+// first ASCII letter is a vowel. Conservative — pronunciation-aware
+// English ("an honest", "a university") is out of scope; the six
+// canonical tier labels don't trigger any silent-h or vowel-sound-but-
+// consonant-letter cases.
+func tierArticle(label string) string {
+	for _, r := range label {
+		if r >= 'a' && r <= 'z' {
+			return articleForVowel(r)
+		}
+		if r >= 'A' && r <= 'Z' {
+			return articleForVowel(r - 'A' + 'a')
+		}
+	}
+	return "a"
+}
+
+func articleForVowel(r rune) string {
+	switch r {
+	case 'a', 'e', 'i', 'o', 'u':
+		return "an"
+	}
+	return "a"
+}
+
+// hasLowerASCII reports whether s contains any lowercase ASCII letter.
+// Used by tierLabelLower to skip all-uppercase acronyms ("AI", "(CDE)")
+// when sentence-casing tier labels.
+func hasLowerASCII(s string) bool {
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
+// lowerFirstASCII returns s with its first ASCII letter lowercased.
+// Stdlib-only — golang.org/x/text/cases is unnecessary for the six
+// canonical tier labels.
+func lowerFirstASCII(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	if r[0] >= 'A' && r[0] <= 'Z' {
+		r[0] += 'a' - 'A'
+	}
+	return string(r)
 }
 
 // tierDeploySuffix returns the tier-suffix form used as the deploy URL's

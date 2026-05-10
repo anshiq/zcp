@@ -205,6 +205,163 @@ func TestCompletePhase_RequiresRF1PD1OnCanonicalAppsRepo(t *testing.T) {
 	}
 }
 
+// v9.79.0 Fix 1 — engine-side teeth for the absence axis on
+// non-canonical apps-repos: the canonical apps-repo OWNS RF1/PD1; sibling
+// apps-repos (non-worker, non-canonical) MUST NOT carry these recipe-
+// level H2 sections. Run-37 regression: substrate fixes 3-5 in v9.78.0
+// caused the agent to over-apply RF1+PD1 stitching onto every apps-repo,
+// not just the canonical one; the existing presence gate catches missing
+// sections on canonical, NOT duplicated sections on siblings.
+
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_HasRF1OnNonCanonical_Blocks(t *testing.T) {
+	t.Parallel()
+	// canonicalAppsRepoTestPlan sets SourceRoot for every codebase and
+	// authors the un-slotted IG fragment under the canonical (api)
+	// codebase. We override the app codebase's IG fragment to inject
+	// the forbidden RF1 H2.
+	plan := canonicalAppsRepoTestPlan(t, "## Recipe features\n\n- ok\n\n## Production vs. Development\n\n- ok\n")
+	plan.Fragments["codebase/app/integration-guide"] = "## Recipe features\n\n- forbidden\n"
+
+	violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan)
+	if len(violations) == 0 {
+		t.Fatal("expected blocking violation when non-canonical apps-repo (app) carries RF1")
+	}
+	var sawRF1 bool
+	for _, v := range violations {
+		if v.Code != "non-canonical-apps-repo-has-rf1" {
+			continue
+		}
+		sawRF1 = true
+		if v.Severity != SeverityBlocking {
+			t.Errorf("violation %q must be blocking, got severity %v", v.Code, v.Severity)
+		}
+		if !strings.Contains(v.Message, "Recipe features") {
+			t.Errorf("violation message must name RF1 (`Recipe features`); got %q", v.Message)
+		}
+	}
+	if !sawRF1 {
+		t.Errorf("expected `non-canonical-apps-repo-has-rf1` violation; got %+v", violations)
+	}
+}
+
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_HasPD1OnNonCanonical_Blocks(t *testing.T) {
+	t.Parallel()
+	plan := canonicalAppsRepoTestPlan(t, "## Recipe features\n\n- ok\n\n## Production vs. Development\n\n- ok\n")
+	plan.Fragments["codebase/app/integration-guide"] = "## Production vs. Development\n\n- forbidden\n"
+
+	violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan)
+	if len(violations) == 0 {
+		t.Fatal("expected blocking violation when non-canonical apps-repo (app) carries PD1")
+	}
+	var sawPD1 bool
+	for _, v := range violations {
+		if v.Code != "non-canonical-apps-repo-has-pd1" {
+			continue
+		}
+		sawPD1 = true
+		if v.Severity != SeverityBlocking {
+			t.Errorf("violation %q must be blocking, got severity %v", v.Code, v.Severity)
+		}
+		if !strings.Contains(v.Message, "Production vs. Development") {
+			t.Errorf("violation message must name PD1 (`Production vs. Development`); got %q", v.Message)
+		}
+	}
+	if !sawPD1 {
+		t.Errorf("expected `non-canonical-apps-repo-has-pd1` violation; got %+v", violations)
+	}
+}
+
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_AllSiblingsClean_Passes(t *testing.T) {
+	t.Parallel()
+	// Helper baseline: canonical (api) carries RF1+PD1 via un-slotted IG
+	// body; sibling app/worker have only the slotted IG items + intro/KB,
+	// no recipe-level H2.
+	plan := canonicalAppsRepoTestPlan(t, "## Recipe features\n\n- ok\n\n## Production vs. Development\n\n- ok\n")
+	if violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan); len(violations) > 0 {
+		t.Errorf("expected zero violations when sibling apps-repos carry no RF1/PD1; got %+v", violations)
+	}
+}
+
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_RF1OnCanonical_NotFlagged(t *testing.T) {
+	t.Parallel()
+	// Canonical (api) carries RF1+PD1 — required by the presence gate.
+	// Absence gate must NOT flag canonical. Other siblings clean.
+	plan := canonicalAppsRepoTestPlan(t, "## Recipe features\n\n- canonical\n\n## Production vs. Development\n\n- canonical\n")
+	for _, v := range forbidRF1PD1OnNonCanonicalAppsRepos(plan) {
+		if strings.Contains(v.Path, "/var/www/apidev/") {
+			t.Errorf("absence gate flagged canonical apidev README; violations: %+v", v)
+		}
+	}
+}
+
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_WorkerWithRF1_NoOp(t *testing.T) {
+	t.Parallel()
+	// Worker codebases are skipped by the gate — the "## Understand
+	// Zerops Core Concepts" link is the only recipe-level content
+	// workers carry, and RF1/PD1 don't apply there.
+	plan := canonicalAppsRepoTestPlan(t, "## Recipe features\n\n- ok\n\n## Production vs. Development\n\n- ok\n")
+	plan.Fragments["codebase/worker/integration-guide"] = "## Recipe features\n\n- forbidden-but-skipped\n"
+
+	violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan)
+	for _, v := range violations {
+		if strings.Contains(v.Path, "workerdev") {
+			t.Errorf("absence gate must skip workers; got violation against worker: %+v", v)
+		}
+	}
+}
+
+func TestForbidRF1PD1OnNonCanonicalAppsRepos_PreScaffold_NoOp(t *testing.T) {
+	t.Parallel()
+	// Pre-scaffold (no SourceRoot on the app codebase) — gate skips
+	// because the README can't assemble without a SourceRoot. Same
+	// reason as the presence gate.
+	plan := &Plan{
+		Slug: "pre-scaffold", Framework: "synth",
+		Codebases: []Codebase{
+			{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22", SourceRoot: "/var/www/apidev"},
+			{Hostname: "app", Role: RoleFrontend, BaseRuntime: "nodejs@22"}, // no SourceRoot
+		},
+		Fragments: map[string]string{
+			"codebase/app/integration-guide": "## Recipe features\n\n- forbidden\n",
+		},
+	}
+	if violations := forbidRF1PD1OnNonCanonicalAppsRepos(plan); len(violations) > 0 {
+		t.Errorf("pre-scaffold non-canonical apps-repo should no-op; got %+v", violations)
+	}
+}
+
+// TestCompletePhase_ForbidsRF1PD1OnNonCanonicalAppsRepos — the wired-in
+// gate: un-scoped main-agent `complete-phase phase=codebase-content`
+// refuses when a non-canonical apps-repo's assembled README carries
+// RF1/PD1. Mirrors TestCompletePhase_RequiresRF1PD1OnCanonicalAppsRepo
+// for the absence axis.
+func TestCompletePhase_ForbidsRF1PD1OnNonCanonicalAppsRepos(t *testing.T) {
+	t.Parallel()
+	gates := CodebaseContentGates()
+	var foundCC bool
+	for _, g := range gates {
+		if g.Name == "non-canonical-apps-repo-no-rf1-pd1" {
+			foundCC = true
+		}
+	}
+	if !foundCC {
+		t.Errorf("CodebaseContentGates() must register `non-canonical-apps-repo-no-rf1-pd1`; got %v", gateNames(gates))
+	}
+	// FinalizeGates() chains CodebaseGates() which unions
+	// CodebaseScaffoldGates() + CodebaseContentGates(); the absence gate
+	// must be reachable through that chain so finalize re-runs it.
+	finalize := FinalizeGates()
+	var foundFinalize bool
+	for _, g := range finalize {
+		if g.Name == "non-canonical-apps-repo-no-rf1-pd1" {
+			foundFinalize = true
+		}
+	}
+	if !foundFinalize {
+		t.Errorf("FinalizeGates() must include `non-canonical-apps-repo-no-rf1-pd1`; got %v", gateNames(finalize))
+	}
+}
+
 // canonicalAppsRepoTestPlan returns a synthetic plan whose canonical
 // apps-repo (api codebase) has an un-slotted IG fragment with the
 // caller-supplied body. Body shape lets each test target one of

@@ -151,6 +151,14 @@ func CodebaseContentGates() []Gate {
 		// agent skip silently shipped an incomplete README. Pinned by
 		// TestRequireRF1PD1OnCanonicalAppsRepo_*.
 		{Name: "canonical-apps-repo-rf1-pd1", Run: gateRequireRF1PD1OnCanonicalAppsRepo},
+		// v9.79.0 Fix 1 — closes the absence axis on non-canonical
+		// apps-repos. Run-37 surfaced the regression: substrate fixes
+		// 3-5 caused the agent to over-apply RF1+PD1 onto every apps-
+		// repo. Brief teaches canonical-only → engine enforces canonical-
+		// only on both axes (presence on canonical via the gate above;
+		// absence on siblings via this gate). Pinned by
+		// TestForbidRF1PD1OnNonCanonicalAppsRepos_*.
+		{Name: "non-canonical-apps-repo-no-rf1-pd1", Run: gateForbidRF1PD1OnNonCanonicalAppsRepos},
 	}
 }
 
