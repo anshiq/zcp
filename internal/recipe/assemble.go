@@ -655,10 +655,21 @@ func substituteFragmentMarkers(body string, fragments map[string]string, idPrefi
 			if hits := unfencedEngineTokens(frag); len(hits) > 0 {
 				return "", nil, fmt.Errorf("fragment %q contains unbound engine token(s) %s outside a fenced code block — wrap the example in ``` fences or remove the literal", fragmentID, strings.Join(hits, ", "))
 			}
+			// v9.80.0 Fix 7b — emit a blank line between the START
+			// marker and the fragment body. Run-38 evidence: the
+			// Zerops dashboard's KB extractor renders content correctly
+			// when the START marker is followed by a blank line
+			// (laravel-minimal `### Gotchas` shape) but silently drops
+			// content when the marker is followed directly by the
+			// fragment body (nestjs-showcase `## Tips and Others`
+			// shape). The blank line is structural — without it, some
+			// markdown parsers treat the next block as a continuation
+			// of the HTML comment. Engine-emitted blank line is
+			// invariant regardless of fragment shape.
 			out.WriteString(extractStartPrefix)
 			out.WriteString(name)
 			out.WriteString(extractStartSuffix)
-			out.WriteByte('\n')
+			out.WriteString("\n\n")
 			out.WriteString(strings.TrimSpace(frag))
 			out.WriteByte('\n')
 			out.WriteString(endMarker)

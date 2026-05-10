@@ -425,6 +425,49 @@ func TestAssemble_FragmentBody_CodeTokens_E2E(t *testing.T) {
 	}
 }
 
+// TestSubstituteFragmentMarkers_BlankLineAfterStart — v9.80.0 Fix 7b.
+// The Zerops dashboard's KB extractor renders content correctly when
+// the START marker is followed by a blank line (laravel-minimal
+// `### Gotchas` shape) but silently drops content when the marker
+// is followed directly by the fragment body (nestjs-showcase
+// `## Tips and Others` shape). The blank line is engine-emitted
+// regardless of fragment shape.
+func TestSubstituteFragmentMarkers_BlankLineAfterStart(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body string
+	}{
+		{name: "h3-fragment", body: "### Gotchas\n\n- bullet"},
+		{name: "h2-fragment-still-emits-blank-line", body: "## Tips and Others\n\n- bullet"},
+		{name: "leading-newlines-stripped", body: "\n\n### Gotchas\n\n- bullet"},
+		{name: "no-leading-whitespace", body: "### Gotchas\n- bullet"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tpl := "<!-- #ZEROPS_EXTRACT_START:knowledge-base# -->\n<!-- #ZEROPS_EXTRACT_END:knowledge-base# -->"
+			fragments := map[string]string{"codebase/api/knowledge-base": tc.body}
+			out, missing, err := substituteFragmentMarkers(tpl, fragments, "codebase/api")
+			if err != nil {
+				t.Fatalf("substituteFragmentMarkers: %v", err)
+			}
+			if len(missing) != 0 {
+				t.Fatalf("missing fragments: %v", missing)
+			}
+			// Assert the START marker line is followed by a blank line.
+			startMarker := "<!-- #ZEROPS_EXTRACT_START:knowledge-base# -->"
+			_, afterMarker, ok := strings.Cut(out, startMarker)
+			if !ok {
+				t.Fatalf("rendered output missing START marker: %q", out)
+			}
+			if !strings.HasPrefix(afterMarker, "\n\n") {
+				t.Errorf("expected blank line after START marker; got: %q", afterMarker[:min(40, len(afterMarker))])
+			}
+		})
+	}
+}
+
 // TestHandler_RecordFragment_AppendVsOverwrite — scaffold-authored
 // codebase fragments (IG, KB, CLAUDE.md) are append-on-extend so a
 // feature sub-agent can add to scaffold's body without clobbering it.
