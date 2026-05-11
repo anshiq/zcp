@@ -290,6 +290,15 @@ func BuildEnvContentBrief(plan *Plan, parent *ParentRecipe, facts []FactRecord) 
 		parts = append(parts, "contract-facts")
 	}
 
+	// Run-40 ENG-4 — canonical-latest facts. When the same observable
+	// has been recorded under multiple topic strings across phases
+	// (e.g. the run-39 NATS queue-group concept under three aliases),
+	// surface the recordedAt-latest record per canonical key.
+	// Section is rendered only when actual aliasing is observed.
+	if appendCanonicalLatestSection(&b, facts) {
+		parts = append(parts, "canonical-latest-facts")
+	}
+
 	// Codebases + services snapshot.
 	b.WriteString("## Plan snapshot\n\n")
 	for _, cb := range plan.Codebases {
@@ -440,6 +449,56 @@ func appendCrossCodebaseFactsBlock(b *strings.Builder, facts []FactRecord, cb Co
 	}
 	b.WriteString("\n")
 	return true
+}
+
+// appendCanonicalLatestSection writes the canonical-latest section
+// to b when at least one aliased canonical topic appears in facts.
+// Returns whether the section was emitted. The env-content and
+// refinement brief composers share this body — the rendered shape is
+// identical so both sub-agents read the same single-source-of-truth
+// for cross-phase name-of-record. Run-40 ENG-4.
+func appendCanonicalLatestSection(b *strings.Builder, facts []FactRecord) bool {
+	aliased := AliasedCanonicalTopics(facts)
+	if len(aliased) == 0 {
+		return false
+	}
+	b.WriteString("## Latest by canonical topic (cross-phase collapsed)\n\n")
+	b.WriteString("Multiple recorded topics describe the same observable concept. The engine collapses them by canonical key and surfaces the recordedAt-latest record per key. Read these for cross-codebase name-of-record (queue groups, connection patterns) — the raw facts stream above also carries the superseded recordings for audit, but tier yaml comments and root-scope claims should cite the canonical-latest below.\n\n")
+	for canonical, rec := range aliased {
+		fmt.Fprintf(b, "- canonical=%s | from topic=%s | recordedAt=%s | %s\n",
+			canonical, rec.Topic, rec.RecordedAt, canonicalFactSummary(rec))
+	}
+	b.WriteString("\n")
+	return true
+}
+
+// canonicalFactSummary returns a one-line summary of the most
+// concept-bearing fields for a canonical-latest record. Picks the
+// kind-specific field that carries the live value (FieldValue for
+// field_rationale, Diff for porter_change, Subject + QueueGroups
+// for contract). Run-40 ENG-4.
+func canonicalFactSummary(f FactRecord) string {
+	switch f.Kind {
+	case FactKindFieldRationale:
+		if f.FieldPath != "" && f.FieldValue != "" {
+			return fmt.Sprintf("%s=%s", f.FieldPath, f.FieldValue)
+		}
+		return truncate(f.Why, 120)
+	case FactKindPorterChange:
+		if f.Diff != "" {
+			return truncate(f.Diff, 120)
+		}
+		return truncate(f.Why, 120)
+	case FactKindContract:
+		if len(f.QueueGroups) > 0 {
+			return fmt.Sprintf("subject=%s | queueGroups=%s", f.Subject, strings.Join(f.QueueGroups, ","))
+		}
+		return fmt.Sprintf("subject=%s | %s", f.Subject, truncate(f.Purpose, 80))
+	case FactKindTierDecision:
+		return fmt.Sprintf("%s=%s", f.FieldPath, f.ChosenValue)
+	default:
+		return truncate(f.Why, 120)
+	}
 }
 
 func writeFactSummary(b *strings.Builder, f FactRecord) {

@@ -186,6 +186,13 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		}
 	}
 
+	// Run-40 ENG-4 — canonical-latest collapsed view. Same shape the
+	// env-content composer renders; refinement's rule-walk reads it
+	// when an ACT-edit touches a name-of-record (queue group, etc.).
+	if appendCanonicalLatestSection(&b, filteredFacts) {
+		parts = append(parts, "canonical-latest-facts")
+	}
+
 	return Brief{
 		Kind:  BriefRefinement,
 		Body:  b.String(),
