@@ -789,6 +789,17 @@ func handleRecordFragment(sess *Session, in RecipeInput, r RecipeResult) RecipeR
 		}
 	}
 
+	// Run-40 ENG-1 — refinement-phase plan.json write-back. Pre-fix the
+	// Replace path updated sess.Plan + disk-stitched READMEs but never
+	// persisted plan.json itself, making the refinement pass lossy at
+	// the plan-of-record layer. Extracted to a helper so handleRecord-
+	// Fragment stays under the maintainability index threshold.
+	if wrapRefinement {
+		if notice := persistPlanAfterRefinementReplace(sess, in.FragmentID); notice != nil {
+			r.Notices = append(r.Notices, *notice)
+		}
+	}
+
 	// Run-29 Fix #2 — IG scaffold-filename Notice. The legacy Blocking
 	// gate at validators_codebase.go:81-93 banned `migrate.ts` /
 	// `seed.ts` / `main.ts` / `api.ts` literals across ALL IG content,
@@ -822,6 +833,45 @@ func handleRecordFragment(sess *Session, in RecipeInput, r RecipeResult) RecipeR
 	}
 	r.OK = true
 	return r
+}
+
+// persistPlanAfterRefinementReplace snapshots the session's Plan
+// under sess.mu, releases the lock, and writes plan.json to disk.
+// Returns a non-nil Violation when the disk write failed so the
+// caller can attach it as a notice on the record-fragment response.
+//
+// CLAUDE.md "Hold mutexes during I/O — copy under lock, release,
+// then I/O" — snapshot is a shallow copy of the Plan struct under
+// the lock; WritePlan runs unlocked.
+//
+// Run-40 ENG-1 — refinement-phase plan.json write-back. Pre-fix the
+// Replace path updated sess.Plan + disk-stitched READMEs but never
+// persisted plan.json itself, making the refinement pass lossy at
+// the plan-of-record layer. Diagnosed in plans/run-40-evidence-
+// grounded-plan.md §"S1-5".
+func persistPlanAfterRefinementReplace(sess *Session, fragmentID string) *Violation {
+	sess.mu.Lock()
+	var snapshot Plan
+	var outputRoot string
+	if sess.Plan != nil {
+		snapshot = *sess.Plan
+		outputRoot = sess.OutputRoot
+	}
+	sess.mu.Unlock()
+	if outputRoot == "" {
+		return nil
+	}
+	if err := WritePlan(outputRoot, &snapshot); err != nil {
+		return &Violation{
+			Code:     "refinement-plan-persist-failed",
+			Path:     fragmentID,
+			Severity: SeverityNotice,
+			Message: fmt.Sprintf(
+				"refinement Replace landed in plan-state + disk-stitch, but plan.json write failed: %s. Re-run update-plan to reconcile.",
+				err.Error()),
+		}
+	}
+	return nil
 }
 
 // refinementPreCheckScoped runs the codebase-surface-validators gate
