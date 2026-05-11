@@ -966,6 +966,17 @@ func mergePlan(sess *Session, incoming *Plan) error {
 	if len(incoming.FeatureKinds) > 0 {
 		cur.FeatureKinds = incoming.FeatureKinds
 	}
+	// Run-40 A1 — NamedConstants merge. Map-valued field follows the
+	// same merge semantics as Fragments (incoming entries copy into
+	// cur, no clear-on-empty so partial updates compose). Records the
+	// cross-codebase name-of-record for queue groups, cache prefixes,
+	// signing-key aliases.
+	if len(incoming.NamedConstants) > 0 {
+		if cur.NamedConstants == nil {
+			cur.NamedConstants = map[string]string{}
+		}
+		maps.Copy(cur.NamedConstants, incoming.NamedConstants)
+	}
 	sess.Plan = cur
 	// Snapshot before releasing the lock so file IO runs unlocked
 	// (CLAUDE.md "Hold mutexes during I/O" convention).

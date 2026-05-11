@@ -247,6 +247,11 @@ func EnvGates() []Gate {
 		{Name: "db-comment-tradeoff-lead", Run: gateForbidTradeoffLeadOnDbComment},
 		{Name: "priority-justification", Run: gateRequirePriorityJustification},
 		{Name: "object-storage-priority", Run: gateRequireObjectStoragePriority},
+		// Run-40 A1 — refuses env-content close when a tier yaml
+		// import-comment cites a named-constant value that contradicts
+		// plan.NamedConstants. Closes S1-1 (queue-group drift) as a
+		// defect class. Pinned by TestGateNamedConstantsConsistency_*.
+		{Name: "named-constants-consistency", Run: gateNamedConstantsConsistency},
 	}
 }
 

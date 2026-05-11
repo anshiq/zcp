@@ -193,6 +193,13 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		parts = append(parts, "canonical-latest-facts")
 	}
 
+	// Run-40 A1 — named constants. Same shape the env-content composer
+	// renders. Refinement reads it when validating tier yaml comments
+	// against the canonical store of cross-codebase values.
+	if appendNamedConstantsSection(&b, plan) {
+		parts = append(parts, "named-constants")
+	}
+
 	return Brief{
 		Kind:  BriefRefinement,
 		Body:  b.String(),

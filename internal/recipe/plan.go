@@ -44,6 +44,23 @@ type Plan struct {
 	// brief injects the execOnce key-shape concept atom when the list
 	// includes any item that authors initCommands (seed, scout-import).
 	FeatureKinds []string `json:"featureKinds,omitempty"`
+
+	// NamedConstants is the single source of truth for cross-codebase
+	// string constants — values that appear identically in multiple
+	// surfaces (source code, yaml env-var declarations, KB prose, tier
+	// import.yaml comments). Examples: NATS queue group name, cache
+	// prefix, signing-key alias name. Scaffold or feature phase records
+	// the canonical value once via update-plan; env-content + refinement
+	// brief composers surface the map; the named-constants-consistency
+	// gate refuses env-content close when a tier yaml comment cites a
+	// value the map says is wrong.
+	//
+	// Run-40 A1 — closes S1-1 cross-codebase queue-group drift as a
+	// defect class. Run-39 shipped `NATS_QUEUE_GROUP: workers` in
+	// source code while tier yamls cited `showcase-workers` in
+	// comments; the agent never had a single-source-of-truth to read
+	// against. Spec: plans/run-40-evidence-grounded-plan.md §"A1".
+	NamedConstants map[string]string `json:"namedConstants,omitempty"`
 }
 
 // HasWorkerCodebase reports whether any codebase in the plan has

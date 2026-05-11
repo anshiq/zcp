@@ -299,6 +299,14 @@ func BuildEnvContentBrief(plan *Plan, parent *ParentRecipe, facts []FactRecord) 
 		parts = append(parts, "canonical-latest-facts")
 	}
 
+	// Run-40 A1 — named constants. Surface plan.NamedConstants so the
+	// agent cites the canonical value when authoring tier yaml
+	// import-comments. Section is rendered only when the plan carries
+	// at least one named constant.
+	if appendNamedConstantsSection(&b, plan) {
+		parts = append(parts, "named-constants")
+	}
+
 	// Codebases + services snapshot.
 	b.WriteString("## Plan snapshot\n\n")
 	for _, cb := range plan.Codebases {
@@ -446,6 +454,25 @@ func appendCrossCodebaseFactsBlock(b *strings.Builder, facts []FactRecord, cb Co
 	b.WriteString("Facts authored by sister codebases that reference managed services this codebase also consumes. Engine-propagated so connection-shape decisions stay consistent across codebases — when a sister codebase recorded that a specific env-key shape crashed at boot, this codebase's IG/KB must not endorse that shape. Treat each entry as authoritative for THIS recipe; the atom corpus's generic guidance defers to the run's recorded scaffold findings.\n\n")
 	for _, f := range crossFacts {
 		writeFactSummary(b, f)
+	}
+	b.WriteString("\n")
+	return true
+}
+
+// appendNamedConstantsSection writes the canonical named-constants
+// table to b when plan.NamedConstants is non-empty. The map captures
+// cross-codebase string constants (queue groups, cache prefixes,
+// signing-key aliases); env-content + refinement composers surface it
+// so the agent cites the canonical value when authoring tier yaml
+// comments rather than re-deriving from a free-text fact. Run-40 A1.
+func appendNamedConstantsSection(b *strings.Builder, plan *Plan) bool {
+	if plan == nil || len(plan.NamedConstants) == 0 {
+		return false
+	}
+	b.WriteString("## Named constants (cross-codebase canonical values)\n\n")
+	b.WriteString("These constants must read identically across source code, codebase yaml `run.envVariables`, and tier yaml `import.yaml` comments. The named-constants-consistency gate refuses env-content close when a tier comment cites a value the table says is wrong. Cite these exactly — do not paraphrase or substitute.\n\n")
+	for _, key := range sortedConstantKeys(plan.NamedConstants) {
+		fmt.Fprintf(b, "- `%s` = `%s`\n", key, plan.NamedConstants[key])
 	}
 	b.WriteString("\n")
 	return true
