@@ -65,17 +65,17 @@ type LaunchBundle struct {
 // publish is rejected with a `source-drift` blocker.
 type SourceSnapshot struct {
 	// GitCommitSHA is the source repo's HEAD commit when the bundle was composed.
-	GitCommitSHA string
+	GitCommitSHA string `json:"gitCommitSha,omitempty"`
 	// ZeropsYAMLSHA256 is sha256 of the source zerops.yaml body (including
 	// the appended setup: prod block as committed).
-	ZeropsYAMLSHA256 string
+	ZeropsYAMLSHA256 string `json:"zeropsYamlSha256,omitempty"`
 	// ProjectEnvsDigest is sha256 over sorted (key=value) lines of the
 	// source project envs. Captures the env shape that classification ran
 	// against.
-	ProjectEnvsDigest string
+	ProjectEnvsDigest string `json:"projectEnvsDigest,omitempty"`
 	// ServiceListDigest is sha256 over sorted "hostname:type" lines of
 	// the source service list. Captures the topology shape.
-	ServiceListDigest string
+	ServiceListDigest string `json:"serviceListDigest,omitempty"`
 }
 
 // LaunchBundleInputs feeds BuildLaunchBundle. Strict superset of the

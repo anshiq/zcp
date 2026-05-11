@@ -82,7 +82,7 @@ func findWorkspaceRoot(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			return dir
 		}

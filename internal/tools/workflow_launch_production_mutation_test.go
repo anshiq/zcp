@@ -108,13 +108,15 @@ func TestLaunchState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestLaunchState_ReadMissing returns (nil, nil) without error.
+// TestLaunchState_ReadMissing returns ErrLaunchStateMissing for an
+// absent state file (sentinel error rather than (nil, nil) per strict
+// lint discipline).
 func TestLaunchState_ReadMissing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	state, err := readLaunchState(dir, "nonexistent")
-	if err != nil {
-		t.Fatalf("read missing: unexpected error %v", err)
+	if !errors.Is(err, ErrLaunchStateMissing) {
+		t.Fatalf("read missing: expected ErrLaunchStateMissing, got %v", err)
 	}
 	if state != nil {
 		t.Errorf("expected nil state for missing file, got %+v", state)
@@ -151,7 +153,7 @@ func TestLaunchState_NoLaunchKeyFieldExists(t *testing.T) {
 func TestAuditLog_AppendOnlyMode(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		entry := launchAuditEntry{
 			LaunchID:        "abc",
 			Action:          "test-action",

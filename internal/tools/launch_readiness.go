@@ -84,20 +84,21 @@ func runReadinessRubric(bundle *ops.LaunchBundle, inputs ops.LaunchBundleInputs)
 
 	// 2. HA managed deps. Bundle composer promotes by default;
 	// KeepNonHA opt-out drops to warn.
-	if len(inputs.ManagedServices) == 0 {
+	switch {
+	case len(inputs.ManagedServices) == 0:
 		out = append(out, readinessCheck{
 			ID:       readinessCheckHAManagedDeps,
 			Severity: readinessSeverityWarn,
 			Status:   readinessStatusSkip,
 			Message:  "no managed services in bundle",
 		})
-	} else if len(inputs.KeepNonHA) == 0 {
+	case len(inputs.KeepNonHA) == 0:
 		out = append(out, readinessCheck{
 			ID:       readinessCheckHAManagedDeps,
 			Severity: readinessSeverityBlock,
 			Status:   readinessStatusPass,
 		})
-	} else {
+	default:
 		out = append(out, readinessCheck{
 			ID:       readinessCheckHAManagedDeps,
 			Severity: readinessSeverityWarn,

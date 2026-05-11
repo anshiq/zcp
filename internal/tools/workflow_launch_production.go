@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -111,7 +112,7 @@ func handleLaunchProduction(
 	// instead of re-importing.
 	launchID := generateLaunchID(projectID, input.ProductionProjectName)
 	existing, err := readLaunchState(stateDir, launchID)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrLaunchStateMissing) {
 		return convertError(platform.NewPlatformError(
 			platform.ErrAPIError,
 			fmt.Sprintf("read launch state: %v", err),
@@ -398,7 +399,7 @@ type launchInputsEcho struct {
 	ProductionProjectName string   `json:"productionProjectName,omitempty"`
 	Region                string   `json:"region,omitempty"`
 	CustomDomain          string   `json:"customDomain,omitempty"`
-	KeepNonHA             []string `json:"keepNonHA,omitempty"`
+	KeepNonHA             []string `json:"keepNonHa,omitempty"`
 }
 
 // launchClassifyRow is one row of the classify-prompt review table.
@@ -532,7 +533,13 @@ func launchResumeResponse(corpus []workflow.KnowledgeAtom, state *launchState) *
 			Category: topology.BlockerCategoryOther,
 			Message:  "previous launch failed: " + state.LastError,
 		}}
-	default:
+	case topology.LaunchStatusUnset,
+		topology.LaunchStatusScopePrompt,
+		topology.LaunchStatusClassifyPrompt,
+		topology.LaunchStatusReadyToLaunch,
+		topology.LaunchStatusLaunching:
+		// Resume found state with a pre-terminal status — surface
+		// in-progress guidance; agent re-polls via action="status".
 		resp.Guidance = "Launch in progress. State file shows targetProjectID " + state.TargetProjectID + "."
 	}
 	return jsonResult(resp)

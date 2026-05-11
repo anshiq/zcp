@@ -42,12 +42,12 @@ func minimalLaunchInputs() ops.LaunchBundleInputs {
 	}
 }
 
-// classifyAll buckets every env in the input as plain-config — used when
-// classification isn't the test's concern.
-func classifyAll(envs []ops.ProjectEnvVar, bucket topology.SecretClassification) map[string]topology.SecretClassification {
+// classifyAllPlain buckets every env in the input as plain-config — used
+// when classification isn't the test's concern.
+func classifyAllPlain(envs []ops.ProjectEnvVar) map[string]topology.SecretClassification {
 	out := make(map[string]topology.SecretClassification, len(envs))
 	for _, e := range envs {
-		out[e.Key] = bucket
+		out[e.Key] = topology.SecretClassPlainConfig
 	}
 	return out
 }
@@ -56,7 +56,7 @@ func classifyAll(envs []ops.ProjectEnvVar, bucket topology.SecretClassification)
 func TestBuildLaunchBundle_HappyPath(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestBuildLaunchBundle_HappyPath(t *testing.T) {
 func TestBuildLaunchBundle_PromotesManagedToHA(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -103,7 +103,7 @@ func TestBuildLaunchBundle_KeepNonHAOptOut(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
 	inputs.KeepNonHA = []string{"db"}
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -121,7 +121,7 @@ func TestBuildLaunchBundle_KeepNonHAOptOut(t *testing.T) {
 func TestBuildLaunchBundle_StripsSubdomainAccess(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -138,7 +138,7 @@ func TestBuildLaunchBundle_StripsSubdomainAccess(t *testing.T) {
 func TestBuildLaunchBundle_RuntimeMinContainersDefault(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -160,7 +160,7 @@ func TestBuildLaunchBundle_RuntimeMinContainersOverride(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
 	inputs.MinContainers = 5
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -178,7 +178,7 @@ func TestBuildLaunchBundle_RuntimeMinContainersOverride(t *testing.T) {
 func TestBuildLaunchBundle_RuntimeCPUModeDedicated(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -201,7 +201,7 @@ func TestBuildLaunchBundle_TagsIncludeProdMarkers(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
 	inputs.AdditionalTags = []string{"team:platform", "owner:karel"}
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -238,7 +238,7 @@ func TestBuildLaunchBundle_DedupesTags(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
 	inputs.AdditionalTags = []string{"env:prod", "team:platform", "env:prod"}
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
@@ -304,7 +304,7 @@ func TestBuildLaunchBundle_ClassifiesEnvs(t *testing.T) {
 func TestBuildLaunchBundle_SourceSnapshotDeterministic(t *testing.T) {
 	t.Parallel()
 	inputs := minimalLaunchInputs()
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 
 	b1, _ := ops.BuildLaunchBundle(inputs, cls)
 	b2, _ := ops.BuildLaunchBundle(inputs, cls)
@@ -319,7 +319,7 @@ func TestBuildLaunchBundle_SourceSnapshotDeterministic(t *testing.T) {
 // substrate.
 func TestBuildLaunchBundle_SourceSnapshotDetectsDrift(t *testing.T) {
 	t.Parallel()
-	cls := classifyAll(minimalLaunchInputs().ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(minimalLaunchInputs().ProjectEnvs)
 
 	base, _ := ops.BuildLaunchBundle(minimalLaunchInputs(), cls)
 
@@ -329,7 +329,7 @@ func TestBuildLaunchBundle_SourceSnapshotDetectsDrift(t *testing.T) {
 	}{
 		{"git SHA changed", func(i *ops.LaunchBundleInputs) { i.GitCommitSHA = "different-sha" }},
 		{"zerops yaml body changed", func(i *ops.LaunchBundleInputs) {
-			i.ZeropsYAMLBody = i.ZeropsYAMLBody + "\n# trailing comment\n"
+			i.ZeropsYAMLBody += "\n# trailing comment\n"
 		}},
 		{"project env added", func(i *ops.LaunchBundleInputs) {
 			i.ProjectEnvs = append(i.ProjectEnvs, ops.ProjectEnvVar{Key: "NEW", Value: "x"})
@@ -340,7 +340,6 @@ func TestBuildLaunchBundle_SourceSnapshotDetectsDrift(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			inputs := minimalLaunchInputs()
@@ -370,12 +369,11 @@ func TestBuildLaunchBundle_MissingRequiredFields(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			inputs := minimalLaunchInputs()
 			tc.mut(&inputs)
-			cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+			cls := classifyAllPlain(inputs.ProjectEnvs)
 			_, err := ops.BuildLaunchBundle(inputs, cls)
 			if err == nil {
 				t.Fatalf("expected error mentioning %q, got nil", tc.want)
@@ -398,7 +396,7 @@ func TestBuildLaunchBundle_RejectsMissingSetupBlock(t *testing.T) {
     build:
       base: nodejs@22
 `
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 	_, err := ops.BuildLaunchBundle(inputs, cls)
 	if err == nil {
 		t.Fatal("expected error when setup: prod not in yaml body")
@@ -411,7 +409,7 @@ func TestBuildLaunchBundle_SetupNameDefaultsToProd(t *testing.T) {
 	inputs := minimalLaunchInputs()
 	inputs.SetupName = "" // explicit empty to verify default kicks in
 
-	cls := classifyAll(inputs.ProjectEnvs, topology.SecretClassPlainConfig)
+	cls := classifyAllPlain(inputs.ProjectEnvs)
 	bundle, err := ops.BuildLaunchBundle(inputs, cls)
 	if err != nil {
 		t.Fatalf("BuildLaunchBundle: %v", err)

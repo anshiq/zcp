@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/zeropsio/zcp/internal/ops"
@@ -23,9 +22,9 @@ import (
 // P-LP-1 invariant: the launchKey is NEVER written here. The struct has
 // no field for it. Tests pin via TestLaunchState_NoLaunchKeyFieldExists.
 type launchState struct {
-	LaunchID          string                                   `json:"launchID"`
-	SourceProjectID   string                                   `json:"sourceProjectID"`
-	TargetProjectID   string                                   `json:"targetProjectID,omitempty"`
+	LaunchID          string                                   `json:"launchId"`
+	SourceProjectID   string                                   `json:"sourceProjectId"`
+	TargetProjectID   string                                   `json:"targetProjectId,omitempty"`
 	TargetProjectName string                                   `json:"targetProjectName"`
 	ImportedServices  []importedServiceEntry                   `json:"importedServices,omitempty"`
 	SourceSnapshot    ops.SourceSnapshot                       `json:"sourceSnapshot"`
@@ -71,14 +70,20 @@ func launchStatePath(stateDir, launchID string) string {
 	return filepath.Join(stateDir, launchStateDir, launchID+".json")
 }
 
-// readLaunchState reads + decodes the state file. Returns (nil, nil) when
-// the file doesn't exist (first invocation). Other errors propagate.
+// ErrLaunchStateMissing is returned when readLaunchState is called for
+// a launchID that has no state file. Used in place of (nil, nil) to
+// satisfy strict lint (nilnil).
+var ErrLaunchStateMissing = errors.New("launch state file missing")
+
+// readLaunchState reads + decodes the state file. Returns
+// ErrLaunchStateMissing when the file doesn't exist (first invocation);
+// other errors propagate.
 func readLaunchState(stateDir, launchID string) (*launchState, error) {
 	path := launchStatePath(stateDir, launchID)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return nil, ErrLaunchStateMissing
 		}
 		return nil, fmt.Errorf("read launch state %s: %w", path, err)
 	}
@@ -112,7 +117,7 @@ func writeLaunchState(stateDir string, state *launchState) error {
 	}
 	finalPath := launchStatePath(stateDir, state.LaunchID)
 	tmpPath := finalPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
 		return fmt.Errorf("write temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, finalPath); err != nil {
@@ -130,13 +135,13 @@ const launchAuditLogName = "launch-audit-log.json"
 // Records who-did-what when, with no secret values and no launchKey.
 type launchAuditEntry struct {
 	Timestamp         time.Time                                `json:"timestamp"`
-	LaunchID          string                                   `json:"launchID"`
+	LaunchID          string                                   `json:"launchId"`
 	Action            string                                   `json:"action"` // e.g. "create-and-import", "delete-target", "publish-failed"
-	SourceProjectID   string                                   `json:"sourceProjectID"`
-	TargetProjectID   string                                   `json:"targetProjectID,omitempty"`
+	SourceProjectID   string                                   `json:"sourceProjectId"`
+	TargetProjectID   string                                   `json:"targetProjectId,omitempty"`
 	TargetProjectName string                                   `json:"targetProjectName,omitempty"`
-	SourceCommitSHA   string                                   `json:"sourceCommitSHA,omitempty"`
-	SourceYAMLSHA256  string                                   `json:"sourceYAMLSHA256,omitempty"`
+	SourceCommitSHA   string                                   `json:"sourceCommitSha,omitempty"`
+	SourceYAMLSHA256  string                                   `json:"sourceYamlSha256,omitempty"`
 	Classifications   map[string]topology.SecretClassification `json:"classifications,omitempty"`
 	HAOptOut          []string                                 `json:"haOptOut,omitempty"`
 	Result            string                                   `json:"result"` // success | failure
@@ -152,7 +157,7 @@ func appendAuditLog(stateDir string, entry launchAuditEntry) error {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, launchAuditLogName)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("open audit log: %w", err)
 	}
@@ -167,15 +172,4 @@ func appendAuditLog(stateDir string, entry launchAuditEntry) error {
 		return fmt.Errorf("write audit entry: %w", err)
 	}
 	return nil
-}
-
-// sortedClassificationKeys returns the keys of a classification map in
-// stable order — used by tests that diff classifications between calls.
-func sortedClassificationKeys(m map[string]topology.SecretClassification) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

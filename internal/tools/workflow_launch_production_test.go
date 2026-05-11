@@ -216,7 +216,6 @@ func TestHandleLaunchProduction_LaunchKeyNeverInResponse(t *testing.T) {
 	}
 
 	for _, sc := range scenarios {
-		sc := sc
 		t.Run(sc.name, func(t *testing.T) {
 			result, _, err := handleLaunchProduction(ctx, "source-project-id", client, sc.input, "/tmp", runtime.Info{})
 			if err != nil {
@@ -238,14 +237,8 @@ func TestHandleLaunchProduction_NilClientReturnsError(t *testing.T) {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
 	// Error response is delivered via the result itself (IsError true).
-	type callResult struct {
-		IsError bool `json:"isError"`
-	}
-	b, _ := json.Marshal(result)
-	var cr callResult
-	_ = json.Unmarshal(b, &cr)
-	if !cr.IsError {
-		t.Errorf("expected IsError=true for nil client")
+	if result == nil || !result.IsError {
+		t.Errorf("expected IsError=true for nil client, got %v", result)
 	}
 }
 
@@ -257,14 +250,8 @@ func TestHandleLaunchProduction_EmptyProjectIDReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
-	type callResult struct {
-		IsError bool `json:"isError"`
-	}
-	b, _ := json.Marshal(result)
-	var cr callResult
-	_ = json.Unmarshal(b, &cr)
-	if !cr.IsError {
-		t.Errorf("expected IsError=true for empty projectID")
+	if result == nil || !result.IsError {
+		t.Errorf("expected IsError=true for empty projectID, got %v", result)
 	}
 }
 
