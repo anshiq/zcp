@@ -594,25 +594,30 @@ func writeWorkerKBSupplementsPointer(b *strings.Builder) {
 // nested inside a list-style "stitched-output / parent recipe"
 // section pre-existing from run-17 §9.
 //
-// Run-22 fixup F-6 (Opus adversarial review) — codebase-content +
-// env-content framings extended with concrete cross-reference shape
-// strings. Pre-fixup the framings narrated WHY parent matters but
-// didn't show what to write when the agent identifies overlap; an
-// agent reading "cross-reference instead of re-author" had no template
-// to follow. Refinement framing was already operational — HOLD is a
-// defined refinement action.
+// Run-40 ENG-3 — Run-22 fixup F-6 added concrete "Cross-reference
+// shape" worked-example strings to the codebase-content and
+// env-content framings. Run-39 forensics traced the resulting
+// `See parent recipe <slug> for <topic>` prose all the way to the
+// porter-facing apidev/README.md:351 heading
+// (`### See parent recipe for foundational NestJS-on-Zerops traps`)
+// — the exact shape refinement/synthesis_workflow.md:113-119 forbids
+// as a V1 (porter-clones-and-runs) violation. The worked example
+// turned out to be substrate-positive guidance loud enough to outrank
+// the refinement-time warning; the agent followed what it was shown,
+// not the conditional negative rule downstream. The framings now
+// describe WHY parent matters and what to do (cross-reference instead
+// of re-author) without handing the agent a forbidden template. The
+// `Parent slug: %[1]s` knowledge-routing prefix is retained because
+// subagents read it to decide whether to fetch the embedded baseline.
 const (
 	codebaseContentEmbeddedFraming = "Parent slug: %[1]s — read this for IG/KB framing inheritance " +
 		"(what topics the parent already covers; cross-reference instead of " +
-		"re-author when the parent already explains a mechanism). " +
-		"Cross-reference shape when parent already covers a topic: " +
-		"`See parent recipe `%[1]s` for <topic>.`\n\n"
+		"re-author when the parent already explains a mechanism).\n\n"
 
 	envContentEmbeddedFraming = "Parent slug: %[1]s — read this for tier-decision and per-tier " +
 		"framing inheritance. Align tier intros + import comments with the " +
 		"parent's tier-flavor voice; don't re-author what the parent already " +
-		"established. Cross-reference shape when parent already shaped a " +
-		"tier: `See parent recipe `%[1]s` tier <N> for <topic>.`\n\n"
+		"established.\n\n"
 
 	refinementEmbeddedFraming = "Parent slug: %s. Read the embedded baseline before " +
 		"flagging cross-recipe duplication; refinement HOLDS on any fragment " +

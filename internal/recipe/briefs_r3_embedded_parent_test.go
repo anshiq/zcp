@@ -102,13 +102,23 @@ func TestCodebaseContentBrief_EmbedsParentMD_WhenParentAbsent_ShowcaseSlug(t *te
 	if !strings.Contains(brief.Body, "No `.env` files on Zerops") {
 		t.Errorf("codebase-content brief embedded-parent block missing expected nestjs-minimal.md gotcha content")
 	}
-	// Run-22 fixup F-6 (Opus review) — framing must carry a concrete
-	// cross-reference shape string so an agent identifying parent-
-	// covered topics has a template to write. Substring is the
-	// resolved form (parent slug substituted into the framing's
-	// `%[1]s` slot).
-	if !strings.Contains(brief.Body, "See parent recipe `nestjs-minimal` for <topic>.") {
-		t.Errorf("codebase-content brief embedded-parent framing missing concrete cross-reference shape string")
+	// Run-40 ENG-3 — the "Cross-reference shape" worked example was
+	// dropped. Run-39 forensics showed the template literally handed
+	// the agent the wording `See parent recipe <slug> for <topic>`,
+	// which propagated to porter-facing surfaces (apidev/README.md
+	// :351, `### See parent recipe for foundational NestJS-on-Zerops
+	// traps`) — exactly the prose-shape the refinement-phase warning
+	// forbids. The "Parent slug: %[1]s" knowledge-routing prefix
+	// stays (subagents need it); only the worked example is gone.
+	if strings.Contains(brief.Body, "See parent recipe `nestjs-minimal` for <topic>.") {
+		t.Errorf("codebase-content framing must NOT emit the cross-reference shape worked example (run-40 ENG-3)")
+	}
+	if strings.Contains(brief.Body, "Cross-reference shape when parent already covers a topic") {
+		t.Errorf("codebase-content framing must NOT emit the cross-reference-shape clause (run-40 ENG-3)")
+	}
+	// Knowledge-routing prefix stays.
+	if !strings.Contains(brief.Body, "Parent slug: nestjs-minimal") {
+		t.Errorf("codebase-content framing must still carry the `Parent slug:` knowledge-routing prefix")
 	}
 	// Run-31 Fix #1 closure — single-file CodebaseContentBriefCap is
 	// gone. The embedded-parent excerpt cap (1000 bytes for showcase,
@@ -190,10 +200,17 @@ func TestEnvContentBrief_EmbedsParentMD_WhenParentAbsent_ShowcaseSlug(t *testing
 	if !strings.Contains(brief.Body, "setup: prod") {
 		t.Errorf("env-content brief embedded-parent block missing expected `setup: prod` content from nestjs-minimal.md")
 	}
-	// Run-22 fixup F-6 (Opus review) — env-content framing must carry
-	// a concrete cross-reference shape string for tier-shaped overlap.
-	if !strings.Contains(brief.Body, "See parent recipe `nestjs-minimal` tier <N> for <topic>.") {
-		t.Errorf("env-content brief embedded-parent framing missing concrete tier cross-reference shape string")
+	// Run-40 ENG-3 — same forbidden-shape rule for env-content. The
+	// tier-shaped cross-reference clause is gone; "Parent slug: ..."
+	// knowledge-routing prefix stays.
+	if strings.Contains(brief.Body, "See parent recipe `nestjs-minimal` tier <N> for <topic>.") {
+		t.Errorf("env-content framing must NOT emit the tier cross-reference shape worked example (run-40 ENG-3)")
+	}
+	if strings.Contains(brief.Body, "Cross-reference shape when parent already shaped a tier") {
+		t.Errorf("env-content framing must NOT emit the tier cross-reference-shape clause (run-40 ENG-3)")
+	}
+	if !strings.Contains(brief.Body, "Parent slug: nestjs-minimal") {
+		t.Errorf("env-content framing must still carry the `Parent slug:` knowledge-routing prefix")
 	}
 	// Run-31 Fix #1 closure — single-file EnvContentBriefCap is gone.
 	// Per-part invariants pinned by
