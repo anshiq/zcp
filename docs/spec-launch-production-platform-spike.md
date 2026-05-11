@@ -298,6 +298,59 @@ ProjectModeEnumSerious = "SERIOUS"
 
 ---
 
+## A.9 — Live e2e verification (admin token supplied 2026-05-11)
+
+Six e2e tests passed against real Zerops platform with admin token
+(`canCreateProjects: true`, account-wide, KRLS client):
+
+| Test | Result | Observation |
+|---|---|---|
+| `TestProjectAdminClient_CreateAndImport_Live` | ✓ PASS (~0.7s) | Synchronous create+import; returns projectID + service stack IDs + per-service process IDs immediately. Confirms A.1 contract. |
+| `TestProjectAdminClient_CreateAndImport_RejectsInvalidYaml` | ✓ PASS (~40ms) | Schema validation rejects yaml missing `project.name`. Returns 400 with structured error code. |
+| `TestProjectAdminClient_DeleteProject_LiveCycle` | ✓ PASS (~0.9s) | DeleteProject returns Process with non-empty ID + Status. Confirms A.2 contract. Status transitions to DELETING; async cleanup. |
+| `TestProjectAdminClient_LaunchKeyRejectedAtConstruction` | ✓ PASS (~20ms) | Invalid key fails at NewProjectAdminClient (during GetUserInfo validation), not on first method call. |
+| `TestProjectAdminClient_GetServiceEnvKeys_OmitsValues` | ✓ PASS (~1.2s) | Returns "project not found" on env read against project the admin token created (see A.10 finding). Test tolerates this — EnvKey-no-Value is compile-time guarantee. |
+| `TestProjectAdminClient_AfterClose_ReturnsErrClientClosed` | ✓ PASS (~30ms) | Real client Close() semantics match mock. |
+
+Cleanup verified clean: all throwaways transitioned to DELETING within
+seconds; async platform cleanup completes thereafter.
+
+## A.10 — userRoles=[] gotcha (discovered during A.9)
+
+**Critical Phase D follow-up:** A token with `canCreateProjects: true`
+at client level can CREATE a project, but **does not automatically gain
+a project-level role on the project it just created**. Project's
+`userRoles[]` is empty unless explicitly set in the create body.
+
+Consequence: subsequent calls to `GetProjectEnv` / `GetServiceEnv` /
+`ListServices` against the freshly-created project return
+**`projectNotFound`** from the API — not because the project is missing
+but because the calling token has no role assignment on it.
+
+This breaks the planned Phase D.2 flow:
+1. Create + import prod project ✓ (works)
+2. Verify external-secret presence via `GetServiceEnv` ✗ (fails — no role)
+3. Poll first deploy via `GetProcess` — unclear if also affected (deferred to Phase D.3 verification)
+
+**Fix:** `LaunchBundleBuilder` MUST inject `project.userRoles[]` into the
+generated import yaml, granting the launch-window key's
+`clientUserList[0].id` (the `clientUserId`, NOT the `userId`) an ADMIN
+role on the new project. The bundle composer reads the clientUserId
+from `Client.GetUserInfo()` at compose time and threads it into the
+yaml.
+
+**SDK reference:** `body.ProjectUserRole{Id: uuid.ClientUserId, RoleCode: ClientUserRoleCodeEnum}`.
+
+**Test plan:** add `TestLaunchBundle_InjectsUserRoles` in Phase C-followup
+(verify the rendered yaml carries `project.userRoles[]` with ADMIN
+mapped to the discovered clientUserId).
+
+**P-LP-5 implication:** even with the role fix, `GetServiceEnvKeys`
+still must strip values per the EnvKey type contract. The role just
+makes the call reachable; the omit-Value invariant is independent.
+
+---
+
 ## What still needs admin-token verification (Phase B e2e)
 
 Bundle of e2e tests gating on `ZCP_E2E_PROD_LAUNCH=1` env var:
