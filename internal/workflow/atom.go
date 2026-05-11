@@ -368,6 +368,26 @@ func sortedEnumKeys(set map[string]struct{}) string {
 	return strings.Join(keys, ", ")
 }
 
+// LookupAtomBody returns the raw body of the atom with the given ID, or
+// "" when no atom matches. Used by handlers that need static atom content
+// (no envelope-driven axis filtering or placeholder substitution).
+//
+// Lives here in the parser/atom file so the
+// `TestNoProductionAtomBodyReads` discipline test allows the .Body
+// access — callers (e.g. internal/tools/workflow_launch_production.go)
+// route through this function rather than touching KnowledgeAtom.Body
+// directly. Atoms with `{placeholder}` tokens MUST be rendered via
+// Synthesize, not via LookupAtomBody, since this helper does no
+// substitution.
+func LookupAtomBody(corpus []KnowledgeAtom, id string) string {
+	for _, a := range corpus {
+		if a.ID == id {
+			return a.Body
+		}
+	}
+	return ""
+}
+
 // ParseAtom parses a `.md` file body containing YAML frontmatter and a
 // markdown body. It returns a KnowledgeAtom or an error if required fields
 // are missing or if frontmatter fails strict validation.
