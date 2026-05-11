@@ -121,6 +121,15 @@ func FeatureGates() []Gate {
 		Name: "feature-screenshot-captured",
 		Run:  gateFeatureScreenshotCaptured,
 	})
+	// Run-40 ENG-5 — ghost-dependency refusal. Feature phase often
+	// rewrites consuming code paths after scaffold's initial yaml
+	// decision; without this gate, plan.ConsumesServices retains the
+	// scaffold-time set and ships stale dependencies to porter-facing
+	// briefs. Pinned by TestGateConsumesServicesDerivable_*.
+	gates = append(gates, Gate{
+		Name: "consumes-services-derivable",
+		Run:  gateConsumesServicesDerivable,
+	})
 	return gates
 }
 
