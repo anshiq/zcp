@@ -233,6 +233,10 @@ func BuildLaunchBundle(
 	if len(projectEnvs) > 0 {
 		project["envVariables"] = projectEnvs
 	}
+	// Note: project.userRoles in import yaml is silently ignored by
+	// PostClientProjectImport (A.10 finding — empirical 2026-05-11).
+	// Role assignment happens via ProjectAdminClient.GrantSelfRole AFTER
+	// CreateAndImportProject succeeds.
 
 	doc := map[string]any{
 		"project":  project,

@@ -6,10 +6,19 @@ import "time"
 const DefaultAPITimeout = 30 * time.Second
 
 // UserInfo contains user details from auth/info endpoint.
+//
+// Field-naming note: ID is historically populated with the
+// ClientUserList[0].ClientId (the org/client ID), NOT the user's own ID.
+// Existing code paths (ListProjects' clientID filter) depend on this
+// convention. ClientUserID is the separate clientUserList[0].id value —
+// the link between user and client, used by project.userRoles[].id when
+// the launch-production workflow grants ADMIN to the launching user on
+// a freshly-created prod project (P-LP-5 substrate, A.10 spike finding).
 type UserInfo struct {
-	ID       string `json:"id"`
-	FullName string `json:"fullName"`
-	Email    string `json:"email"`
+	ID           string `json:"id"`
+	ClientUserID string `json:"clientUserId,omitempty"`
+	FullName     string `json:"fullName"`
+	Email        string `json:"email"`
 }
 
 // Project represents a Zerops project.

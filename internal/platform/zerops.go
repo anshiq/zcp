@@ -73,14 +73,21 @@ func (z *ZeropsClient) GetUserInfo(ctx context.Context) (*UserInfo, error) {
 	}
 
 	clientID := ""
+	clientUserID := ""
 	if len(out.ClientUserList) > 0 {
 		clientID = out.ClientUserList[0].ClientId.TypedString().String()
+		// ClientUserId is the link between user and client — distinct
+		// from both userId and clientId. Used by project.userRoles[].id
+		// at launch-production import time to grant per-project ADMIN
+		// on the freshly-created project (A.10 spike finding).
+		clientUserID = out.ClientUserList[0].Id.TypedString().String()
 	}
 
 	return &UserInfo{
-		ID:       clientID,
-		Email:    out.Email.Native(),
-		FullName: out.FullName.String(),
+		ID:           clientID,
+		ClientUserID: clientUserID,
+		Email:        out.Email.Native(),
+		FullName:     out.FullName.String(),
 	}, nil
 }
 

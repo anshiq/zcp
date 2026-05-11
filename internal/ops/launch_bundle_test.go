@@ -403,6 +403,27 @@ func TestBuildLaunchBundle_RejectsMissingSetupBlock(t *testing.T) {
 	}
 }
 
+// TestBuildLaunchBundle_OmitsUserRolesAlways verifies project.userRoles
+// is NOT emitted in import yaml. A.10 finding (verified 2026-05-11):
+// PostClientProjectImport silently drops project.userRoles, so the
+// bundle composer no longer emits it. Role assignment happens via
+// ProjectAdminClient.GrantSelfRole AFTER create — separate API call.
+func TestBuildLaunchBundle_OmitsUserRolesAlways(t *testing.T) {
+	t.Parallel()
+	inputs := minimalLaunchInputs()
+	cls := classifyAllPlain(inputs.ProjectEnvs)
+
+	bundle, err := ops.BuildLaunchBundle(inputs, cls)
+	if err != nil {
+		t.Fatalf("BuildLaunchBundle: %v", err)
+	}
+	doc := parseImportYAML(t, bundle.ImportYAML)
+	project, _ := doc["project"].(map[string]any)
+	if _, ok := project["userRoles"]; ok {
+		t.Error("expected project.userRoles absent (platform silently drops; use GrantSelfRole post-create)")
+	}
+}
+
 // TestBuildLaunchBundle_SetupNameDefaultsToProd verifies default setup name.
 func TestBuildLaunchBundle_SetupNameDefaultsToProd(t *testing.T) {
 	t.Parallel()

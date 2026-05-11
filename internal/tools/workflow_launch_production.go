@@ -288,6 +288,15 @@ func executeLaunchMutation(
 
 	// Success — record imported services in state.
 	state.TargetProjectID = result.ProjectID
+
+	// A.10: grant launching clientUser ADMIN on the new project so the
+	// workflow's subsequent env-presence reads authenticate. Failure
+	// here is non-fatal — the project IS created, env-read fallbacks
+	// to manual UI verification.
+	if err := admin.GrantSelfRole(ctx, result.ProjectID, "ADMIN"); err != nil {
+		bundle.Warnings = append(bundle.Warnings,
+			fmt.Sprintf("grant self ADMIN role on %s: %v (env-presence verification disabled; user can read via UI)", result.ProjectID, err))
+	}
 	state.ImportedServices = make([]importedServiceEntry, 0, len(result.ServiceStacks))
 	hasPerServiceError := false
 	for _, s := range result.ServiceStacks {

@@ -34,6 +34,50 @@ type MockProjectAdminClient struct {
 	CapturedDeleteProject string
 	CapturedGetProcessID  string
 	Closed                bool
+
+	// clientUserID returned by ClientUserID(); tests configure via WithClientUserID.
+	clientUserID string
+
+	// GrantSelfRole capture + error injection
+	CapturedGrantSelfRoleProject string
+	CapturedGrantSelfRoleCode    string
+	grantSelfRoleErr             error
+}
+
+// WithClientUserID sets the ClientUserID() return value for tests.
+func (m *MockProjectAdminClient) WithClientUserID(id string) *MockProjectAdminClient {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clientUserID = id
+	return m
+}
+
+// ClientUserID implements ProjectAdminClient.
+func (m *MockProjectAdminClient) ClientUserID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.clientUserID
+}
+
+// GrantSelfRole implements ProjectAdminClient. Mock captures the call
+// args; configurable error via WithGrantSelfRoleError.
+func (m *MockProjectAdminClient) GrantSelfRole(_ context.Context, projectID, roleCode string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Closed {
+		return ErrClientClosed
+	}
+	m.CapturedGrantSelfRoleProject = projectID
+	m.CapturedGrantSelfRoleCode = roleCode
+	return m.grantSelfRoleErr
+}
+
+// WithGrantSelfRoleError configures the error returned by GrantSelfRole.
+func (m *MockProjectAdminClient) WithGrantSelfRoleError(err error) *MockProjectAdminClient {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.grantSelfRoleErr = err
+	return m
 }
 
 // NewMockProjectAdminClient creates a fresh mock.

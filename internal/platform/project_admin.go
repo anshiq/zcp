@@ -9,6 +9,7 @@ import (
 	"github.com/zeropsio/zerops-go/dto/input/body"
 	"github.com/zeropsio/zerops-go/dto/input/path"
 	zgotypes "github.com/zeropsio/zerops-go/types"
+	"github.com/zeropsio/zerops-go/types/enum"
 	"github.com/zeropsio/zerops-go/types/uuid"
 )
 
@@ -63,6 +64,30 @@ type ProjectAdminClient interface {
 	// (which holds the launch-window key inside its authenticated transport).
 	// Caller MUST `defer admin.Close()`.
 	Close()
+
+	// ClientUserID returns the launching user's clientUserId — the link
+	// between user and client. Used by GrantSelfRole to authorize
+	// follow-up env reads against the freshly-created project. Captured
+	// at construction via the same GetUserInfo call that validates the
+	// launch key. Empty if the underlying token's clientUserList is
+	// empty (a shape ZCP refuses at startup, but the field is opt-in
+	// defensive against future SDK shape changes). A.10 spike finding.
+	ClientUserID() string
+
+	// GrantSelfRole assigns the launching user's clientUserId the
+	// given role on the target project. Required after
+	// CreateAndImportProject because `project.userRoles[]` in the
+	// import yaml is silently dropped by the platform — A.10 finding
+	// empirically verified 2026-05-11.
+	//
+	// Reads existing roles, appends the new entry, writes back the
+	// merged list — PutClientUserRoles is a full replace, so a naive
+	// write would wipe other project roles.
+	//
+	// Role values match enum.ClientUserRoleCodeEnum: OWNER, ADMIN,
+	// BASIC_USER, READ_ONLY, NO_ACCESS. Launch-production grants ADMIN
+	// so the workflow can read envs + manage the project.
+	GrantSelfRole(ctx context.Context, projectID string, roleCode string) error
 }
 
 // CreateOpts holds project-creation options NOT derived from the import yaml.
@@ -141,8 +166,9 @@ func NewProjectAdminClient(launchKey, apiHost string) (ProjectAdminClient, error
 		return nil, ErrNoClientResolved
 	}
 	return &projectAdminClient{
-		zerops:   z,
-		clientID: info.ID,
+		zerops:       z,
+		clientID:     info.ID,
+		clientUserID: info.ClientUserID,
 	}, nil
 }
 
@@ -153,8 +179,76 @@ func NewProjectAdminClient(launchKey, apiHost string) (ProjectAdminClient, error
 // struct, so the key is unreachable from any reflection / String() /
 // JSON path on projectAdminClient.
 type projectAdminClient struct {
-	zerops   *ZeropsClient
-	clientID string
+	zerops       *ZeropsClient
+	clientID     string
+	clientUserID string
+}
+
+// ClientUserID implements ProjectAdminClient. Returns the captured
+// clientUserId from construction-time validation.
+func (p *projectAdminClient) ClientUserID() string {
+	return p.clientUserID
+}
+
+// GrantSelfRole implements ProjectAdminClient. Reads existing roles,
+// appends the new entry, writes back the merged list. PutClientUserRoles
+// is a full-replace endpoint; a naive write would wipe other project
+// roles, hence the read-merge-write pattern.
+func (p *projectAdminClient) GrantSelfRole(ctx context.Context, projectID string, roleCode string) error {
+	if p.zerops == nil {
+		return ErrClientClosed
+	}
+	if p.clientUserID == "" {
+		return errors.New("project admin: clientUserID empty; cannot grant self role")
+	}
+	if projectID == "" {
+		return errors.New("project admin: projectID empty; cannot grant self role")
+	}
+
+	pathParam := path.ClientUserId{Id: uuid.ClientUserId(p.clientUserID)}
+
+	// 1) Read existing roles to preserve them.
+	getResp, err := p.zerops.handler.GetClientUserRoles(ctx, pathParam)
+	if err != nil {
+		return fmt.Errorf("get current roles: %w", mapSDKError(err, "client-user"))
+	}
+	current, err := getResp.Output()
+	if err != nil {
+		return fmt.Errorf("get current roles output: %w", mapSDKError(err, "client-user"))
+	}
+
+	// 2) Build merged list: existing roles + (projectID, roleCode).
+	merged := make(body.ClientUserProjectRoleListProjectRoleList, 0, len(current.ProjectRoleList)+1)
+	already := false
+	for _, r := range current.ProjectRoleList {
+		if r.ProjectId.TypedString().String() == projectID {
+			already = true
+			// Replace the entry with the new role.
+			merged = append(merged, body.ClientUserProjectRole{
+				ProjectId: uuid.ProjectId(projectID),
+				RoleCode:  enum.ClientUserRoleCodeEnum(roleCode),
+			})
+			continue
+		}
+		merged = append(merged, body.ClientUserProjectRole{
+			ProjectId: r.ProjectId,
+			RoleCode:  r.RoleCode,
+		})
+	}
+	if !already {
+		merged = append(merged, body.ClientUserProjectRole{
+			ProjectId: uuid.ProjectId(projectID),
+			RoleCode:  enum.ClientUserRoleCodeEnum(roleCode),
+		})
+	}
+
+	// 3) Write back the merged list.
+	bodyParam := body.ClientUserProjectRoleList{ProjectRoleList: merged}
+	_, err = p.zerops.handler.PutClientUserRoles(ctx, pathParam, bodyParam)
+	if err != nil {
+		return fmt.Errorf("put roles: %w", mapSDKError(err, "client-user"))
+	}
+	return nil
 }
 
 // CreateAndImportProject implements ProjectAdminClient.

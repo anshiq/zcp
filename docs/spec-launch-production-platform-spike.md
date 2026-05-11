@@ -332,22 +332,52 @@ This breaks the planned Phase D.2 flow:
 2. Verify external-secret presence via `GetServiceEnv` ✗ (fails — no role)
 3. Poll first deploy via `GetProcess` — unclear if also affected (deferred to Phase D.3 verification)
 
-**Fix:** `LaunchBundleBuilder` MUST inject `project.userRoles[]` into the
-generated import yaml, granting the launch-window key's
-`clientUserList[0].id` (the `clientUserId`, NOT the `userId`) an ADMIN
-role on the new project. The bundle composer reads the clientUserId
-from `Client.GetUserInfo()` at compose time and threads it into the
-yaml.
+**Initial fix attempt (failed):** inject `project.userRoles[]` into the
+import yaml. Result: `PostClientProjectImport` silently dropped the
+field; project gets created but `project.userRoles=[]` regardless of
+yaml content. Empirically verified 2026-05-11 against admin token.
 
-**SDK reference:** `body.ProjectUserRole{Id: uuid.ClientUserId, RoleCode: ClientUserRoleCodeEnum}`.
+**Working fix (shipped 2026-05-11, v9.85.0):** separate
+`PutClientUserRoles` API call after `PostClientProjectImport` succeeds.
+ZCP adds `ProjectAdminClient.GrantSelfRole(ctx, projectID, roleCode)`
+which:
 
-**Test plan:** add `TestLaunchBundle_InjectsUserRoles` in Phase C-followup
-(verify the rendered yaml carries `project.userRoles[]` with ADMIN
-mapped to the discovered clientUserId).
+1. Calls `GetClientUserRoles` to read the launching clientUser's
+   existing project role list (preserve roles on other projects;
+   platform auto-assigns OWNER on create, captured here).
+2. Builds merged list with `(projectID, roleCode)` —
+   replace-if-already-present, append-otherwise. PUT is full replace,
+   so naive PUT would wipe roles on other projects.
+3. Calls `PutClientUserRoles` with the merged list.
 
-**P-LP-5 implication:** even with the role fix, `GetServiceEnvKeys`
-still must strip values per the EnvKey type contract. The role just
-makes the call reachable; the omit-Value invariant is independent.
+SDK references:
+- `sdk.GetClientUserRoles(ctx, path.ClientUserId)` →
+  `output.ClientUserProjectRoleList{ProjectRoleList: []ClientUserProjectRole}`
+- `sdk.PutClientUserRoles(ctx, path.ClientUserId, body.ClientUserProjectRoleList)`
+- Path: `/api/rest/public/client-user/{clientUserId}/roles`
+- Each entry: `{projectId: uuid.ProjectId, roleCode: enum.ClientUserRoleCodeEnum}`
+
+**Why the platform auto-assigns OWNER:** the launching clientUser
+created the project, so the API auto-grants OWNER. GrantSelfRole is
+an explicit-record + audit step that re-asserts the role (and handles
+edge cases where auto-grant might be disabled by org policy).
+
+**Test verification (e2e, ZCP_E2E_PROD_LAUNCH=1):**
+`TestProjectAdminClient_GetServiceEnvKeys_OmitsValues` creates a
+throwaway project with `project.envVariables: {PROBE_VAR: ...}`, calls
+`GrantSelfRole(projectID, "ADMIN")`, polls `GetProjectEnvKeys` until
+PROBE_VAR appears. Passes in ~2.5s.
+
+**Handler integration:** `executeLaunchMutation` calls
+`admin.GrantSelfRole(ctx, result.ProjectID, "ADMIN")` after
+`CreateAndImportProject` succeeds; failure is non-fatal (project IS
+created, env-presence verification falls back to UI guidance via a
+bundle warning).
+
+**P-LP-5 implication:** even with the role fix, `GetProjectEnvKeys` /
+`GetServiceEnvKeys` still strip values per the EnvKey type contract.
+The role makes the call reachable; the omit-Value invariant is
+independent.
 
 ---
 

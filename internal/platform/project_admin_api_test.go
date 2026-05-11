@@ -217,26 +217,24 @@ func TestProjectAdminClient_LaunchKeyRejectedAtConstruction(t *testing.T) {
 // test additionally pins that GetProjectEnvKeys against a freshly
 // created project returns a usable response shape.
 //
-// Live behavior note: the admin token has canCreateProjects:true at
-// client level but NO project-level role on projects it creates
-// (userRoles is empty by default in PostClientProjectImport). Reading
-// envs requires an explicit role on the target project, which the
-// launch-production workflow grants via userRoles in the import yaml
-// (a follow-up D.2 enhancement; for spike purposes we just verify the
-// call path).
+// A.10 fix: project.userRoles in import yaml is silently dropped by
+// PostClientProjectImport. Role assignment happens via GrantSelfRole
+// AFTER create — separate PutClientUserRoles API call. This test
+// exercises that path end-to-end.
 func TestProjectAdminClient_GetServiceEnvKeys_OmitsValues(t *testing.T) {
 	admin := newAdminClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	// Create throwaway with sensitive env
+	// Create throwaway with project-level user envs. Role assignment
+	// for env-read happens via GrantSelfRole AFTER create (A.10).
 	name := throwawayName(t)
 	yaml := fmt.Sprintf(`project:
   name: %s
   tags:
     - zcp-launch-spike
-  envSecrets:
-    PROBE_SECRET: spike-value-not-real
+  envVariables:
+    PROBE_VAR: spike-value-not-real
 services:
   - hostname: probe
     type: nodejs@22
@@ -247,46 +245,52 @@ services:
 	if err != nil {
 		t.Fatalf("create throwaway: %v", err)
 	}
+
+	// A.10: grant self ADMIN on the new project.
+	if err := admin.GrantSelfRole(ctx, result.ProjectID, "ADMIN"); err != nil {
+		t.Fatalf("GrantSelfRole: %v", err)
+	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		_, _ = admin.DeleteProject(ctx, result.ProjectID)
 	})
 
-	// Wait for the project to leave CREATING — the env-read endpoint
-	// returns "project not found" while creation is in flight. Poll
-	// until ListServices returns successfully (or timeout).
-	var ready bool
-	for range 30 {
-		_, listErr := admin.ListServices(ctx, result.ProjectID)
+	// A.10: grant launching clientUser ADMIN on the new project. Note:
+	// the platform auto-assigns OWNER to the creating clientUser, so
+	// this is informational/audit for the launch workflow; the API call
+	// still succeeds.
+	if err := admin.GrantSelfRole(ctx, result.ProjectID, "ADMIN"); err != nil {
+		t.Fatalf("GrantSelfRole: %v", err)
+	}
+
+	// Poll until PROBE_VAR shows up in env-read. Project creation is
+	// async — env-list is empty briefly even after the project itself
+	// becomes readable. Up to 60s wait.
+	var keys []platform.EnvKey
+	var probeFound bool
+	for range 60 {
+		var listErr error
+		keys, listErr = admin.GetProjectEnvKeys(ctx, result.ProjectID)
 		if listErr == nil {
-			ready = true
-			break
+			for _, k := range keys {
+				if k.Key == "PROBE_VAR" {
+					probeFound = true
+					break
+				}
+			}
+			if probeFound {
+				break
+			}
 		}
 		time.Sleep(1 * time.Second)
 	}
-	if !ready {
-		t.Fatalf("project %s never became readable for env query within 30s", result.ProjectID)
+	if !probeFound {
+		t.Errorf("expected PROBE_VAR in env-read after 60s, got %d entries: %v", len(keys), keys)
 	}
-
-	// Attempt env read. The current admin-token shape (canCreateProjects
-	// without per-project role) typically gets "project not found" from
-	// the env endpoint; that's a permission boundary, not a P-LP-5
-	// concern. Accept both outcomes:
-	//   - Success → verify shape (returns []EnvKey, not []EnvVar; no
-	//     value field accessible).
-	//   - Permission-shape error → log + treat as success for this test's
-	//     scope (the call path works; permission to read is a separate
-	//     concern handled at userRoles configuration time).
-	keys, err := admin.GetProjectEnvKeys(ctx, result.ProjectID)
-	if err != nil {
-		t.Logf("GetProjectEnvKeys returned %v (acceptable — admin token lacks per-project role; "+
-			"P-LP-5 EnvKey-no-Value invariant is compile-time-pinned)", err)
-		return
-	}
-	// Compile-time pin: EnvKey has no Value field — would not compile to
-	// reference k.Value anywhere in user code. Verifying shape:
-	t.Logf("GetProjectEnvKeys returned %d entries; EnvKey struct has no Value field by type definition", len(keys))
+	// Compile-time pin: EnvKey has no Value field — would not compile
+	// to reference k.Value anywhere in user code.
+	t.Logf("env-read returned %d entries; PROBE_VAR=%v; EnvKey carries no Value field", len(keys), probeFound)
 }
 
 // TestProjectAdminClient_AfterClose_ReturnsErrClientClosed verifies the
