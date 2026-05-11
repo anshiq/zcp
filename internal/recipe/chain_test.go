@@ -77,6 +77,88 @@ func TestChainResolver_HelloWorld_NoParent(t *testing.T) {
 	}
 }
 
+// TestChainResolver_EmbeddedParent_LoadsFromCorpus pins the run-40
+// post-ship fix: parent recipes ship in the binary as
+// `internal/knowledge/recipes/<slug>.md`. ResolveChain now reads from
+// the embedded corpus FIRST so `parentStatus: "absent"` no longer
+// fires on local dev boxes where `~/recipes/` doesn't exist —
+// nestjs-showcase has nestjs-minimal in the embedded corpus.
+func TestChainResolver_EmbeddedParent_LoadsFromCorpus(t *testing.T) {
+	t.Parallel()
+
+	// Empty MountRoot AND empty tempdir: no filesystem mount available.
+	// Embedded `nestjs-minimal.md` from the knowledge corpus should be
+	// the resolution source.
+	got, err := ResolveChain(Resolver{MountRoot: t.TempDir()}, "nestjs-showcase")
+	if err != nil {
+		t.Fatalf("ResolveChain nestjs-showcase: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected embedded ParentRecipe, got nil")
+	}
+	if got.Slug != "nestjs-minimal" {
+		t.Errorf("Slug = %q, want nestjs-minimal", got.Slug)
+	}
+	if got.Tier != "minimal" {
+		t.Errorf("Tier = %q, want minimal", got.Tier)
+	}
+	if !got.IsEmbedded() {
+		t.Errorf("expected IsEmbedded()=true; got SourceRoot=%q EmbeddedBody-len=%d",
+			got.SourceRoot, len(got.EmbeddedBody))
+	}
+	if got.EmbeddedBody == "" {
+		t.Errorf("EmbeddedBody empty — embedded corpus load failed")
+	}
+	if got.SourceRoot != "" {
+		t.Errorf("embedded parent should leave SourceRoot empty (downstream "+
+			"composers fall back to appendEmbeddedParentBaseline on that "+
+			"condition); got %q", got.SourceRoot)
+	}
+}
+
+// TestChainResolver_EmbeddedParent_ParentStatus pins that the handler-
+// side parentStatus tag reports "embedded" (not "absent") when the
+// chain resolver returned an embedded parent.
+func TestChainResolver_EmbeddedParent_ParentStatus(t *testing.T) {
+	t.Parallel()
+	got, err := ResolveChain(Resolver{MountRoot: ""}, "nestjs-showcase")
+	if err != nil {
+		t.Fatalf("ResolveChain: %v", err)
+	}
+	if status := parentStatus(got); status != "embedded" {
+		t.Errorf("parentStatus = %q, want %q", status, "embedded")
+	}
+}
+
+// TestChainResolver_EmbeddedPreferredOverFilesystem pins the
+// resolution order: when BOTH the embedded corpus AND a filesystem
+// mount carry the parent, the embedded body wins. Filesystem mount
+// is now a legacy fallback for the CDE shape that wants the full
+// published tree.
+func TestChainResolver_EmbeddedPreferredOverFilesystem(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// Stage a competing filesystem-mount nestjs-minimal that, if the
+	// resolver fell back to mount-first, would shadow the embedded body.
+	mountParent := filepath.Join(dir, "nestjs-minimal")
+	codebaseDir := filepath.Join(mountParent, "codebases", "api")
+	if err := os.MkdirAll(codebaseDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(codebaseDir, "README.md"), "FILESYSTEM SHADOW — should not win")
+
+	got, err := ResolveChain(Resolver{MountRoot: dir}, "nestjs-showcase")
+	if err != nil {
+		t.Fatalf("ResolveChain: %v", err)
+	}
+	if !got.IsEmbedded() {
+		t.Errorf("expected embedded parent to win over filesystem mount; got SourceRoot=%q (mount-shape)", got.SourceRoot)
+	}
+	if got.Codebases["api"].README == "FILESYSTEM SHADOW — should not win" {
+		t.Errorf("filesystem mount shadowed embedded corpus — resolution order regressed")
+	}
+}
+
 func TestChainResolver_MissingParent_ReturnsNil(t *testing.T) {
 	t.Parallel()
 

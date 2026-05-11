@@ -1599,14 +1599,29 @@ func writeSurfaceFile(path, body string) error {
 	return nil
 }
 
-// parentStatus returns a short tag telling the agent whether the chain
-// resolver found a parent. "absent" means first-time-framework run OR
-// parent not mounted — both legitimate, and the research atom branches
-// on this string to tell the agent not to freeform-search for
-// substitute knowledge.
+// parentStatus returns a short tag telling the agent how the chain
+// resolver found the parent recipe:
+//   - "absent"   : no parent exists for this slug (hello-world,
+//     *-minimal, or no published parent corpus).
+//   - "embedded" : parent resolved from the embedded knowledge corpus
+//     (`internal/knowledge/recipes/<slug>.md`). The
+//     baseline body is in p.EmbeddedBody and downstream
+//     brief composers surface it via the
+//     appendEmbeddedParentBaseline path.
+//   - "mounted"  : parent resolved from a filesystem-mounted tree
+//     (~/recipes/<slug>/ with full codebases + tier
+//     import.yamls). Legacy CDE shape.
+//
+// The research atom branches on this string to tell the agent how to
+// read parent content. Run-40 post-ship: "embedded" replaced the
+// "absent" misfire for *-showcase slugs whose parent ships in the
+// binary but isn't mounted on the local fs.
 func parentStatus(p *ParentRecipe) string {
 	if p == nil {
 		return "absent"
+	}
+	if p.IsEmbedded() {
+		return "embedded"
 	}
 	return "mounted"
 }

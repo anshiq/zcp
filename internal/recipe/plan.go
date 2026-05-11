@@ -285,6 +285,25 @@ type ParentRecipe struct {
 	EnvImports map[string]string         `json:"envImports,omitempty"`
 	Facts      []FactRecord              `json:"facts,omitempty"`
 	SourceRoot string                    `json:"sourceRoot,omitempty"`
+
+	// EmbeddedBody carries the full body of
+	// `internal/knowledge/recipes/<slug>.md` when the parent was
+	// resolved from the embedded knowledge corpus (Run-40 post-ship
+	// fix — parent IS the embedded `.md`, not a filesystem mount).
+	// Empty when the parent came from a filesystem-mounted tree.
+	// IsEmbedded() reports whether this is the embedded-corpus
+	// shape; callers branching on parent source use that predicate
+	// rather than comparing strings.
+	EmbeddedBody string `json:"embeddedBody,omitempty"`
+}
+
+// IsEmbedded reports whether the parent was resolved from the
+// embedded knowledge corpus rather than a filesystem-mounted tree.
+// Embedded parents have EmbeddedBody set and SourceRoot empty;
+// filesystem-mount parents have SourceRoot set and EmbeddedBody
+// empty. Run-40 post-ship.
+func (p *ParentRecipe) IsEmbedded() bool {
+	return p != nil && p.EmbeddedBody != "" && p.SourceRoot == ""
 }
 
 // ParentCodebase is the per-codebase slice of a parent recipe.

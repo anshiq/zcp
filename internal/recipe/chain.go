@@ -57,27 +57,81 @@ func (r Resolver) ReachableSlugs() ([]string, error) {
 	return slugs, nil
 }
 
-// ResolveChain returns the ParentRecipe for a recipe slug. If the recipe
-// has no parent (minimal / hello-world), or the parent tree is not
-// present on disk, ResolveChain returns ErrNoParent with a nil parent.
-// The chain is deterministic and flat per plan §7:
+// ResolveChain returns the ParentRecipe for a recipe slug. The chain
+// is deterministic and flat per plan §7:
 //
 //   - {framework}-showcase  → {framework}-minimal
 //   - {framework}-minimal   → no parent
 //   - hello-world-{lang}    → no parent
+//
+// Resolution order (Run-40 post-ship — parent IS the embedded
+// knowledge corpus, not a filesystem mount):
+//
+//  1. Embedded corpus FIRST. The binary ships
+//     `internal/knowledge/recipes/<parent-slug>.md` (+ companion
+//     `.import.yml`) for every published parent. That body is the
+//     parent. If it exists, synthesize a ParentRecipe and return —
+//     parentStatus reports "embedded" so the agent reads the
+//     baseline that downstream brief composers will surface anyway
+//     via appendEmbeddedParentBaseline.
+//
+//  2. Filesystem mount fallback for legacy CDE setups that
+//     `git clone zeropsio/recipes ~/recipes` and want the full
+//     published tree (per-codebase READMEs + tier import.yamls
+//     beyond what the curated `.md` carries). Returns the same
+//     ParentRecipe shape with the on-disk SourceRoot populated.
+//
+//  3. ErrNoParent only when both paths come up empty — the recipe
+//     genuinely has no parent (hello-world, *-minimal) or no
+//     published parent corpus.
+//
+// The prior implementation only checked the filesystem mount;
+// `parentStatus: "absent"` fired on every local dev box because
+// `~/recipes/` doesn't exist outside the CDE shape, even though the
+// embedded `.md` was sitting right there in the binary the whole time.
 func ResolveChain(r Resolver, slug string) (*ParentRecipe, error) {
 	parentSlug := parentSlugFor(slug)
 	if parentSlug == "" {
 		return nil, ErrNoParent
 	}
-	parentDir := filepath.Join(r.MountRoot, parentSlug)
-	if _, err := os.Stat(parentDir); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, ErrNoParent
-		}
-		return nil, fmt.Errorf("stat parent dir %s: %w", parentDir, err)
+	if parent, ok := tryLoadEmbeddedParent(parentSlug); ok {
+		return parent, nil
 	}
-	return loadParent(parentSlug, parentDir)
+	if r.MountRoot != "" {
+		parentDir := filepath.Join(r.MountRoot, parentSlug)
+		if _, err := os.Stat(parentDir); err == nil {
+			return loadParent(parentSlug, parentDir)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("stat parent dir %s: %w", parentDir, err)
+		}
+	}
+	return nil, ErrNoParent
+}
+
+// tryLoadEmbeddedParent synthesizes a ParentRecipe from the embedded
+// knowledge corpus when `internal/knowledge/recipes/<parent-slug>.md`
+// ships in the binary. Returns the synthesized parent + true on hit,
+// zero value + false on miss.
+//
+// The synthesized ParentRecipe has Slug + Tier populated, but
+// Codebases/EnvImports left empty: downstream brief composers
+// detect the "embedded shape" via SourceRoot == "" and route through
+// the existing appendEmbeddedParentBaseline path that already reads
+// the same .md body inline. SourceRoot stays empty so that fallback
+// fires; the new EmbeddedBody field carries the full `.md` for any
+// caller that wants it without re-reading.
+func tryLoadEmbeddedParent(parentSlug string) (*ParentRecipe, bool) {
+	body, err := loadEmbeddedRecipeMD(parentSlug)
+	if err != nil {
+		return nil, false
+	}
+	return &ParentRecipe{
+		Slug:         parentSlug,
+		Tier:         parentTierForSlug(parentSlug),
+		Codebases:    map[string]ParentCodebase{},
+		EnvImports:   map[string]string{},
+		EmbeddedBody: body,
+	}, true
 }
 
 // Tier suffix slugs used by the chain resolver and by tier labelling.
