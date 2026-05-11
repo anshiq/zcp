@@ -70,12 +70,23 @@ func gateEnvReadsDerivable(ctx GateContext) []Violation {
 		}
 		reads, hasReads := envReadsForCodebase(ctx.Plan, cb.Hostname)
 		if !hasReads {
+			// Run-40 fix-up #6 — Blocking (was Notice). The gate's
+			// "no env-reads entry" branch is the bypass path through
+			// the dead-env refusal: if the populate step skipped this
+			// codebase (any reason — missing dir, walk failure, race),
+			// the gate would soft-notice instead of refusing close and
+			// the dead-env declarations would ship anyway. Codex code
+			// review flagged this as the gate's silent bypass.
+			// Recovery: re-run feature complete-phase (which fires
+			// populateEnvReadsFromSource synchronously now per
+			// fix-up #5), or populate the entry manually via
+			// update-plan.
 			out = append(out, Violation{
 				Code:     "env-reads-not-populated",
 				Path:     fmt.Sprintf("codebase/%s/observedFacts.envReads", cb.Hostname),
-				Severity: SeverityNotice,
+				Severity: SeverityBlocking,
 				Message: fmt.Sprintf(
-					"codebase %q has declared run.envVariables but plan.ObservedFacts.EnvReads carries no entry — feature-phase populateEnvReadsFromSource did not run for this codebase. The dead-env refusal can't fire without source-grep data; re-run feature complete-phase or populate the entry manually.",
+					"codebase %q has declared run.envVariables but plan.ObservedFacts.EnvReads carries no entry — feature-phase populateEnvReadsFromSource did not run for this codebase. The dead-env refusal can't fire without source-grep data and must NOT be bypassed silently. Re-run feature complete-phase or populate the entry manually via update-plan.",
 					cb.Hostname),
 			})
 			continue

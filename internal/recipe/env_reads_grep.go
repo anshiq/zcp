@@ -113,6 +113,25 @@ var envReadSkipDirs = map[string]struct{}{
 // envReadPatterns lists the regexes the source-grep applies to each
 // source file. Each pattern captures the env key as submatch 1. Add a
 // pattern when a new language joins the recipe surface.
+//
+// Run-40 fix-up #10 — destructuring + dynamic-key patterns extended.
+// Codex code review flagged that the original 6 patterns missed
+// idiomatic JavaScript shapes the recipe agent writes:
+//
+//	const { DB_HOST, DB_PORT } = process.env
+//	const { VITE_API_URL } = import.meta.env
+//
+// The destructuring patterns capture each name inside the braces.
+// Multi-name destructures still produce one violation per orphan
+// name because the gate iterates declared envs against the read
+// set; the regex just needs to populate the set.
+//
+// Dynamic-key shape `process.env[key]` (variable subscript) is NOT
+// statically resolvable — the gate's caller-side carve-out
+// (Vite import.meta.env idiomatic-use detector) handles the
+// dynamic-import.meta.env case; for runtime dynamic process.env
+// reads the agent can record a negation fact or remove the
+// declaration. No regex for it on purpose.
 var envReadPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`process\.env\.([A-Za-z_][A-Za-z0-9_]*)`),
 	regexp.MustCompile(`process\.env\["([A-Za-z_][A-Za-z0-9_]*)"\]`),
@@ -121,6 +140,21 @@ var envReadPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`import\.meta\.env\["([A-Za-z_][A-Za-z0-9_]*)"\]`),
 	regexp.MustCompile(`import\.meta\.env\['([A-Za-z_][A-Za-z0-9_]*)'\]`),
 }
+
+// envReadDestructurePatterns capture `{ A, B } = process.env` /
+// `{ A } = import.meta.env` shapes. Each match's submatch 1 is the
+// comma-separated brace body; envReadKeysFromDestructure splits and
+// returns one KEY per name. Aliasing (`{ DB_HOST: host }`) keeps the
+// LEFT side (the env name).
+var envReadDestructurePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`=\s*process\.env[^{]*\{([^}]+)\}`),
+	regexp.MustCompile(`\{([^}]+)\}\s*=\s*process\.env`),
+	regexp.MustCompile(`\{([^}]+)\}\s*=\s*import\.meta\.env`),
+}
+
+// envReadDestructureKeyRe matches one entry inside a destructure
+// brace body. Captures the env name (left side of `:` aliasing).
+var envReadDestructureKeyRe = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)`)
 
 // envReadFileSizeCap is the maximum per-file body the source-grep
 // reads. Source files this large are almost certainly bundled
@@ -175,6 +209,25 @@ func sourceGrepEnvReads(sourceRoot string) ([]string, error) {
 					continue
 				}
 				hits[m[1]] = struct{}{}
+			}
+		}
+		// Run-40 fix-up #10 — destructuring patterns. Captures the
+		// brace body, then the inner regex pulls each KEY out. Handles
+		// aliasing (`{ DB_HOST: host } = process.env`) by capturing
+		// the left side of the colon.
+		for _, re := range envReadDestructurePatterns {
+			for _, m := range re.FindAllStringSubmatch(string(body), -1) {
+				if len(m) < 2 || m[1] == "" {
+					continue
+				}
+				for entry := range strings.SplitSeq(m[1], ",") {
+					// `KEY` / `KEY: alias` / `KEY = default`. The
+					// inner regex picks the leading identifier which
+					// is the env name in every shape.
+					if sub := envReadDestructureKeyRe.FindString(entry); sub != "" {
+						hits[sub] = struct{}{}
+					}
+				}
 			}
 		}
 		return nil

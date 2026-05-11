@@ -466,6 +466,16 @@ func buildRefinementBriefMultiFileWithFraming(plan *Plan, parent *ParentRecipe, 
 		}
 	}
 
+	// Run-40 ENG-4 + A1 — multi-file composer parity. Mirrors the
+	// single-file BuildRefinementBrief path so refinement's rule-walk
+	// reads the canonical-latest fact view AND the canonical
+	// NamedConstants store. Codex code review caught the missing
+	// wiring in the multi-file path that production dispatch routes
+	// through. Pinned by TestBuildRefinementBriefMultiFile_*Carries*.
+	if err := emitCanonicalAndNamedConstantsPart(w, filteredFacts, plan); err != nil {
+		return Brief{}, err
+	}
+
 	indexPath, partPaths, _, err := w.Persist(outputRoot, header, closingNotes, BriefRefinement, "")
 	if err != nil {
 		return Brief{}, err
@@ -650,9 +660,33 @@ func workerKBSupplementsPointerBody() string {
 	b.WriteString("This codebase ships at `minContainers ≥ 2` from tier 4 onwards. The worker KB MUST author two symptom-first stems naming the multi-replica failure modes:\n\n")
 	b.WriteString("1. **Queue-group / consumer-group semantics under multi-replica** — name the broker, the term \"queue group\" (or library equivalent), and \"per-replica\" or \"exactly-once\". Body shows the client option that sets the group (e.g. NATS `queue: 'workers'`).\n")
 	b.WriteString("2. **Graceful SIGTERM drain** — name SIGTERM or \"drain\" or \"graceful shutdown\". Body shows the catch → `await sub.drain()` (NOT `unsubscribe()`) → exit sequence.\n\n")
-	b.WriteString("Both items cite the rolling-deploys topic. The matching SOURCE-CODE shape (`{queue: 'workers'}` + `await sub.drain()` on shutdown) was authored at the feature pass per `briefs/feature/worker_subscription_shape.md` and is enforced at codebase-content `complete-phase` by `gateWorkerSubscription`. Your job here is the KB prose only.\n\n")
+	b.WriteString("Both items map to the `rolling-deploys` citation-map key (engine-internal routing). The porter-facing link text MUST NOT contain the raw slug-stem even with a `Zerops/managed` prefix or `reference/guide/service` suffix — replace with a porter-recognized concept (e.g. `[zero-downtime deploys with multi-container setups]`) or in-body completion. The matching SOURCE-CODE shape (`{queue: 'workers'}` + `await sub.drain()` on shutdown) was authored at the feature pass per `briefs/feature/worker_subscription_shape.md` and is enforced at codebase-content `complete-phase` by `gateWorkerSubscription`. Your job here is the KB prose only.\n\n")
 	b.WriteString("Skip these only when (a) the worker shares a codebase with api/monolith or (b) the recipe explicitly downscales `minContainers` to 1 even at showcase tier (rare).\n\n")
 	return b.String()
+}
+
+// emitCanonicalAndNamedConstantsPart opens a dedicated part on w and
+// emits the run-40 ENG-4 canonical-latest section + A1 named-constants
+// section when either has content to render. No-op when neither
+// applies. Helper for the multi-file refinement composer (which
+// otherwise can't share the env-content context renderer because the
+// part-writer interface differs). Run-40 fix-up #1.
+func emitCanonicalAndNamedConstantsPart(w *partWriter, facts []FactRecord, plan *Plan) error {
+	aliased := AliasedCanonicalTopics(facts)
+	hasConstants := plan != nil && len(plan.NamedConstants) > 0
+	if len(aliased) == 0 && !hasConstants {
+		return nil
+	}
+	if err := w.StartPart("canonical-and-constants", "canonical-latest facts + named constants (cross-codebase source-of-truth)"); err != nil {
+		return err
+	}
+	var b strings.Builder
+	appendCanonicalLatestSection(&b, facts)
+	appendNamedConstantsSection(&b, plan)
+	if b.Len() == 0 {
+		return nil
+	}
+	return w.Write(b.String())
 }
 
 // renderEnvContentContextBlock returns the env-content context section
@@ -699,6 +733,17 @@ func renderEnvContentContextBlock(plan *Plan, parent *ParentRecipe, facts []Fact
 		}
 		b.WriteString("\n")
 	}
+
+	// Run-40 ENG-4 + A1 — multi-file composer parity. The single-file
+	// BuildEnvContentBrief path (used only by tests) emits these via
+	// appendCanonicalLatestSection + appendNamedConstantsSection;
+	// production env-content dispatch routes through this multi-file
+	// path so both sections MUST emit here too or the gates fire
+	// against substrate the agent never saw. Codex code review caught
+	// this as the primary "tests pass, production broken" failure
+	// mode — pinned by TestRenderEnvContentContextBlock_*.
+	appendCanonicalLatestSection(&b, facts)
+	appendNamedConstantsSection(&b, plan)
 
 	b.WriteString("## Plan snapshot\n\n")
 	for _, cb := range plan.Codebases {

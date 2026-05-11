@@ -101,6 +101,16 @@ func TestCompletePhaseRefinement_FlipsClosedFlagAndWritesMarker(t *testing.T) {
 	dir := t.TempDir()
 	log := OpenFactsLog(filepath.Join(dir, "facts.jsonl"))
 	sess := NewSession("synth-showcase", "dev", log, dir, nil)
+	// Run-40 fix-up #3 — refinement-close gate is fail-closed on
+	// missing surfaces; the test must materialize a production-shape
+	// session (plan + stitched surfaces on disk) instead of the
+	// pre-fix bare-plan shape.
+	sess.Plan = syntheticShowcasePlan()
+	stageScaffoldYAMLs(t, dir, sess.Plan)
+	sess.OutputRoot = dir
+	if _, err := stitchContent(sess); err != nil {
+		t.Fatalf("seed stitch-content: %v", err)
+	}
 
 	for _, p := range []Phase{
 		PhaseResearch, PhaseProvision, PhaseScaffold, PhaseFeature,

@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -966,12 +967,33 @@ func mergePlan(sess *Session, incoming *Plan) error {
 	if len(incoming.FeatureKinds) > 0 {
 		cur.FeatureKinds = incoming.FeatureKinds
 	}
-	// Run-40 A1 — NamedConstants merge. Map-valued field follows the
-	// same merge semantics as Fragments (incoming entries copy into
-	// cur, no clear-on-empty so partial updates compose). Records the
-	// cross-codebase name-of-record for queue groups, cache prefixes,
-	// signing-key aliases.
+	// Run-40 A1 — NamedConstants merge. Records the cross-codebase
+	// name-of-record for queue groups, cache prefixes, signing-key
+	// aliases.
+	//
+	// Run-40 fix-up #7 — conflict detection. Plain maps.Copy
+	// silently overwrites existing keys, which masks the case where
+	// a later update-plan call mutates a canonical value the agent
+	// recorded earlier (run-39's "showcase-workers" → "workers"
+	// rename was exactly this shape — silent overwrite would leave
+	// downstream surfaces racing the rename order). The merge now
+	// detects conflicts (same key, different value) and refuses
+	// with a surface-able error naming the offending keys. The
+	// agent's recovery is to either acknowledge the rename via a
+	// dedicated rename action (future) or accept the existing
+	// value. New keys + idempotent same-value writes pass through.
 	if len(incoming.NamedConstants) > 0 {
+		var conflicts []string
+		for k, v := range incoming.NamedConstants {
+			if existing, ok := cur.NamedConstants[k]; ok && existing != v {
+				conflicts = append(conflicts, fmt.Sprintf("%s: existing=%q incoming=%q", k, existing, v))
+			}
+		}
+		if len(conflicts) > 0 {
+			sort.Strings(conflicts)
+			sess.mu.Unlock()
+			return fmt.Errorf("update-plan: NamedConstants conflict — values diverge from prior canonical record:\n  - %s\nRename detection: if this is an intentional rename, drop the old key and add the new one (record both via separate update-plan calls); if accidental, restore the prior value", strings.Join(conflicts, "\n  - "))
+		}
 		if cur.NamedConstants == nil {
 			cur.NamedConstants = map[string]string{}
 		}
@@ -1050,11 +1072,28 @@ func completePhase(sess *Session, in RecipeInput, r RecipeResult) RecipeResult {
 		// the gate set matching the current phase so scaffold/feature
 		// scoped close runs only the fact-quality gates and codebase-
 		// content scoped close runs the surface validators.
+		//
+		// Run-40 fix-up #2 — PhaseFeature scoped close now runs the
+		// full FeatureGates() set (was CodebaseScaffoldGates(),
+		// missing ENG-5 + B1). The feature sub-agent calls
+		// complete-phase with codebase= to self-validate; without the
+		// scoped path running the new gates, ENG-5 (ghost-dependency)
+		// and B1 (dead-env) never fired during sub-agent termination.
+		// Codex code review caught this bypass: the gates were wired
+		// to FeatureGates() but the scoped path used a different set.
+		// Run-40 B1 also requires env-reads populate before the gate
+		// runs; populate fires here too on the scoped path.
 		var scopedGates []Gate
 		//exhaustive:ignore — fall-through covers Research/Provision/Env/Finalize.
 		switch sess.Current {
-		case PhaseScaffold, PhaseFeature:
+		case PhaseScaffold:
 			scopedGates = CodebaseScaffoldGates()
+		case PhaseFeature:
+			scopedGates = FeatureGates()
+			if pErr := populateEnvReadsFromSource(sess); pErr != nil {
+				r.Error = "complete-phase scoped: populate env-reads: " + pErr.Error()
+				return r
+			}
 		case PhaseCodebaseContent:
 			scopedGates = CodebaseContentGates()
 		default:
@@ -1077,11 +1116,19 @@ func completePhase(sess *Session, in RecipeInput, r RecipeResult) RecipeResult {
 	// declared run.envVariables against authoritative source-derived
 	// reads. Runs at feature complete-phase only — scaffold leaves
 	// codebases bare and the source-grep would find nothing.
-	// Errors are non-fatal at this layer; the gate's "not populated"
-	// notice surfaces a soft signal so the agent can still close on
-	// an unreadable tree.
+	//
+	// Run-40 fix-up #5 — error propagates (previously ignored via
+	// `_ = ...`). A failed populate leaves the gate working against
+	// stale or missing data; codex code review noted the silent-
+	// swallow defeated the gate's defensive contract. The gate's
+	// no-entry path (now Blocking per fix-up #6) handles the case
+	// where populate ran but found no entries; a hard populate
+	// error is an infrastructure-side failure the agent should see.
 	if sess.Current == PhaseFeature {
-		_ = populateEnvReadsFromSource(sess)
+		if pErr := populateEnvReadsFromSource(sess); pErr != nil {
+			r.Error = "complete-phase: populate env-reads: " + pErr.Error()
+			return r
+		}
 	}
 	blocking, notices, err := sess.CompletePhase(gatesForPhase(sess.Current))
 	if err != nil {

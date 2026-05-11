@@ -200,6 +200,61 @@ func TestMergePlan_NamedConstants_Compose(t *testing.T) {
 	}
 }
 
+// TestMergePlan_NamedConstants_ConflictRefuses pins run-40 fix-up #7:
+// when an update-plan call tries to overwrite an existing
+// NamedConstants entry with a different value, mergePlan refuses
+// with a surface-able error naming the conflict. Pre-fix the merge
+// was a plain maps.Copy that silently overwrote — the run-39 queue-
+// group rename ("showcase-workers" → "workers") would have been a
+// silent-overwrite shape, masking the cross-surface drift the gate
+// is meant to catch.
+func TestMergePlan_NamedConstants_ConflictRefuses(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sess := &Session{
+		Slug:       "synth-showcase",
+		OutputRoot: dir,
+		Plan: &Plan{
+			Slug:           "synth-showcase",
+			NamedConstants: map[string]string{"NATS_QUEUE_GROUP": "showcase-workers"},
+		},
+	}
+	err := mergePlan(sess, &Plan{NamedConstants: map[string]string{"NATS_QUEUE_GROUP": "workers"}})
+	if err == nil {
+		t.Fatal("expected merge to refuse on value conflict; got nil")
+	}
+	if !strings.Contains(err.Error(), "NATS_QUEUE_GROUP") {
+		t.Errorf("error should name the conflicting key; got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "showcase-workers") || !strings.Contains(err.Error(), `"workers"`) {
+		t.Errorf("error should surface both existing and incoming values; got %q", err.Error())
+	}
+	// In-memory state must NOT have been mutated (refusal protects
+	// the prior canonical record).
+	if got := sess.Plan.NamedConstants["NATS_QUEUE_GROUP"]; got != "showcase-workers" {
+		t.Errorf("conflict merge mutated state despite refusal; got %q", got)
+	}
+}
+
+// TestMergePlan_NamedConstants_IdempotentSameValuePasses — an
+// incoming entry with the same value as the existing record is a
+// no-op, not a conflict. Catches over-eager conflict detection.
+func TestMergePlan_NamedConstants_IdempotentSameValuePasses(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sess := &Session{
+		Slug:       "synth-showcase",
+		OutputRoot: dir,
+		Plan: &Plan{
+			Slug:           "synth-showcase",
+			NamedConstants: map[string]string{"NATS_QUEUE_GROUP": "workers"},
+		},
+	}
+	if err := mergePlan(sess, &Plan{NamedConstants: map[string]string{"NATS_QUEUE_GROUP": "workers"}}); err != nil {
+		t.Errorf("idempotent same-value merge should pass; got %v", err)
+	}
+}
+
 // TestBuildEnvContentBrief_CarriesNamedConstantsSection pins the
 // brief-render integration: when the plan carries NamedConstants the
 // env-content brief includes a `## Named constants` section with the

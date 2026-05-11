@@ -122,6 +122,43 @@ func TestGateStitchedMatchesPlan_RootReadmeOnDiskDiverges(t *testing.T) {
 	}
 }
 
+// TestGateStitchedMatchesPlan_MissingSurface_FailsClosed pins the
+// run-40 fix-up #3 contract: when a surface re-renders to non-empty
+// content but no file exists at the target path, the gate emits a
+// blocking violation instead of soft-passing. Pre-fix the gate
+// fail-opened on os.ReadFile error, which masked the canonical
+// refinement-write-back regression class (plan updated, disk skipped
+// → surface absent → gate misses it). Codex code review caught this.
+func TestGateStitchedMatchesPlan_MissingSurface_FailsClosed(t *testing.T) {
+	t.Parallel()
+	sess := buildRefinementSessionWithDisk(t)
+
+	// Remove tier 0 README so the gate sees an absent surface with
+	// non-empty plan-derived content.
+	tier, _ := TierAt(0)
+	path := filepath.Join(sess.OutputRoot, tier.Folder, "README.md")
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove env tier README to seed missing surface: %v", err)
+	}
+
+	v := gateStitchedMatchesPlan(GateContext{
+		Plan:       sess.Plan,
+		OutputRoot: sess.OutputRoot,
+	})
+	var found bool
+	for _, x := range v {
+		if x.Code == "stitched-surface-missing" && strings.Contains(x.Path, tier.Folder) {
+			found = true
+			if x.Severity != SeverityBlocking {
+				t.Errorf("missing-surface violation should be Blocking; got %v", x.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected stitched-surface-missing violation; got %+v", v)
+	}
+}
+
 // TestGateStitchedMatchesPlan_SkipsAbsentCodebaseSourceRoot pins the
 // best-effort design: a codebase whose SourceRoot path doesn't exist
 // on disk is skipped silently (no violation). Tests use synthetic

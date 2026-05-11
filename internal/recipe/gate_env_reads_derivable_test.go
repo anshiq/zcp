@@ -169,12 +169,13 @@ func TestGateEnvReadsDerivable_ViteCarveOut(t *testing.T) {
 	}
 }
 
-// TestGateEnvReadsDerivable_NoEnvReadsEntry_EmitsNotice — when the
-// plan has declared envs but no ObservedFacts.EnvReads entry for the
-// codebase (populate didn't run), the gate emits a soft notice
-// rather than blocking. Preserves agent flow on infrastructure
-// failures.
-func TestGateEnvReadsDerivable_NoEnvReadsEntry_EmitsNotice(t *testing.T) {
+// TestGateEnvReadsDerivable_NoEnvReadsEntry_Blocks — Run-40 fix-up #6.
+// When the plan has declared envs but no ObservedFacts.EnvReads
+// entry, the gate now BLOCKS (not Notice). Without this severity
+// upgrade the no-entry branch is a silent bypass of the dead-env
+// refusal: if populate skipped a codebase the gate would soft-notice
+// instead of refusing, and dead-env declarations would ship.
+func TestGateEnvReadsDerivable_NoEnvReadsEntry_Blocks(t *testing.T) {
 	t.Parallel()
 	dir := stageCodebaseWithYAMLAndSource(t,
 		"worker",
@@ -192,10 +193,10 @@ func TestGateEnvReadsDerivable_NoEnvReadsEntry_EmitsNotice(t *testing.T) {
 	}
 	v := gateEnvReadsDerivable(GateContext{Plan: plan})
 	if len(v) != 1 {
-		t.Fatalf("expected 1 notice; got %d: %+v", len(v), v)
+		t.Fatalf("expected 1 violation; got %d: %+v", len(v), v)
 	}
-	if v[0].Severity != SeverityNotice {
-		t.Errorf("severity should be Notice when env-reads aren't populated; got %v", v[0].Severity)
+	if v[0].Severity != SeverityBlocking {
+		t.Errorf("severity should be Blocking when env-reads aren't populated (fix-up #6); got %v", v[0].Severity)
 	}
 	if v[0].Code != "env-reads-not-populated" {
 		t.Errorf("code should be env-reads-not-populated; got %q", v[0].Code)

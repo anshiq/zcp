@@ -191,12 +191,13 @@ func TestGateConsumesServicesDerivable_NilConsumesServicesSkipped(t *testing.T) 
 	}
 }
 
-// TestGateConsumesServicesDerivable_AbsentYamlSkipped pins the
-// conservative-skip behavior: when the codebase yaml isn't on disk
-// (sim/pre-stitch shape) the gate skips rather than blocking on a
-// missing read. populateConsumesServicesFromYaml inherits the same
-// conservative contract; the gate matches.
-func TestGateConsumesServicesDerivable_AbsentYamlSkipped(t *testing.T) {
+// TestGateConsumesServicesDerivable_AbsentSourceRootSkipped pins the
+// conservative-skip behavior for the sim/test shape: when the
+// codebase SourceRoot directory itself doesn't exist on disk, the
+// gate has nothing to validate and skips silently.
+// populateConsumesServicesFromYaml inherits the same conservative
+// contract.
+func TestGateConsumesServicesDerivable_AbsentSourceRootSkipped(t *testing.T) {
 	t.Parallel()
 	plan := &Plan{
 		Slug: "synth-showcase",
@@ -209,7 +210,44 @@ func TestGateConsumesServicesDerivable_AbsentYamlSkipped(t *testing.T) {
 	}
 	violations := gateConsumesServicesDerivable(GateContext{Plan: plan})
 	if len(violations) != 0 {
-		t.Errorf("absent yaml should skip the gate (conservative); got %+v", violations)
+		t.Errorf("absent SourceRoot should skip the gate (conservative); got %+v", violations)
+	}
+}
+
+// TestGateConsumesServicesDerivable_SourceRootExistsButYamlMissing
+// pins run-40 fix-up #4: when SourceRoot DOES exist on disk but the
+// yaml inside is unreadable (deleted, corrupted, permission), the
+// gate must BLOCK (not skip). Pre-fix the gate fail-opened on
+// os.ReadFile failure, letting missing-yaml regressions ship past
+// the ghost-dependency refusal.
+func TestGateConsumesServicesDerivable_SourceRootExistsButYamlMissing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	workerDir := filepath.Join(dir, "workerdev")
+	if err := os.MkdirAll(workerDir, 0o755); err != nil {
+		t.Fatalf("mkdir SourceRoot: %v", err)
+	}
+	// SourceRoot exists, zerops.yaml is absent.
+
+	plan := &Plan{
+		Slug: "synth-showcase",
+		Codebases: []Codebase{
+			{Hostname: "worker", SourceRoot: workerDir, ConsumesServices: []string{"broker"}},
+		},
+		Services: []Service{
+			{Hostname: "broker", Kind: ServiceKindManaged, Type: "nats@2.10"},
+		},
+	}
+
+	v := gateConsumesServicesDerivable(GateContext{Plan: plan})
+	if len(v) != 1 {
+		t.Fatalf("expected 1 yaml-missing violation; got %d: %+v", len(v), v)
+	}
+	if v[0].Code != "consumes-services-yaml-missing" {
+		t.Errorf("code = %q, want consumes-services-yaml-missing", v[0].Code)
+	}
+	if v[0].Severity != SeverityBlocking {
+		t.Errorf("severity should be Blocking when SourceRoot exists but yaml absent (fix-up #4); got %v", v[0].Severity)
 	}
 }
 

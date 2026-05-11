@@ -54,13 +54,31 @@ func gateConsumesServicesDerivable(ctx GateContext) []Violation {
 		if cb.SourceRoot == "" {
 			continue
 		}
-		body, err := os.ReadFile(filepath.Join(cb.SourceRoot, "zerops.yaml"))
+		// Run-40 fix-up #4 — fail-closed on absent yaml when the
+		// SourceRoot dir DOES exist on disk. Pre-fix the gate
+		// skipped silently on os.ReadFile failure, which let a
+		// missing-yaml regression at feature close ship past the
+		// ghost-dependency refusal. The conservative skip is
+		// retained only for the legitimate sim/test path where
+		// SourceRoot itself doesn't exist — that path is detected
+		// upstream via os.Stat(cb.SourceRoot). Codex code review
+		// flagged the original fail-open as a silent bypass.
+		if _, statErr := os.Stat(cb.SourceRoot); statErr != nil {
+			// SourceRoot directory is itself absent — sim/test
+			// shape; the gate has nothing to validate.
+			continue
+		}
+		yamlPath := filepath.Join(cb.SourceRoot, "zerops.yaml")
+		body, err := os.ReadFile(yamlPath)
 		if err != nil {
-			// Yaml not on disk: skip silently. The populate path
-			// already documents this as a no-op (sim/back-compat
-			// shape); the gate inherits the same conservative
-			// behavior so it doesn't fail on environments where the
-			// yaml is staged elsewhere.
+			out = append(out, Violation{
+				Code:     "consumes-services-yaml-missing",
+				Path:     yamlPath,
+				Severity: SeverityBlocking,
+				Message: fmt.Sprintf(
+					"codebase %q SourceRoot exists but zerops.yaml is unreadable (%v) — the ghost-dependency gate can't validate ConsumesServices without the yaml. Restore the yaml or re-run scaffold to stage it.",
+					cb.Hostname, err),
+			})
 			continue
 		}
 		derived := parseConsumedServicesFromYaml(string(body), ctx.Plan)

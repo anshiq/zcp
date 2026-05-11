@@ -90,8 +90,18 @@ func gateStitchedMatchesPlan(ctx GateContext) []Violation {
 
 // stitchedSurfaceDiverged reads path from disk and compares to the
 // freshly-assembled wantBody. Returns a Violation when the bodies
-// differ, nil when they match (or when path doesn't exist — that's a
-// non-production shape and the gate skips it).
+// differ or when the path is absent. Run-40 fix-up #3 — pre-fix this
+// returned nil on os.ReadFile failure, which made the gate fail-open
+// against the canonical regression class (refinement Replace lands
+// in plan but disk write was skipped → disk file absent → gate
+// soft-passes → deliverable ships with no surface at all). Codex
+// code review flagged the fail-open as the gate's silent bypass.
+//
+// Callers are responsible for not invoking the comparison on
+// surfaces that legitimately don't exist (e.g. codebase READMEs
+// when SourceRoot isn't materialized in test sessions). The caller-
+// side os.Stat check on cb.SourceRoot in gateStitchedMatchesPlan
+// scopes this gate to production shape.
 //
 // label names the surface in user-facing prose ("root README", "env
 // tier 0 README", "codebase api README"). Path goes in Violation.Path
@@ -99,11 +109,24 @@ func gateStitchedMatchesPlan(ctx GateContext) []Violation {
 func stitchedSurfaceDiverged(path, wantBody, label string) *Violation {
 	got, err := os.ReadFile(path)
 	if err != nil {
-		// Surface absent on disk — not a divergence, just an
-		// incomplete-stitch shape (in-memory test, pre-finalize
-		// session). The gate is a safety net for production trees
-		// where every relevant surface IS present.
-		return nil
+		if os.IsNotExist(err) {
+			return &Violation{
+				Code:     "stitched-surface-missing",
+				Path:     path,
+				Severity: SeverityBlocking,
+				Message: fmt.Sprintf(
+					"%s missing on disk — plan.json carries fragment content that re-renders to %d bytes but no file exists at the target path. The deliverable would ship without this surface. Run `zerops_recipe action=stitch-content` to materialize from plan-of-record.",
+					label, len(wantBody)),
+			}
+		}
+		return &Violation{
+			Code:     "stitched-surface-read-failed",
+			Path:     path,
+			Severity: SeverityBlocking,
+			Message: fmt.Sprintf(
+				"%s could not be read from disk (%v) — the gate cannot verify the deliverable surface matches plan.json. Fix the filesystem error and re-run complete-phase.",
+				label, err),
+		}
 	}
 	if string(got) == wantBody {
 		return nil

@@ -62,6 +62,32 @@ const url = process.env.DB_URL;
 	}
 }
 
+// TestSourceGrepEnvReads_Destructuring — Run-40 fix-up #10. Captures
+// `const { A, B } = process.env` and `const { VITE_X } = import.meta.env`
+// shapes including aliasing (`{ DB_HOST: host }` → captures DB_HOST).
+// Codex code review flagged this as an idiomatic JS pattern the
+// original grep missed; the gate would false-positive on declared
+// envs the source reads through destructuring.
+func TestSourceGrepEnvReads_Destructuring(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	body := `const { DB_HOST, DB_PORT } = process.env;
+const { VITE_API_URL } = import.meta.env;
+const { DB_USER: user, DB_PASSWORD: pass } = process.env;
+`
+	if err := os.WriteFile(filepath.Join(dir, "config.ts"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := sourceGrepEnvReads(dir)
+	if err != nil {
+		t.Fatalf("sourceGrepEnvReads: %v", err)
+	}
+	want := []string{"DB_HOST", "DB_PASSWORD", "DB_PORT", "DB_USER", "VITE_API_URL"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("destructured env reads = %v, want %v", got, want)
+	}
+}
+
 // TestSourceGrepEnvReads_ImportMetaEnv covers Vite/Astro
 // `import.meta.env.<KEY>` reads — the build-time bake idiom.
 func TestSourceGrepEnvReads_ImportMetaEnv(t *testing.T) {

@@ -280,7 +280,7 @@ func ExportRecipe(opts ExportOpts) (*ExportResult, error) {
 				tw.Close()
 				gw.Close()
 				tmpFile.Close()
-				return nil, addErr
+				return nil, fmt.Errorf("add sanitized TIMELINE.md to tar: %w", addErr)
 			}
 			continue
 		}
@@ -288,7 +288,7 @@ func ExportRecipe(opts ExportOpts) (*ExportResult, error) {
 			tw.Close()
 			gw.Close()
 			tmpFile.Close()
-			return nil, addErr
+			return nil, fmt.Errorf("add root file %s to tar: %w", name, addErr)
 		}
 	}
 
