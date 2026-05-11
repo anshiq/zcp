@@ -203,6 +203,10 @@ var validAtomEnumValues = map[string]map[string]struct{}{
 		"recipe-active":       {},
 		"strategy-setup":      {},
 		"export-active":       {},
+		// launch-production-active fires when zerops_workflow workflow="launch-production"
+		// is mid-flow on a source project. Atoms scoped to this phase
+		// drive the launch handler's per-status guidance.
+		"launch-production-active": {},
 	},
 	"modes": {
 		"dev":         {},

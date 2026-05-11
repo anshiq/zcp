@@ -51,7 +51,16 @@ import (
 // **Source**: `plans/audit-composition/unpinned-atoms-baseline.md`
 // (commit d642de60) — Phase 0 baseline. EMPTIED by commit <pending>
 // (Phase 8 G2 closure).
-var knownUnpinnedAtoms = map[string]string{}
+var knownUnpinnedAtoms = map[string]string{
+	// Phase C atoms land before Phase D handler exists. Pin scenarios
+	// arrive in Phase E per plans/production-lifecycle-2026-05-11.md §11.
+	"launch-intro":                 "Phase E adds scenarios_test.go pins via LaunchProductionActive_* fixtures",
+	"launch-scope-prompt":          "Phase E adds scenarios_test.go pins via LaunchProductionActive_* fixtures",
+	"launch-mutation-key-required": "Phase E adds scenarios_test.go pins via LaunchProductionActive_* fixtures",
+	"launch-write-prod-setup":      "Phase E adds scenarios_test.go pins via LaunchProductionActive_* fixtures",
+	"launch-delete-key":            "Phase E adds scenarios_test.go pins via LaunchProductionActive_* fixtures",
+	"launch-post-checklist":        "Phase E adds scenarios_test.go pins via LaunchProductionActive_* fixtures",
+}
 
 // pinnedAtomIDs builds the set of atom IDs that scenarios_test.go pins
 // via requireAtomIDsContain or requireAtomIDsExact. Both helpers have

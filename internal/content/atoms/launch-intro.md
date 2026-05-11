@@ -1,0 +1,25 @@
+---
+id: launch-intro
+priority: 1
+phases: [launch-production-active]
+title: "Launch production — overview"
+references-fields: []
+coverageExempt: "Phase C lands atoms ahead of Phase D handler + Phase E scenarios; pin via launch-production-active fixtures in Phase E per plans/production-lifecycle-2026-05-11.md §11"
+---
+
+### Launch production — overview
+
+You are launching the source project to a separate Zerops production project. ZCP prepares the bundle, source-control changes, and verification steps; you (the user) generate a one-shot Zerops API key for the mutation window and **delete that key** after launch completes.
+
+Six top-level statuses gate progress:
+
+| Status | Means |
+|---|---|
+| `scope-prompt` | ZCP needs: production project name, region, optional custom domain, scaling overrides. |
+| `classify-prompt` | Project envs need bucketing (infrastructure / auto-secret / external-secret / plain-config). |
+| `ready-to-launch` | Bundle composed, source-control changes pushed, schema clean, blockers cleared. Awaiting one-shot launch key. |
+| `launching` | One-shot key in use; ZCP is creating + importing + polling first deploy. |
+| `failed` | A mutation step failed; `blockers[]` describes recovery. |
+| `launched` | Done. Delete the launch key. Set external secrets in Zerops UI. Attach custom domain in Zerops UI per emitted DNS records. |
+
+ZCP has **zero standing access** to the production project. The one-shot key flows in via the `launchKey` parameter only during `publish` action; it is never written to state, logs, or transcripts.
