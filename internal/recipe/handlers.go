@@ -181,7 +181,7 @@ type RecipeInput struct {
 	Slug             string      `json:"slug,omitempty"             jsonschema:"Recipe slug (e.g. {framework}-showcase). Required for every action."`
 	OutputRoot       string      `json:"outputRoot,omitempty"       jsonschema:"Directory where the recipe tree + facts log live. Required for 'start'. Canonical shape: '/var/www/zcprecipator/<slug>/' — outputs MUST nest one level under the SSHFS mount base ('/var/www/'); the engine refuses outputRoot at or above the mount base because that path hosts dev-codebase mounts (apidev/, appdev/, workerdev/) and stitched output would shadow source."`
 	Phase            string      `json:"phase,omitempty"            jsonschema:"Phase name for enter-phase / complete-phase: research, provision, scaffold, feature, codebase-content, env-content, finalize, refinement."`
-	BriefKind        string      `json:"briefKind,omitempty"        jsonschema:"For build-brief: scaffold, feature, codebase-content, claudemd-author, env-content, finalize, refinement."`
+	BriefKind        string      `json:"briefKind,omitempty"        jsonschema:"For build-brief: scaffold, feature, codebase-content, claudemd-author, env-content, finalize, refinement, refinement2. refinement2 is the cross-surface audit pass dispatched after refinement-1 closes; both must dispatch before complete-phase phase=refinement can close."`
 	Codebase         string      `json:"codebase,omitempty"         jsonschema:"For build-brief when kind=scaffold: the codebase hostname to compose for. For complete-phase: when set, scopes codebase-surface validators to that one codebase only — the sub-agent's pre-termination self-validate path. Phase advance only fires when codebase is empty (the main-agent's post-sub-agent-return path)."`
 	Shape            string      `json:"shape,omitempty"            jsonschema:"For emit-yaml: 'workspace' (services-only YAML for zerops_import at provision) or 'deliverable' (full published template for tierIndex, written to disk)."`
 	TierIndex        int         `json:"tierIndex,omitempty"        jsonschema:"For emit-yaml shape=deliverable: tier 0..5. Ignored when shape=workspace."`
@@ -467,11 +467,42 @@ func dispatch(_ context.Context, store *Store, in RecipeInput) RecipeResult {
 	return r
 }
 
+// flipDispatchFlags sets the per-kind "Dispatched" boolean on the
+// session for kinds the engine tracks as mandatory pre-close
+// dispatches. Run-23 F-26 added BriefRefinement; Run-41 added
+// BriefRefinement2. Both flags are read by complete-phase to refuse
+// the refinement-phase close until both audit sub-agents have been
+// dispatched. Idempotent — single-flip semantics.
+func flipDispatchFlags(sess *Session, kind BriefKind) {
+	//exhaustive:ignore — only refinement1/refinement2 flip per-kind tracking; other kinds are no-op.
+	switch kind {
+	case BriefRefinement:
+		sess.mu.Lock()
+		sess.RefinementDispatched = true
+		sess.mu.Unlock()
+	case BriefRefinement2:
+		sess.mu.Lock()
+		sess.Refinement2Dispatched = true
+		sess.mu.Unlock()
+	}
+}
+
 // handleBuildSubagentPrompt implements the build-subagent-prompt
 // dispatch branch. Extracted from dispatch's switch (run-16 §6.2/§7.1
 // added engine-fact seeding + FactsLog threading, pushing the inline
 // branch over the maintainability index threshold).
 func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) RecipeResult {
+	// Run-41 — refinement2 is a single cross-codebase audit pass; it
+	// must not be dispatched with a codebase= scope. A misuse case
+	// (e.g. an agent re-running the refinement pattern from refinement-
+	// 1's per-codebase pre-validate path) would flip
+	// Refinement2Dispatched on a build that only audited one codebase,
+	// skipping the cross-codebase relationship checks the audit
+	// exists to run. Reject the call before any side effect lands.
+	if BriefKind(in.BriefKind) == BriefRefinement2 && in.Codebase != "" {
+		r.Error = "build-subagent-prompt: briefKind=refinement2 does not accept a codebase scope; refinement-2 is a single cross-codebase audit pass over the full stitched deliverable. Drop the codebase parameter and re-dispatch."
+		return r
+	}
 	// Run-16 §7.1 / §5.3 — seed engine-emitted facts to the session's
 	// FactsLog so the dispatched sub-agent can fill empty slots via
 	// fill-fact-slot. Per-codebase shells emit on every codebase-bound
@@ -528,11 +559,7 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 		}
 		r.BriefPath = indexPath
 		r.Notice = "brief written to disk as multi-file index; dispatch sub-agent with this path. Sub-agent must Read index.md, then Read each part file listed in its 'Read order' section in order."
-		if BriefKind(in.BriefKind) == BriefRefinement {
-			sess.mu.Lock()
-			sess.RefinementDispatched = true
-			sess.mu.Unlock()
-		}
+		flipDispatchFlags(sess, BriefKind(in.BriefKind))
 		r.OK = true
 		return r
 	}
@@ -554,28 +581,19 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 		r.BriefPath = path
 		r.BriefSize = len(prompt)
 		r.Notice = "brief written to disk; dispatch sub-agent with this path"
-		// Run-23 F-26 — flip RefinementDispatched only after the brief
-		// is actually deliverable (inline or pointer). Earlier flip would
-		// let `complete-phase phase=finalize` pass even when an oversized
-		// refinement brief failed to write to disk.
-		if BriefKind(in.BriefKind) == BriefRefinement {
-			sess.mu.Lock()
-			sess.RefinementDispatched = true
-			sess.mu.Unlock()
-		}
+		// Run-23 F-26 / Run-41 — flip the per-kind Dispatched flag only
+		// after the brief is actually deliverable (inline or pointer).
+		// Earlier flip would let the downstream close-gate pass even
+		// when the brief failed to write to disk.
+		flipDispatchFlags(sess, BriefKind(in.BriefKind))
 		r.OK = true
 		return r
 	}
-	// Run-23 F-26 — flip RefinementDispatched on a successful
-	// briefKind=refinement build so `complete-phase phase=finalize`
-	// can refuse closure until the refinement sub-agent has been
-	// dispatched at least once. Single-flip is fine; the gate only
-	// reads the boolean.
-	if BriefKind(in.BriefKind) == BriefRefinement {
-		sess.mu.Lock()
-		sess.RefinementDispatched = true
-		sess.mu.Unlock()
-	}
+	// Run-23 F-26 / Run-41 — flip the per-kind Dispatched flag on a
+	// successful brief build so the downstream close-gate can refuse
+	// closure until the sub-agent has been dispatched at least once.
+	// Single-flip is fine; the gate only reads the boolean.
+	flipDispatchFlags(sess, BriefKind(in.BriefKind))
 	r.Prompt, r.OK = prompt, true
 	return r
 }
@@ -1069,6 +1087,30 @@ func completePhase(sess *Session, in RecipeInput, r RecipeResult) RecipeResult {
 		sess.mu.Unlock()
 		if !dispatched {
 			r.Error = "complete-phase: phase=finalize requires refinement sub-agent dispatch first; call `zerops_recipe action=build-subagent-prompt briefKind=refinement` and dispatch the agent before closing finalize. The refinement pass is the always-on quality gate (system.md §3 phase 8); skipping it produces an unaudited deliverable."
+			return r
+		}
+	}
+	// Run-41 — refinement-phase closure refuses unless BOTH refinement
+	// sub-agents have been dispatched. Refinement-1 walks per-fragment
+	// rules (`derived_rules.md`); refinement-2 walks cross-surface
+	// defect classes (KB↔IG duplication, surface-misplacement,
+	// aspirational-as-current, yaml-comment-content-drift). Run-40
+	// dogfood ([plans/run-40-validation.md]) shipped six cross-surface
+	// defects post-refinement-1 close because refinement-1's intra-
+	// fragment scope is structurally blind to those classes. The gate
+	// fires on the no-codebase main-agent close (refinement-2 is a
+	// single-pass main-agent dispatch, not a per-codebase sub-agent).
+	if in.Codebase == "" && sess.Current == PhaseRefinement {
+		sess.mu.Lock()
+		ref1 := sess.RefinementDispatched
+		ref2 := sess.Refinement2Dispatched
+		sess.mu.Unlock()
+		if !ref1 {
+			r.Error = "complete-phase: phase=refinement requires the refinement-1 sub-agent (intra-fragment rule walk) to be dispatched first; call `zerops_recipe action=build-subagent-prompt briefKind=refinement` and dispatch the agent before closing refinement."
+			return r
+		}
+		if !ref2 {
+			r.Error = "complete-phase: phase=refinement requires the refinement-2 sub-agent (cross-surface audit) to be dispatched after refinement-1 closes; call `zerops_recipe action=build-subagent-prompt briefKind=refinement2` and dispatch the agent before closing refinement. The cross-surface audit catches KB↔IG duplication, surface-misplacement, aspirational-as-current prose, and yaml-comment ↔ yaml-content drift — defect classes refinement-1's per-fragment rule walk cannot see."
 			return r
 		}
 	}

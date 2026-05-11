@@ -193,3 +193,156 @@ func TestSanitizeTimeline_NonZeropsHostUnchanged(t *testing.T) {
 		t.Errorf("framework doc URL should pass through unchanged; got %q", out)
 	}
 }
+
+// Run-41 — ENG-2 widening tests. The original (run-40) sanitizer
+// regex coverage was narrower than plan §ENG-2 specified: the
+// project-ID redactor required the literal `id ` keyword inside
+// the parentheses, the hostname-hash redactor required a `-<port>`
+// segment, session UUIDs and engine-vocab were out of scope
+// entirely. Run-40 dogfood validation
+// ([plans/run-40-validation.md]) surfaced four leak shapes the
+// original sanitizer let through:
+//
+//  1. `Zerops project `<slug>` (`<id>`)` — bare-paren id, no keyword.
+//  2. `Session: `<uuid>`` — UUID anywhere.
+//  3. `appstage-<digits>.prg1.zerops.app` — no-port stage subdomain.
+//  4. `zerops_*`, `complete-phase`, `record-fragment`, … — engine
+//     vocab the agent free-cites in TIMELINE narrative.
+//
+// These tests pin closure of each.
+
+// TestSanitizeTimeline_ProjectIDBareParenForm — actual TIMELINE
+// prompt emit shape `Zerops project `<slug>` (`<id>`)`. No "id "
+// keyword inside the parentheses; original regex didn't match.
+func TestSanitizeTimeline_ProjectIDBareParenForm(t *testing.T) {
+	t.Parallel()
+	in := []byte("Session: `ca8266e6-3e42-4620-854a-cd02c6ac2b40` on Zerops project `zcprecipator-nestjs-showcase` (`f1NS28GZRByGbQz3WaihAw`).\n")
+	out := string(SanitizeTimeline(in, SanitizeTimelineOpts{}))
+	if strings.Contains(out, "f1NS28GZRByGbQz3WaihAw") {
+		t.Errorf("bare-paren project id leaked: %q", out)
+	}
+	if !strings.Contains(out, "(`<project-id>`)") {
+		t.Errorf("expected bare-paren `<project-id>` placeholder; got %q", out)
+	}
+}
+
+// TestSanitizeTimeline_SessionUUID — UUIDs in `Session: `<uuid>“
+// lines from the TIMELINE prompt's run-header.
+func TestSanitizeTimeline_SessionUUID(t *testing.T) {
+	t.Parallel()
+	in := []byte("Session: `ca8266e6-3e42-4620-854a-cd02c6ac2b40` on Zerops project `slug` (`f1NS28GZRByGbQz3WaihAw`).\n")
+	out := string(SanitizeTimeline(in, SanitizeTimelineOpts{}))
+	if strings.Contains(out, "ca8266e6-3e42-4620-854a-cd02c6ac2b40") {
+		t.Errorf("session UUID leaked: %q", out)
+	}
+	if !strings.Contains(out, "Session: `<session-id>`") {
+		t.Errorf("expected Session: `<session-id>` placeholder; got %q", out)
+	}
+}
+
+// TestSanitizeTimeline_HostnameHashNoPort — base: static stage
+// subdomains have no port suffix (`<host>stage-<digits>.<zone>.zerops.app`).
+// Run-40 leaked these because the with-port redactor required
+// `-<port>`.
+func TestSanitizeTimeline_HostnameHashNoPort(t *testing.T) {
+	t.Parallel()
+	in := []byte("Browser-walked on appstage (https://appstage-2311.prg1.zerops.app/).\n")
+	out := string(SanitizeTimeline(in, SanitizeTimelineOpts{}))
+	if strings.Contains(out, "appstage-2311.prg1.zerops.app") {
+		t.Errorf("no-port stage hostname leaked: %q", out)
+	}
+	if !strings.Contains(out, "appstage-<id>.prg1.zerops.app") {
+		t.Errorf("expected `appstage-<id>.prg1.zerops.app`; got %q", out)
+	}
+}
+
+// TestSanitizeTimeline_EngineMCPToolNames — strips Zerops MCP tool
+// names (zerops_*) the agent free-cites in TIMELINE narrative.
+// Whitelist: `zerops.app`, `zerops.io`, `zerops.yaml`, `zsc` must
+// pass through unchanged.
+func TestSanitizeTimeline_EngineMCPToolNames(t *testing.T) {
+	t.Parallel()
+	in := []byte(`Env keys cataloged via zerops_discover includeEnvs=true.
+Stage subdomain access enabled via zerops_subdomain action=enable.
+Cross-deploys verified via zerops_verify healthy on every slot.
+zerops_import ran 14 processes.
+See https://docs.zerops.io for more.
+The file zerops.yaml carries the deploy config.
+Run zsc execOnce in initCommands.
+`)
+	out := string(SanitizeTimeline(in, SanitizeTimelineOpts{}))
+	for _, leaked := range []string{
+		"zerops_discover", "zerops_subdomain", "zerops_verify", "zerops_import",
+	} {
+		if strings.Contains(out, leaked) {
+			t.Errorf("engine MCP tool name leaked: %q in %q", leaked, out)
+		}
+	}
+	// Porter-facing tokens must pass through.
+	for _, want := range []string{
+		"docs.zerops.io",
+		"zerops.yaml",
+		"zsc execOnce",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("porter-facing token %q stripped accidentally; got %q", want, out)
+		}
+	}
+}
+
+// TestSanitizeTimeline_EnginePhaseCommands — strips engine recipe-
+// state-machine commands the agent free-cites in TIMELINE narrative.
+func TestSanitizeTimeline_EnginePhaseCommands(t *testing.T) {
+	t.Parallel()
+	in := []byte(`complete-phase phase=finalize refused with "phase=finalize requires refinement sub-agent dispatch first".
+Called enter-phase phase=provision then re-completed.
+record-fragment refused first call without classification field.
+After stitch-content rendered every surface.
+build-subagent-prompt briefKind=refinement returned the brief.
+`)
+	out := string(SanitizeTimeline(in, SanitizeTimelineOpts{}))
+	for _, leaked := range []string{
+		"complete-phase", "enter-phase", "record-fragment", "stitch-content", "build-subagent-prompt",
+	} {
+		if strings.Contains(out, leaked) {
+			t.Errorf("engine phase command leaked: %q in %q", leaked, out)
+		}
+	}
+}
+
+// TestSanitizeTimeline_Run40FixtureFullCoverage — end-to-end on the
+// actual run-40 TIMELINE shape (composite of bare-paren project ID,
+// session UUID, no-port stage hostname, engine MCP tools, engine
+// phase commands). Pinned against the leak list from
+// [plans/run-40-validation.md] §"ENG-2 — PARTIAL".
+func TestSanitizeTimeline_Run40FixtureFullCoverage(t *testing.T) {
+	t.Parallel()
+	in := []byte("# nestjs-showcase recipe build timeline\n\n" +
+		"Session: `ca8266e6-3e42-4620-854a-cd02c6ac2b40` on Zerops project `zcprecipator-nestjs-showcase` (`f1NS28GZRByGbQz3WaihAw`).\n\n" +
+		"## 2. Provision\n\n" +
+		"- `zerops_import` ran 14 processes.\n" +
+		"- Env keys cataloged via `zerops_discover includeEnvs=true`.\n\n" +
+		"## 3. Scaffold\n\n" +
+		"Cross-deploys dev→stage all green (`zerops_verify` healthy on every slot).\n\n" +
+		"Stage subdomain URLs (workspace, not deliverable):\n" +
+		"- apistage: `https://apistage-<id>-3000.prg1.zerops.app/`\n" +
+		"- appstage: `https://appstage-2311.prg1.zerops.app/`\n\n" +
+		"## 7. Finalize\n\n" +
+		"- `stitch-content` rendered every surface into `<output-root>/`.\n" +
+		"- `complete-phase phase=finalize` refused with `phase=finalize requires refinement sub-agent dispatch first`.\n")
+	out := string(SanitizeTimeline(in, SanitizeTimelineOpts{ServiceCount: 11}))
+	for _, leak := range []string{
+		"f1NS28GZRByGbQz3WaihAw",
+		"ca8266e6-3e42-4620-854a-cd02c6ac2b40",
+		"appstage-2311.prg1.zerops.app",
+		"zerops_import",
+		"zerops_discover",
+		"zerops_verify",
+		"complete-phase",
+		"stitch-content",
+	} {
+		if strings.Contains(out, leak) {
+			t.Errorf("run-40 leak %q still in output:\n%s", leak, out)
+		}
+	}
+}

@@ -122,6 +122,10 @@ func TestCompletePhaseRefinement_FlipsClosedFlagAndWritesMarker(t *testing.T) {
 		sess.Completed[p] = true
 	}
 	sess.RefinementDispatched = true
+	// Run-41 — refinement-2 (cross-surface audit) must also dispatch
+	// before complete-phase phase=refinement closes. Set the flag so
+	// this test exercises the close path, not the dispatch gate.
+	sess.Refinement2Dispatched = true
 	// Reset PhaseRefinement → not yet completed so close fires the
 	// flip path below.
 	sess.Completed[PhaseRefinement] = false

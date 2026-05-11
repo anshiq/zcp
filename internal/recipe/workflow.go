@@ -75,6 +75,16 @@ type Session struct {
 	// is set so the always-on quality gate (system.md §3 phase 8)
 	// stops being silently skipped. Run-23 F-26.
 	RefinementDispatched bool
+	// Refinement2Dispatched flips to true the first time
+	// `build-subagent-prompt briefKind=refinement2` returns ok. The
+	// `complete-phase phase=refinement` handler refuses unless this
+	// flag is set — refinement-1 walks per-fragment rules; refinement-
+	// 2 is the cross-surface audit pass (KB↔IG duplication, surface-
+	// misplacement, aspirational-as-current, yaml-comment-content-
+	// drift). Run-40 dogfood ([plans/run-40-validation.md]) shipped
+	// six cross-surface defects that refinement-1 ran clean over.
+	// Run-41.
+	Refinement2Dispatched bool
 	// RefinementClosed flips to true when `complete-phase
 	// phase=refinement` returns ok. The export gate
 	// (`zcp sync recipe export`) refuses unless this flag is set —
@@ -283,9 +293,10 @@ func seedEngineEmittedFacts(sess *Session, kind BriefKind, codebaseHostname stri
 		toEmit = EmittedFactsForCodebase(sess.Plan, cb)
 	case BriefEnvContent:
 		toEmit = EmittedTierDecisionFacts(sess.Plan)
-	case BriefFeature, BriefFinalize, BriefRefinement:
-		// no engine-emit at these kinds — refinement (run-17 §9) reads
-		// the recorded facts log; engine-emit is research-phase only.
+	case BriefFeature, BriefFinalize, BriefRefinement, BriefRefinement2:
+		// no engine-emit at these kinds — refinement (run-17 §9) +
+		// refinement2 (run-41) read the recorded facts log; engine-
+		// emit is research-phase only.
 		return nil
 	}
 
@@ -420,6 +431,16 @@ func (s *Session) BuildBrief(kind BriefKind, cb Codebase, featurePass FeaturePas
 			factsSnapshot = recs
 		}
 		return BuildRefinementBrief(plan, parent, outputRoot, factsSnapshot)
+	case BriefRefinement2:
+		var factsSnapshot []FactRecord
+		if factsLog != nil {
+			recs, err := factsLog.Read()
+			if err != nil {
+				return Brief{}, fmt.Errorf("read facts log for refinement2 brief: %w", err)
+			}
+			factsSnapshot = recs
+		}
+		return BuildRefinement2Brief(plan, parent, outputRoot, factsSnapshot)
 	default:
 		return Brief{}, fmt.Errorf("unknown brief kind %q", kind)
 	}

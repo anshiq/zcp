@@ -155,6 +155,7 @@ const (
 	BriefClaudeMDAuthor  BriefKind = "claudemd-author"  // run-16 §6.7a
 	BriefEnvContent      BriefKind = "env-content"      // run-16 §6.3
 	BriefRefinement      BriefKind = "refinement"       // run-17 §9
+	BriefRefinement2     BriefKind = "refinement2"      // run-41 — cross-surface audit pass
 )
 
 // Run-16 §6.2 — content-phase brief size caps. Per-codebase brief is

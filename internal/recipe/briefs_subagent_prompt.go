@@ -162,7 +162,7 @@ func buildSubagentPromptForPhase(plan *Plan, parent *ParentRecipe, in RecipeInpu
 	switch kind {
 	case BriefScaffold, BriefFeature, BriefFinalize,
 		BriefCodebaseContent, BriefClaudeMDAuthor, BriefEnvContent,
-		BriefRefinement:
+		BriefRefinement, BriefRefinement2:
 		// ok
 	default:
 		return "", fmt.Errorf("buildSubagentPrompt: unknown briefKind %q", in.BriefKind)
@@ -225,7 +225,7 @@ func requiresCodebase(kind BriefKind) bool {
 	switch kind {
 	case BriefScaffold, BriefCodebaseContent, BriefClaudeMDAuthor:
 		return true
-	case BriefFeature, BriefFinalize, BriefEnvContent, BriefRefinement:
+	case BriefFeature, BriefFinalize, BriefEnvContent, BriefRefinement, BriefRefinement2:
 		return false
 	}
 	return false
@@ -264,6 +264,13 @@ func buildBriefForKind(plan *Plan, parent *ParentRecipe, kind BriefKind, cb Code
 		// runDir here suppresses the stitched-output pointer block;
 		// the brief still carries atoms + rubric.
 		return BuildRefinementBrief(plan, parent, "", facts)
+	case BriefRefinement2:
+		// Run-41 — same outputRoot story as BriefRefinement.
+		// Production dispatch threads Session.OutputRoot via
+		// Session.BuildBrief. This static-composition entry has no
+		// outputRoot in scope; empty runDir suppresses the stitched-
+		// output pointer block (audit checklist still lands).
+		return BuildRefinement2Brief(plan, parent, "", facts)
 	default:
 		return Brief{}, fmt.Errorf("unknown briefKind %q", kind)
 	}
@@ -288,6 +295,8 @@ func writePromptHeader(b *strings.Builder, plan *Plan, kind BriefKind, cb Codeba
 		fmt.Fprintf(b, "You are the env-content sub-agent for the %s recipe.\n", plan.Slug)
 	case BriefRefinement:
 		fmt.Fprintf(b, "You are the refinement sub-agent for the %s recipe.\n", plan.Slug)
+	case BriefRefinement2:
+		fmt.Fprintf(b, "You are the refinement-2 (cross-surface audit) sub-agent for the %s recipe.\n", plan.Slug)
 	}
 	b.WriteString("Read the engine brief below verbatim and follow it; the recipe-level\n")
 	b.WriteString("context above and the closing notes below the brief are wrapper notes\n")
@@ -479,13 +488,24 @@ func writePromptCloseFooter(b *strings.Builder, kind BriefKind, codebase string,
 	case BriefRefinement:
 		b.WriteString("When you've refined every fragment where you can cite the\n")
 		b.WriteString("violated rule (from `derived_rules.md`), the exact fragment,\n")
-		b.WriteString("and the preserving edit, call\n\n")
-		b.WriteString("    zerops_recipe action=complete-phase phase=refinement\n\n")
-		b.WriteString("to close the run. Each `record-fragment mode=replace` you fire\n")
-		b.WriteString("at this phase is wrapped in a snapshot/restore primitive — if\n")
-		b.WriteString("a post-replace validator surfaces a new violation, the engine\n")
-		b.WriteString("reverts the fragment to its pre-refinement body. Per-fragment\n")
-		b.WriteString("edit cap is 1 attempt; do NOT loop.\n")
+		b.WriteString("and the preserving edit, terminate. The main agent then\n")
+		b.WriteString("dispatches the refinement-2 (cross-surface audit) sub-agent\n")
+		b.WriteString("via `build-subagent-prompt briefKind=refinement2`, and only\n")
+		b.WriteString("after BOTH sub-agents have run does `complete-phase\n")
+		b.WriteString("phase=refinement` close the run. Each `record-fragment\n")
+		b.WriteString("mode=replace` you fire at this phase is wrapped in a\n")
+		b.WriteString("snapshot/restore primitive — if a post-replace validator\n")
+		b.WriteString("surfaces a new violation, the engine reverts the fragment\n")
+		b.WriteString("to its pre-refinement body. Per-fragment edit cap is 1\n")
+		b.WriteString("attempt; do NOT loop.\n")
+	case BriefRefinement2:
+		b.WriteString("When you've walked every defect class in `audit_checklist.md`\n")
+		b.WriteString("against the full set of stitched surfaces and emitted the\n")
+		b.WriteString("fenced JSON findings block, terminate. You do NOT call\n")
+		b.WriteString("`record-fragment` or `complete-phase` — diagnosis-only.\n")
+		b.WriteString("The main agent reads the findings block, applies fixes\n")
+		b.WriteString("per-finding (or accepts as known), and then closes\n")
+		b.WriteString("refinement via `complete-phase phase=refinement`.\n")
 	}
 }
 
