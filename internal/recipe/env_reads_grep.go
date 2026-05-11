@@ -143,11 +143,22 @@ var envReadPatterns = []*regexp.Regexp{
 
 // envReadDestructurePatterns capture `{ A, B } = process.env` /
 // `{ A } = import.meta.env` shapes. Each match's submatch 1 is the
-// comma-separated brace body; envReadKeysFromDestructure splits and
-// returns one KEY per name. Aliasing (`{ DB_HOST: host }`) keeps the
+// comma-separated brace body; the inner regex splits and returns
+// one KEY per name. Aliasing (`{ DB_HOST: host }`) keeps the
 // LEFT side (the env name).
+//
+// Run-40 fix-up second pass (codex finding #10 PARTIAL closure):
+// removed the bogus `=\s*process\.env[^{]*\{...\}` pattern that
+// matched `process.env BEFORE the destructure braces`. No such
+// JS shape exists — destructure always has braces on the LEFT of
+// the assignment. The pattern was producing false positives on
+//
+//	const env = process.env; const config = { DB_HOST: "x" }
+//
+// where `DB_HOST` is a config-object key, not an env read.
+// Codex flagged this in the second-pass review as worth closing
+// before any future env-reads grep expansion.
 var envReadDestructurePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`=\s*process\.env[^{]*\{([^}]+)\}`),
 	regexp.MustCompile(`\{([^}]+)\}\s*=\s*process\.env`),
 	regexp.MustCompile(`\{([^}]+)\}\s*=\s*import\.meta\.env`),
 }

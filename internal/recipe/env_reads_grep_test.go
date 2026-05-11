@@ -62,6 +62,35 @@ const url = process.env.DB_URL;
 	}
 }
 
+// TestSourceGrepEnvReads_NonEnvObjectKeysNotConfused — second-pass
+// codex review caught a false-positive in the run-40 fix-up
+// destructure regex: the bogus pattern `= process.env[^{]*{...}`
+// matched `const env = process.env; const config = { DB_HOST: "x" }`
+// and recorded `DB_HOST` as an env read even though the code never
+// reads it from process.env. The pattern was deleted because no
+// valid JS destructure shape places process.env BEFORE the braces.
+// This test pins the false-positive scenario can't regress.
+func TestSourceGrepEnvReads_NonEnvObjectKeysNotConfused(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	body := `// Bind process.env reference then build an unrelated config object.
+const env = process.env;
+const config = { DB_HOST: "literal-not-from-env", DB_PORT: 5432 };
+const usedFromEnv = process.env.REAL_KEY;
+`
+	if err := os.WriteFile(filepath.Join(dir, "config.ts"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := sourceGrepEnvReads(dir)
+	if err != nil {
+		t.Fatalf("sourceGrepEnvReads: %v", err)
+	}
+	want := []string{"REAL_KEY"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("non-env object keys leaked into reads.\nwant=%v\ngot=%v", want, got)
+	}
+}
+
 // TestSourceGrepEnvReads_Destructuring — Run-40 fix-up #10. Captures
 // `const { A, B } = process.env` and `const { VITE_X } = import.meta.env`
 // shapes including aliasing (`{ DB_HOST: host }` → captures DB_HOST).
