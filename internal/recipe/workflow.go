@@ -82,6 +82,13 @@ type Session struct {
 	// that crashes mid-dispatch leaves RefinementDispatched=true but
 	// RefinementClosed=false. Run-23 F-26.
 	RefinementClosed bool
+
+	// parentResolved guards lazy parent resolution. LoadParent runs at
+	// most once per session — subsequent calls return the cached Parent.
+	// True after the first LoadParent attempt regardless of outcome
+	// (cache the "no parent" decision so repeat callers don't re-walk
+	// the embed.FS + filesystem mount probe).
+	parentResolved bool
 }
 
 // NewSession bootstraps a session at PhaseResearch with an empty plan.
@@ -100,6 +107,37 @@ func NewSession(slug, engineVersion string, factsLog *FactsLog, outputRoot strin
 		EngineVersion: engineVersion,
 		Completed:     map[Phase]bool{},
 	}
+}
+
+// LoadParent resolves the parent recipe lazily and caches the result
+// on the session. First caller triggers ResolveChain; subsequent
+// callers read the cache. Errors other than ErrNoParent abort and
+// surface to the caller; ErrNoParent is the legitimate "no parent
+// for this slug" path and leaves sess.Parent nil with parentResolved
+// true so the cache short-circuits subsequent calls.
+//
+// Used by every brief composer that needs the parent body
+// (scaffold/codebase-content/env-content/refinement) and by the
+// surface validator that takes ctx.Parent. Research/provision/feature
+// gates don't call LoadParent and the resolution is skipped for those
+// paths — the prior eager-load at session start did wasted work for
+// every phase whose consumers don't read parent content.
+func (s *Session) LoadParent() (*ParentRecipe, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.parentResolved {
+		return s.Parent, nil
+	}
+	s.parentResolved = true
+	parent, err := ResolveChain(Resolver{MountRoot: s.MountRoot}, s.Slug)
+	if err != nil && !errors.Is(err, ErrNoParent) {
+		// Reset parentResolved so a future call can retry — only
+		// definite outcomes (parent found, or ErrNoParent) cache.
+		s.parentResolved = false
+		return nil, fmt.Errorf("load parent: %w", err)
+	}
+	s.Parent = parent
+	return s.Parent, nil
 }
 
 // EnterPhase transitions the session into the named phase. Returns an

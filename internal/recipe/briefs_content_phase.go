@@ -745,18 +745,14 @@ func appendEmbeddedParentBaseline(b *strings.Builder, slug string, parent *Paren
 	if parent != nil && parent.SourceRoot != "" {
 		return false
 	}
-	parentSlug := parentSlugFor(slug)
-	if parentSlug == "" {
-		return false
-	}
-	embeddedParent, err := loadEmbeddedRecipeMD(parentSlug)
-	if err != nil {
+	body, parentSlug, ok := embeddedParentBody(slug, parent)
+	if !ok {
 		return false
 	}
 	b.WriteString("## Parent recipe baseline (embedded)\n\n")
 	fmt.Fprintf(b, framing, parentSlug)
 	b.WriteString("```md\n")
-	excerpt := excerptREADME(embeddedParent, excerptCap)
+	excerpt := excerptREADME(body, excerptCap)
 	b.WriteString(excerpt)
 	if !strings.HasSuffix(excerpt, "\n") {
 		b.WriteByte('\n')
@@ -773,22 +769,44 @@ func appendEmbeddedParentBaselineRefinement(b *strings.Builder, slug string, par
 	if parent != nil && parent.SourceRoot != "" {
 		return false
 	}
-	parentSlug := parentSlugFor(slug)
-	if parentSlug == "" {
-		return false
-	}
-	embeddedParent, err := loadEmbeddedRecipeMD(parentSlug)
-	if err != nil {
+	body, parentSlug, ok := embeddedParentBody(slug, parent)
+	if !ok {
 		return false
 	}
 	b.WriteString("**Parent recipe baseline (embedded)**\n\n")
 	fmt.Fprintf(b, framing, parentSlug)
 	b.WriteString("```md\n")
-	excerpt := excerptREADME(embeddedParent, excerptCap)
+	excerpt := excerptREADME(body, excerptCap)
 	b.WriteString(excerpt)
 	if !strings.HasSuffix(excerpt, "\n") {
 		b.WriteByte('\n')
 	}
 	b.WriteString("```\n\n")
 	return true
+}
+
+// embeddedParentBody returns the embedded parent recipe `.md` body
+// for slug. Prefers parent.EmbeddedBody when the caller pre-loaded
+// it (sess.LoadParent → cached on session); falls back to
+// loadEmbeddedRecipeMD for callers that bypassed the session
+// resolver (tests, single-file BuildScaffoldBrief path). Returns
+// (body, parentSlug, true) on hit; (_, _, false) when slug has no
+// chain parent or the embedded corpus has no published `.md`.
+//
+// Run-40 post-ship — consolidates the embedded-body lookup so brief
+// composers stop re-walking the embed.FS once the session's already
+// resolved the parent.
+func embeddedParentBody(slug string, parent *ParentRecipe) (string, string, bool) {
+	if parent != nil && parent.IsEmbedded() && parent.EmbeddedBody != "" {
+		return parent.EmbeddedBody, parent.Slug, true
+	}
+	parentSlug := parentSlugFor(slug)
+	if parentSlug == "" {
+		return "", "", false
+	}
+	body, err := loadEmbeddedRecipeMD(parentSlug)
+	if err != nil {
+		return "", "", false
+	}
+	return body, parentSlug, true
 }

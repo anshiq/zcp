@@ -592,19 +592,15 @@ func renderEmbeddedParentBaseline(slug string, parent *ParentRecipe, framing str
 	if parent != nil && parent.SourceRoot != "" {
 		return ""
 	}
-	parentSlug := parentSlugFor(slug)
-	if parentSlug == "" {
-		return ""
-	}
-	embeddedParent, err := loadEmbeddedRecipeMD(parentSlug)
-	if err != nil {
+	body, parentSlug, ok := embeddedParentBody(slug, parent)
+	if !ok {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("## Parent recipe baseline (embedded)\n\n")
 	fmt.Fprintf(&b, framing, parentSlug)
 	b.WriteString("```md\n")
-	excerpt := excerptREADME(embeddedParent, excerptCap)
+	excerpt := excerptREADME(body, excerptCap)
 	b.WriteString(excerpt)
 	if !strings.HasSuffix(excerpt, "\n") {
 		b.WriteByte('\n')
@@ -620,19 +616,15 @@ func renderEmbeddedParentBaselineRefinement(slug string, parent *ParentRecipe, f
 	if parent != nil && parent.SourceRoot != "" {
 		return ""
 	}
-	parentSlug := parentSlugFor(slug)
-	if parentSlug == "" {
-		return ""
-	}
-	embeddedParent, err := loadEmbeddedRecipeMD(parentSlug)
-	if err != nil {
+	body, parentSlug, ok := embeddedParentBody(slug, parent)
+	if !ok {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("**Parent recipe baseline (embedded)**\n\n")
 	fmt.Fprintf(&b, framing, parentSlug)
 	b.WriteString("```md\n")
-	excerpt := excerptREADME(embeddedParent, excerptCap)
+	excerpt := excerptREADME(body, excerptCap)
 	b.WriteString(excerpt)
 	if !strings.HasSuffix(excerpt, "\n") {
 		b.WriteByte('\n')

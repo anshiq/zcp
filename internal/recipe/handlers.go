@@ -148,11 +148,13 @@ func (s *Store) OpenOrCreate(slug, outputRoot string) (*Session, error) {
 		return nil, fmt.Errorf("create output root: %w", err)
 	}
 	log := OpenFactsLog(filepath.Join(outputRoot, "facts.jsonl"))
-	parent, err := ResolveChain(Resolver{MountRoot: s.mountRoot}, slug)
-	if err != nil && !errors.Is(err, ErrNoParent) {
-		return nil, fmt.Errorf("resolve chain: %w", err)
-	}
-	sess := NewSession(slug, s.engineVersion, log, outputRoot, parent)
+	// Parent recipe resolution is lazy — sess.Parent starts nil and is
+	// populated by sess.LoadParent() on first consumer demand (scaffold
+	// brief composition is the first phase that needs the body to inject
+	// the parent baseline section). Research/provision/feature phases
+	// have no parent consumer; loading at session start would be wasted
+	// work for those paths.
+	sess := NewSession(slug, s.engineVersion, log, outputRoot, nil)
 	sess.MountRoot = s.mountRoot
 	// Rehydrate Plan from disk when plan.json exists. Cross-process
 	// continuity: dispatched sub-agents share outputRoot with the main
@@ -324,9 +326,16 @@ func dispatch(_ context.Context, store *Store, in RecipeInput) RecipeResult {
 			r.Error = err.Error()
 			return r
 		}
+		// Lazy parent shape: sess.Parent is nil here (resolution
+		// deferred to scaffold-brief dispatch). parentStatus at start
+		// reports the chain prediction — "embedded" / "absent" — from
+		// the cheap parentSlugFor check + embed.FS existence probe,
+		// without populating the full ParentRecipe body. The agent
+		// knows what's coming; the body lands on the first
+		// build-subagent-prompt call that needs it.
 		snap := sess.Snapshot()
-		r.Status, r.Parent = &snap, sess.Parent
-		r.ParentStatus = parentStatus(sess.Parent)
+		r.Status = &snap
+		r.ParentStatus = predictParentStatus(in.Slug)
 		r.Guidance = loadPhaseEntry(sess.Current)
 		r.OK = true
 	case "enter-phase":
@@ -492,6 +501,18 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 	// feature, finalize, claudemd-author) keep the legacy run-29 Fix #1
 	// disk-fallback shape: inline below 40 KB, single-file disk pointer
 	// above.
+	//
+	// Lazy parent load: brief composers are the load-bearing consumer
+	// of parent content. Trigger LoadParent() here so the composer
+	// receives a populated sess.Parent on first dispatch (cached after
+	// that). Errors other than ErrNoParent abort the dispatch — a
+	// definite "no parent" outcome (hello-world / minimal / unpublished
+	// parent) flows through with sess.Parent == nil and the composer's
+	// own appendEmbeddedParentBaseline / parent != nil checks handle it.
+	if _, lpErr := sess.LoadParent(); lpErr != nil {
+		r.Error = lpErr.Error()
+		return r
+	}
 	prompt, indexPath, err := buildSubagentDispatchForPhase(sess.Plan, sess.Parent, in, sess.Current, sess.MountRoot, sess.OutputRoot, factsSnapshot)
 	if err != nil {
 		r.Error = err.Error()
@@ -1599,6 +1620,32 @@ func writeSurfaceFile(path, body string) error {
 	return nil
 }
 
+// parentStatus tag values. Single-source so the predict path + the
+// post-load path (parentStatus()) emit byte-identical tags.
+const (
+	parentStatusAbsent   = "absent"
+	parentStatusEmbedded = "embedded"
+	parentStatusMounted  = "mounted"
+)
+
+// predictParentStatus reports the parentStatus value the lazy load
+// would produce, without actually loading the parent body. Used by
+// the `start` handler to give the research-phase agent an accurate
+// signal at session open. Cheap: parentSlugFor() is a string-suffix
+// check; the embed.FS probe is one fs.Stat against the in-memory
+// embed tree. The full body load is deferred to LoadParent() on the
+// first brief-composition call.
+func predictParentStatus(slug string) string {
+	parentSlug := parentSlugFor(slug)
+	if parentSlug == "" {
+		return parentStatusAbsent
+	}
+	if _, err := loadEmbeddedRecipeMD(parentSlug); err == nil {
+		return parentStatusEmbedded
+	}
+	return parentStatusAbsent
+}
+
 // parentStatus returns a short tag telling the agent how the chain
 // resolver found the parent recipe:
 //   - "absent"   : no parent exists for this slug (hello-world,
@@ -1618,12 +1665,12 @@ func writeSurfaceFile(path, body string) error {
 // binary but isn't mounted on the local fs.
 func parentStatus(p *ParentRecipe) string {
 	if p == nil {
-		return "absent"
+		return parentStatusAbsent
 	}
 	if p.IsEmbedded() {
-		return "embedded"
+		return parentStatusEmbedded
 	}
-	return "mounted"
+	return parentStatusMounted
 }
 
 // nextPhase returns the phase immediately after p, if any.

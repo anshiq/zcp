@@ -581,31 +581,27 @@ func BuildScaffoldBriefWithResolver(plan *Plan, cb Codebase, parent *ParentRecip
 			}
 			parts = append(parts, "parent_excerpt")
 		}
-	} else if parentSlug := parentSlugFor(plan.Slug); parentSlug != "" {
-		// Run-22 R3-RC-0 — embedded-parent fallback. When the chain
-		// resolver returns no parent (filesystem mount empty) but the
-		// slug has a recognized chain parent (*-showcase → *-minimal),
-		// inject the embedded recipe `.md` from internal/knowledge/recipes/
-		// as a baseline section so scaffold sub-agents can inherit setup
-		// naming, project-secret posture, and codebase yaml shape from a
-		// deployment-verified predecessor. Pre-fix the binary IS
-		// carrying this content but the v3 chain resolver doesn't read
-		// it; this is the missing accessor.
-		if embeddedParent, err := loadEmbeddedRecipeMD(parentSlug); err == nil {
-			b.WriteString("## Parent recipe baseline (embedded)\n\n")
-			fmt.Fprintf(&b, "Parent slug: %s — read this for convention inheritance "+
-				"(setup names, project-secret posture, comment style, codebase yaml shape). "+
-				"Don't re-invent; your showcase should be a superset of these conventions.\n\n",
-				parentSlug)
-			b.WriteString("```md\n")
-			excerpt := excerptREADME(embeddedParent, 4000)
-			b.WriteString(excerpt)
-			if !strings.HasSuffix(excerpt, "\n") {
-				b.WriteByte('\n')
-			}
-			b.WriteString("```\n\n")
-			parts = append(parts, "embedded_parent_baseline")
+	} else if body, parentSlug, ok := embeddedParentBody(plan.Slug, parent); ok {
+		// Run-22 R3-RC-0 — embedded-parent baseline section. The
+		// scaffold sub-agent inherits setup naming, project-secret
+		// posture, and codebase yaml shape from a deployment-verified
+		// predecessor. embeddedParentBody prefers the cached
+		// parent.EmbeddedBody (loaded once via sess.LoadParent) and
+		// falls back to a direct embed.FS read for callers that bypass
+		// the session resolver (tests, ad-hoc composer calls).
+		b.WriteString("## Parent recipe baseline (embedded)\n\n")
+		fmt.Fprintf(&b, "Parent slug: %s — read this for convention inheritance "+
+			"(setup names, project-secret posture, comment style, codebase yaml shape). "+
+			"Don't re-invent; your showcase should be a superset of these conventions.\n\n",
+			parentSlug)
+		b.WriteString("```md\n")
+		excerpt := excerptREADME(body, 4000)
+		b.WriteString(excerpt)
+		if !strings.HasSuffix(excerpt, "\n") {
+			b.WriteByte('\n')
 		}
+		b.WriteString("```\n\n")
+		parts = append(parts, "embedded_parent_baseline")
 	}
 
 	body := b.String()

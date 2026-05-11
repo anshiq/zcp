@@ -70,29 +70,40 @@ the user asked for one by name.
 
 ## Parent recipe handling
 
-The `parentStatus` field in the `start` response tells you how the
-chain resolver found the parent recipe:
+The `parentStatus` field in the `start` response tells you whether a
+parent recipe is available for your slug — it's a prediction, not a
+loaded body. Resolution is lazy: the parent `.md` body is loaded on
+first scaffold-brief dispatch and surfaced inline to that sub-agent
+(and the codebase-content / env-content / refinement composers
+downstream) as the "Parent recipe baseline (embedded)" section.
 
-- **`"embedded"`**: parent recipe lives in the binary's embedded
-  knowledge corpus (`internal/knowledge/recipes/<parent-slug>.md`).
-  The full `.md` body is on `parent.embeddedBody`. This is the
-  default for every `*-showcase` slug whose chain parent has been
-  published (e.g. `nestjs-showcase` → `nestjs-minimal`, embedded).
-  Read `parent.embeddedBody` verbatim — it carries the parent's
-  conventions, service set, runtime version pins, and proven
-  scaffold shape. Inherit setup names, project-env posture, and
-  structural patterns — don't re-invent. The embedded minimal
+- **`"embedded"`**: parent recipe `internal/knowledge/recipes/
+  <parent-slug>.md` exists in the binary's embedded knowledge corpus.
+  The scaffold sub-agent will see the full body inline when its
+  brief composes. At research phase the body is NOT in the start
+  response — if you want to read it now for convention inheritance
+  (setup naming, project-secret posture, codebase yaml shape), call
+  `zerops_knowledge recipe=<parent-slug>`. This is the one
+  legitimate parent-content use of `zerops_knowledge` at
+  recipe-authoring time. Inherit setup names, project-env posture,
+  and structural patterns — don't re-invent. The embedded minimal
   recipe has been deployment-verified; your showcase extension
   should be a superset of its conventions, not a parallel one.
-  The scaffold/codebase-content/env-content/refinement brief
-  composers ALSO surface this same body inline at authoring time
-  (see the "Parent recipe baseline (embedded)" block in each
-  downstream brief), so you read it once at research and the
-  agents downstream see it again where it's load-bearing. If you
-  need a mid-phase refresher, call `zerops_knowledge recipe=<parent-slug>`
-  to re-read the corpus entry — this is **convention inheritance**,
-  the one legitimate parent-content use of `zerops_knowledge` at
-  recipe-authoring time.
+- **`"absent"`**: no parent for this slug — the recipe genuinely
+  has none (`hello-world-*`, `*-minimal`) OR the parent hasn't been
+  published yet (no embedded `.md`). Three cases govern what's
+  allowed:
+  - **For the canonical service set + runtime versions**: proceed
+    from this atom only. Don't call `zerops_knowledge` to substitute
+    for these — they're authoritative whether or not parent exists.
+  - **For convention inheritance** (setup naming, project-secret
+    posture, comment style, codebase yaml shape): without an
+    embedded or mounted parent, the agent extrapolates from
+    `zerops_knowledge query=<topic>` guides.
+  - **For platform mechanics** (env-var rules, alias contracts,
+    L7 balancer behavior): use `zerops_knowledge query=<topic>`
+    for the relevant guide. Always preferred over agent
+    extrapolation.
 - **`"mounted"`**: parent recipe came from a filesystem-mounted
   tree (`~/recipes/<parent-slug>/` with full per-codebase READMEs +
   per-tier import.yamls). Legacy CDE shape. Read
