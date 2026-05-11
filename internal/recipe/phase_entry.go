@@ -71,7 +71,13 @@ func gatesForPhase(p Phase) []Gate {
 		// snapshot/restore wrapper at record-fragment time; the phase
 		// has no exit gates beyond the default fact-quality + citation
 		// timestamp checks.
-		return base
+		//
+		// Run-40 ENG-6 — refinement close adds the stitched-matches-plan
+		// gate as the final safety net against plan.json↔disk divergence.
+		// Catches any future regression where one side of the
+		// fragment-write path skips its counterpart (the run-39 S1-5
+		// failure mode that motivated this gate).
+		return append(base, Gate{Name: "stitched-matches-plan", Run: gateStitchedMatchesPlan})
 	case PhaseProvision:
 		return base
 	}
