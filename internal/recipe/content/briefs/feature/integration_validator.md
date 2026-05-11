@@ -23,7 +23,7 @@ panel into the UI:
    authority" below.
 
 After wiring, browser-walk the panel. Open the appstage subdomain via
-`agent-browser`, click the panel into its load state, confirm the data
+`zerops_browser`, click the panel into its load state, confirm the data
 renders. Record a `browser_verification` fact. Required fields
 (validated by `FactRecord.validateBrowserVerification`): `topic`,
 `kind`, `subject` (the panel or page name), `service` (the deployed
@@ -36,7 +36,7 @@ rendered + how many items + which state):
   "kind": "browser_verification",
   "subject": "items panel (ItemsGrid)",
   "service": "appstage",
-  "why": "Walked appstage-${zeropsSubdomainHost}.prg1.zerops.app/items in agent-browser; 20 items rendered in a grid; pagination shows page 1 of 2; no console errors."
+  "why": "Walked appstage-${zeropsSubdomainHost}.prg1.zerops.app/items in zerops_browser; 20 items rendered in a grid; pagination shows page 1 of 2; no console errors."
 }
 ```
 
@@ -84,7 +84,7 @@ If you edit `apidev`, redeploy `apistage` (and `workerstage` if
 applicable) so the next agent run sees the canonical contract:
 
 ```
-zerops_deploy slot=apistage
+zerops_deploy targetService=apistage
 ```
 
 Without redeploy, your edit is dev-only and the next session walks the

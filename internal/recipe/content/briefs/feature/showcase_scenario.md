@@ -216,7 +216,7 @@ For each feature card (Items / Cache / Queue / Storage / Search):
 1. **Author the card on appdev.** Self-deploy via `git push` is the
    only deploy; the dev container's HMR (`npm run dev` already running
    under SSH) picks up the change automatically.
-2. **Browser-walk on appdev** with `agent-browser`. Click the card's
+2. **Browser-walk on appdev** with `zerops_browser`. Click the card's
    primary action; verify the response state lands. Use
    `data-feature` selectors and `scrollIntoView({block: 'center'})`
    per the layout-pinning section above.

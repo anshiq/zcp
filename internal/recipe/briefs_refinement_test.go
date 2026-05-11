@@ -554,6 +554,33 @@ func TestBuildRefinementBriefMultiFile_StitchedPointerBlock_PopulatedFromOutputR
 // TestNoFilesystemReferenceLeak_RefinementBrief — pins §9.6: the
 // composer reads only embedded atoms; design-time author's machine
 // paths (/Users/fxck/...) must never appear in the brief body.
+// TestRefinementBrief_RunDirTrailingSlash_NoDoubleSlash — Run-40 S-3.
+// Run-39's BuildRefinementBrief was called with a trailing-slash
+// runDir (`/var/www/zcprecipator/nestjs-showcase/`); the fmt.Fprintf
+// path-concat then produced `nestjs-showcase//README.md` etc. across
+// every stitched-output pointer line in the brief. Reads succeeded
+// on POSIX (double-slash collapses) but porter-facing citations
+// carried the broken shape. Pin the normalization.
+func TestRefinementBrief_RunDirTrailingSlash_NoDoubleSlash(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug: "synth-showcase",
+		Codebases: []Codebase{
+			{Hostname: "api"}, {Hostname: "worker"},
+		},
+	}
+	brief, err := BuildRefinementBrief(plan, nil, "/var/www/zcprecipator/nestjs-showcase/", nil)
+	if err != nil {
+		t.Fatalf("BuildRefinementBrief: %v", err)
+	}
+	if strings.Contains(brief.Body, "nestjs-showcase//") {
+		t.Errorf("brief still contains double-slash path; got body excerpt:\n%s", brief.Body)
+	}
+	if !strings.Contains(brief.Body, "nestjs-showcase/README.md") {
+		t.Errorf("brief should carry single-slash README path; got body excerpt:\n%s", brief.Body)
+	}
+}
+
 func TestNoFilesystemReferenceLeak_RefinementBrief(t *testing.T) {
 	t.Parallel()
 	plan := &Plan{Slug: "x", Codebases: []Codebase{{Hostname: "api"}}}

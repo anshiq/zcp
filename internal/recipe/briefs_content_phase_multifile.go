@@ -302,6 +302,15 @@ func buildEnvContentBriefMultiFileWithFraming(plan *Plan, parent *ParentRecipe, 
 		return Brief{}, err
 	}
 
+	// Run-40 S-3 — env-content-only managed-service `<host>` mapping.
+	// Atom is inlined onto the existing naming part — the trap the atom
+	// pre-empts is env-content-specific (env/<N>/import-comments/<host>
+	// fragment ids), so this teaching doesn't belong on the
+	// codebase-content composer that shares writeNamingAndRulesParts.
+	if err := w.WriteOptionalAtom("briefs/env-content/managed_service_host_mapping.md"); err != nil {
+		return Brief{}, err
+	}
+
 	// Part 4 — context. WriteOrSplit handles overflow into a fresh
 	// `context-tail` part. Practically the env-content context fits
 	// comfortably under the cap in the run-31 fixture (~10 KB), but the
@@ -730,6 +739,11 @@ func renderRefinementStitchedPointerBlock(plan *Plan, parent *ParentRecipe, runD
 	if !hasStitchedBody {
 		return ""
 	}
+	// Run-40 S-3 — normalize trailing slash before string-concat so
+	// the path lines don't double-slash (`nestjs-showcase//README.md`).
+	// Same fix as the single-file BuildRefinementBrief above; see that
+	// site for the run-39 forensics.
+	runDir = strings.TrimRight(runDir, "/")
 	var b strings.Builder
 	b.WriteString("## Stitched output to refine\n\n")
 	b.WriteString("Read each path; refine fragments where you can cite the violated rule, the exact fragment, and the preserving edit.\n\n")

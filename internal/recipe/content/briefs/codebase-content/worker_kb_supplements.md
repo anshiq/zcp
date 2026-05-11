@@ -71,8 +71,14 @@ process.on('SIGTERM', async () => {
 });
 ```
 
-Both items cite the rolling-deploys platform topic (Citation map →
-`rolling-deploys`).
+Both items map to the `rolling-deploys` citation-map topic
+(engine-internal routing — see V3 slug-stem rule). The porter-facing
+link text MUST NOT contain the raw `rolling-deploys` slug-stem even
+with a `Zerops/managed` prefix or `reference`/`guide`/`service`
+suffix; replace with a porter-recognized concept (e.g.
+`[zero-downtime deploys with multi-container setups]`) or in-body
+completion. The slug-stem is a fact-stream lookup key, not the
+shape of the link text.
 
 ## When to HOLD
 

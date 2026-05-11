@@ -219,16 +219,12 @@ func BuildEnvContentBrief(plan *Plan, parent *ParentRecipe, facts []FactRecord) 
 		parts = append(parts, "principles/yaml-comment-style.md")
 	}
 
-	// Run-32 F-49 — codebase-name-vs-slot-hostname. Pre-empts
-	// `record-fragment fragmentId=env/<N>/import-comments/<host>dev`
-	// traps where the env-content agent reaches for the slot
-	// hostname (`apidev`/`workerdev`) instead of the bare codebase
-	// name in fragment-id components.
-	if atom, err := readAtom("principles/codebase-name-vs-slot-hostname.md"); err == nil {
-		b.WriteString(atom)
-		b.WriteString("\n\n")
-		parts = append(parts, "principles/codebase-name-vs-slot-hostname.md")
-	}
+	// Run-32 F-49 + Run-40 S-3 — codebase-name-vs-slot-hostname plus
+	// the env-content-only managed-service `<host>` mapping. Pre-
+	// empts `record-fragment fragmentId=env/<N>/import-comments/...`
+	// traps in both shapes: runtime codebases (slot vs bare name)
+	// and managed services (no dev/stage suffix).
+	parts = appendEnvFragmentNamingAtoms(&b, parts)
 
 	// Run-33 architectural fix #1 — golden-grounded rule substrate.
 	// Voice + IG6 Zerops-forced + tier-vocab forbidden rules visible at
@@ -457,6 +453,24 @@ func appendCrossCodebaseFactsBlock(b *strings.Builder, facts []FactRecord, cb Co
 	}
 	b.WriteString("\n")
 	return true
+}
+
+// appendEnvFragmentNamingAtoms loads the two env-fragment-id naming
+// atoms in order: the codebase-name-vs-slot-hostname principle and
+// the env-content-only managed-service host mapping (run-40 S-3).
+// Extracted to keep BuildEnvContentBrief under the maintidx ceiling.
+func appendEnvFragmentNamingAtoms(b *strings.Builder, parts []string) []string {
+	if atom, err := readAtom("principles/codebase-name-vs-slot-hostname.md"); err == nil {
+		b.WriteString(atom)
+		b.WriteString("\n\n")
+		parts = append(parts, "principles/codebase-name-vs-slot-hostname.md")
+	}
+	if atom, err := readAtom("briefs/env-content/managed_service_host_mapping.md"); err == nil {
+		b.WriteString(atom)
+		b.WriteString("\n\n")
+		parts = append(parts, "briefs/env-content/managed_service_host_mapping.md")
+	}
+	return parts
 }
 
 // appendNamedConstantsSection writes the canonical named-constants

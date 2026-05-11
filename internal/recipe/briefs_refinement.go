@@ -112,6 +112,16 @@ func BuildRefinementBrief(plan *Plan, parent *ParentRecipe, runDir string, facts
 		b.WriteString("## Stitched output to refine\n\n")
 		b.WriteString("Read each path; refine fragments where you can cite the violated rule (from `derived_rules.md`), the exact fragment, and the preserving edit.\n\n")
 		if runDir != "" {
+			// Run-40 S-3 — normalize trailing slash before string-
+			// concat. Run-39's runDir was passed in as
+			// `/var/www/zcprecipator/nestjs-showcase/` (trailing
+			// slash); the fmt.Fprintf calls below then produced
+			// `nestjs-showcase//README.md` etc. (every path
+			// double-slashed). The agent dispatched Read calls with
+			// the double-slash paths and the read succeeded on POSIX
+			// (double-slash collapses), but porter-facing diagnostics
+			// and citation-map links carried the broken shape.
+			runDir = strings.TrimRight(runDir, "/")
 			b.WriteString("**Root**\n\n")
 			fmt.Fprintf(&b, "- `%s/README.md` — root README\n", runDir)
 			b.WriteString("\n**Tier environments**\n\n")
