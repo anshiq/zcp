@@ -254,15 +254,41 @@ func ExportRecipe(opts ExportOpts) (*ExportResult, error) {
 	// which guides. Cx-4 MANIFEST-OVERLAY in v8.112.0 stages it into the
 	// recipe output directory; without inclusion in this whitelist it
 	// never reaches the tarball the user ships (v38 F-23 root cause).
+	//
+	// Run-40 ENG-2 — TIMELINE.md is agent-authored from session-log
+	// metadata that carries author project ID, hostname hashes, and
+	// machine paths. Sanitize between disk-read and tar-write so the
+	// shipped artifact carries placeholders while the on-disk copy in
+	// the author's workspace remains intact for the author's records.
+	timelineSanitizeOpts := timelineSanitizeOptsForRecipe(recipeDir)
 	for _, name := range []string{"TIMELINE.md", "README.md", "ZCP_CONTENT_MANIFEST.json"} {
 		p := filepath.Join(recipeDir, name)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			if addErr := addFileToTar(tw, p, filepath.Join(archivePrefix, name), fi); addErr != nil {
+		fi, err := os.Stat(p)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if name == "TIMELINE.md" {
+			body, rErr := os.ReadFile(p)
+			if rErr != nil {
+				tw.Close()
+				gw.Close()
+				tmpFile.Close()
+				return nil, fmt.Errorf("read TIMELINE.md: %w", rErr)
+			}
+			cleaned := SanitizeTimeline(body, timelineSanitizeOpts)
+			if addErr := addBytesToTar(tw, cleaned, filepath.Join(archivePrefix, name), fi); addErr != nil {
 				tw.Close()
 				gw.Close()
 				tmpFile.Close()
 				return nil, addErr
 			}
+			continue
+		}
+		if addErr := addFileToTar(tw, p, filepath.Join(archivePrefix, name), fi); addErr != nil {
+			tw.Close()
+			gw.Close()
+			tmpFile.Close()
+			return nil, addErr
 		}
 	}
 
@@ -488,6 +514,64 @@ func matchesSkipPattern(rel string) bool {
 		}
 	}
 	return false
+}
+
+// addBytesToTar adds an in-memory body to the tar writer under
+// archivePath. fi supplies the mode/mtime metadata. Used by the
+// TIMELINE.md sanitization path so the shipped tarball entry carries
+// the redacted body while the on-disk file at fullPath stays intact.
+//
+// The header size is overridden to len(body); FileInfoHeader populates
+// it from fi.Size() which would mis-state the size of the sanitized
+// bytes by however many characters the redactions stripped.
+func addBytesToTar(tw *tar.Writer, body []byte, archivePath string, fi os.FileInfo) error {
+	header, err := tar.FileInfoHeader(fi, "")
+	if err != nil {
+		return fmt.Errorf("file header %s: %w", archivePath, err)
+	}
+	header.Name = archivePath
+	header.Size = int64(len(body))
+	if err := tw.WriteHeader(header); err != nil {
+		return fmt.Errorf("write header %s: %w", archivePath, err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		return fmt.Errorf("write body %s: %w", archivePath, err)
+	}
+	return nil
+}
+
+// timelineSanitizeOptsForRecipe builds the SanitizeTimelineOpts from
+// the recipe's plan.json (when present). Returns the zero value when
+// plan.json is absent or unparseable — the sanitizer still applies
+// its always-on redactions in that case; only the count-substitution
+// path needs the plan.
+//
+// Plan.json lives at <recipeDir>/environments/plan.json (the nested
+// layout) or <recipeDir>/plan.json (the root layout). Try both.
+func timelineSanitizeOptsForRecipe(recipeDir string) SanitizeTimelineOpts {
+	for _, rel := range []string{"environments/plan.json", "plan.json"} {
+		path := filepath.Join(recipeDir, rel)
+		plan, err := recipe.ReadPlan(filepath.Dir(path))
+		if err != nil || plan == nil {
+			continue
+		}
+		return SanitizeTimelineOpts{
+			ServiceCount: serviceCountFromPlan(plan),
+		}
+	}
+	return SanitizeTimelineOpts{}
+}
+
+// serviceCountFromPlan returns the canonical count of provisioned
+// services for the deliverable: every runtime codebase materializes
+// as a dev + stage stack pair, plus every managed service is one
+// stack. Matches the count of stack-create processes the agent
+// dispatches via `zerops_import` during provision.
+func serviceCountFromPlan(plan *recipe.Plan) int {
+	if plan == nil {
+		return 0
+	}
+	return 2*len(plan.Codebases) + len(plan.Services)
 }
 
 // addFileToTar adds a single file to the tar writer.
