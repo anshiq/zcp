@@ -1072,6 +1072,17 @@ func completePhase(sess *Session, in RecipeInput, r RecipeResult) RecipeResult {
 		// transition. Sub-agent re-calls until ok:true and terminates.
 		return r
 	}
+	// Run-40 B1 — populate plan.ObservedFacts.EnvReads via source-grep
+	// before feature gates run so gateEnvReadsDerivable can compare
+	// declared run.envVariables against authoritative source-derived
+	// reads. Runs at feature complete-phase only — scaffold leaves
+	// codebases bare and the source-grep would find nothing.
+	// Errors are non-fatal at this layer; the gate's "not populated"
+	// notice surfaces a soft signal so the agent can still close on
+	// an unreadable tree.
+	if sess.Current == PhaseFeature {
+		_ = populateEnvReadsFromSource(sess)
+	}
 	blocking, notices, err := sess.CompletePhase(gatesForPhase(sess.Current))
 	if err != nil {
 		r.Error = err.Error()

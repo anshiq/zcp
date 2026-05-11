@@ -130,6 +130,14 @@ func FeatureGates() []Gate {
 		Name: "consumes-services-derivable",
 		Run:  gateConsumesServicesDerivable,
 	})
+	// Run-40 B1 — dead-env refusal. Refuses feature complete-phase
+	// when a codebase's zerops.yaml declares run.envVariables keys
+	// the source can't read. Closes S0-6 (SEARCH_PUBLIC_HOST,
+	// SEARCH_SEARCH_KEY, NATS_QUEUE_GROUP dead-env class).
+	gates = append(gates, Gate{
+		Name: "env-reads-derivable",
+		Run:  gateEnvReadsDerivable,
+	})
 	return gates
 }
 

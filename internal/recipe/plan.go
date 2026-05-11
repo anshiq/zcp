@@ -61,6 +61,32 @@ type Plan struct {
 	// comments; the agent never had a single-source-of-truth to read
 	// against. Spec: plans/run-40-evidence-grounded-plan.md §"A1".
 	NamedConstants map[string]string `json:"namedConstants,omitempty"`
+
+	// ObservedFacts carries engine-derived data populated at phase
+	// close — distinct from agent-recorded facts in facts.jsonl.
+	// Source-grep results, parse-time analyses, anything mechanical
+	// that the engine computes rather than the agent narrates.
+	//
+	// Run-40 B1 — feature-phase populates ObservedFacts.EnvReads
+	// from source-grep; the env-reads-derivable gate refuses close
+	// when a codebase declares run.envVariables keys the source
+	// can't read. Spec: plans/run-40-evidence-grounded-plan.md §"B1".
+	ObservedFacts ObservedFacts `json:"observedFacts,omitzero"`
+}
+
+// ObservedFacts is engine-derived state — values the engine computes
+// directly from the codebase tree rather than receiving from the
+// agent. Populated at phase close so the relevant gate can read
+// authoritative source-of-truth instead of trusting agent narration.
+type ObservedFacts struct {
+	// EnvReads maps codebase hostname to the sorted, de-duplicated
+	// set of environment-variable keys the codebase's source carries
+	// reads for (process.env.<KEY> + import.meta.env.<KEY>). Populated
+	// at feature complete-phase by sourceGrepEnvReads. Used by the
+	// env-reads-derivable gate to refuse close when a codebase's
+	// zerops.yaml run.envVariables declares keys the source can't
+	// reach. Run-40 B1.
+	EnvReads map[string][]string `json:"envReads,omitempty"`
 }
 
 // HasWorkerCodebase reports whether any codebase in the plan has
