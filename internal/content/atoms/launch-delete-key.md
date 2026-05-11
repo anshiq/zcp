@@ -4,7 +4,6 @@ priority: 1
 phases: [launch-production-active]
 title: "Delete the launch-window API key"
 references-fields: []
-coverageExempt: "Phase C lands atoms ahead of Phase D handler + Phase E scenarios; pin via launch-production-active fixtures in Phase E per plans/production-lifecycle-2026-05-11.md §11"
 ---
 
 ### Delete the launch-window API key

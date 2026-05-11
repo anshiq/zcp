@@ -4,7 +4,6 @@ priority: 3
 phases: [launch-production-active]
 title: "Launch — one-shot API key required for publish"
 references-fields: []
-coverageExempt: "Phase C lands atoms ahead of Phase D handler + Phase E scenarios; pin via launch-production-active fixtures in Phase E per plans/production-lifecycle-2026-05-11.md §11"
 ---
 
 ### One-shot API key required for publish

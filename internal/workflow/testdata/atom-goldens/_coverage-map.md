@@ -92,6 +92,12 @@ Atoms with zero scenarios are flagged `TODO: explicit decision required` — Pha
 | `idle-adopt-entry` | 1 | idle/adopt-only |
 | `idle-bootstrap-entry` | 1 | idle/empty |
 | `idle-develop-entry` | 1 | idle/bootstrapped-with-managed |
+| `launch-delete-key` | 1 | launch-production/active |
+| `launch-intro` | 1 | launch-production/active |
+| `launch-mutation-key-required` | 1 | launch-production/active |
+| `launch-post-checklist` | 1 | launch-production/active |
+| `launch-scope-prompt` | 1 | launch-production/active |
+| `launch-write-prod-setup` | 1 | launch-production/active |
 | `scaffold-zerops-yaml` | 1 | export/scaffold-required |
 | `setup-build-integration-actions` | 1 | strategy-setup/configured-build-integration |
 | `setup-build-integration-webhook` | 1 | strategy-setup/configured-build-integration |

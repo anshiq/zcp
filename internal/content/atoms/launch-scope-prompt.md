@@ -4,7 +4,6 @@ priority: 2
 phases: [launch-production-active]
 title: "Launch scope — collect production target details"
 references-fields: []
-coverageExempt: "Phase C lands atoms ahead of Phase D handler + Phase E scenarios; pin via launch-production-active fixtures in Phase E per plans/production-lifecycle-2026-05-11.md §11"
 ---
 
 ### Launch scope — collect production target details

@@ -36,6 +36,7 @@ func canonicalGoldenScenarios() []goldenScenario {
 	out = append(out, developGoldenScenarios()...)
 	out = append(out, strategySetupGoldenScenarios()...)
 	out = append(out, exportGoldenScenarios()...)
+	out = append(out, launchProductionGoldenScenarios()...)
 	return out
 }
 
@@ -536,6 +537,38 @@ func exportGoldenScenarios() []goldenScenario {
 				Phase:        PhaseExportActive,
 				Environment:  EnvContainer,
 				ExportStatus: topology.ExportStatusPublishReady,
+				Services: []ServiceSnapshot{
+					{
+						Hostname:     "appdev",
+						TypeVersion:  "nodejs@22",
+						RuntimeClass: topology.RuntimeDynamic,
+						Mode:         topology.ModeStandard,
+						GitPushState: topology.GitPushConfigured,
+						Bootstrapped: true,
+						Deployed:     true,
+					},
+				},
+			},
+		},
+	}
+}
+
+// launchProductionGoldenScenarios returns the scenarios that pin the
+// launch-production-active phase atom fire-set. The handler emits atoms
+// per status, but the phase axis alone is sufficient to cover all six
+// launch atoms in one envelope — they share the phase predicate with no
+// finer status axis (kept simple for the v1 MVP).
+//
+// Future iteration: split into per-status fixtures once
+// LaunchProductionStatus axis is added to the launch atoms.
+func launchProductionGoldenScenarios() []goldenScenario {
+	return []goldenScenario{
+		{
+			id:          "launch-production/active",
+			description: "Launch-production workflow mid-flow on a source project — bundle composed, awaiting one-shot launch key for the mutation pipeline.",
+			envelope: StateEnvelope{
+				Phase:       PhaseLaunchProductionActive,
+				Environment: EnvContainer,
 				Services: []ServiceSnapshot{
 					{
 						Hostname:     "appdev",

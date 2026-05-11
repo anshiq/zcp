@@ -4,7 +4,6 @@ priority: 5
 phases: [launch-production-active]
 title: "Write prod setup block to source zerops.yaml"
 references-fields: []
-coverageExempt: "Phase C lands atoms ahead of Phase D handler + Phase E scenarios; pin via launch-production-active fixtures in Phase E per plans/production-lifecycle-2026-05-11.md §11"
 ---
 
 ### Write prod setup block to source zerops.yaml
