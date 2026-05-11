@@ -230,3 +230,84 @@ const (
 	// must be flagged for user review before verbatim emission.
 	SecretClassPlainConfig SecretClassification = "plain-config"
 )
+
+// LaunchProductionStatus discriminates the sub-states of
+// `PhaseLaunchProductionActive`. The launch-production workflow is a
+// six-state machine: three read-side narrowing states (no mutation, no
+// launch key needed) plus three mutation states (require a one-shot key
+// from user input). Atoms filter via `launchStatus:` axis when ready.
+//
+// Lives in topology (not workflow) because tools/workflow_launch_production.go
+// owns handler-side status emission and consumes the typed enum. Mirrors
+// ExportStatus placement.
+type LaunchProductionStatus string
+
+const (
+	// LaunchStatusUnset is the zero-value sentinel.
+	LaunchStatusUnset LaunchProductionStatus = ""
+	// LaunchStatusScopePrompt fires when launch inputs are incomplete
+	// (productionProjectName, region, or other scope fields missing).
+	LaunchStatusScopePrompt LaunchProductionStatus = "scope-prompt"
+	// LaunchStatusClassifyPrompt fires when source project envs are
+	// present but EnvClassifications is incomplete — agent must bucket
+	// each env per the existing four-bucket protocol.
+	LaunchStatusClassifyPrompt LaunchProductionStatus = "classify-prompt"
+	// LaunchStatusReadyToLaunch fires when scope + classifications are
+	// complete, bundle composed, source-control changes pushed, schema
+	// clean. Response is preview-only — no mutation yet. Awaits the
+	// one-shot launchKey to advance to LaunchStatusLaunching.
+	LaunchStatusReadyToLaunch LaunchProductionStatus = "ready-to-launch"
+	// LaunchStatusLaunching is the mutation pipeline in flight: the
+	// handler holds a ProjectAdminClient backed by the launchKey and
+	// is calling CreateAndImportProject + polling first deploy +
+	// verifying secret presence.
+	LaunchStatusLaunching LaunchProductionStatus = "launching"
+	// LaunchStatusFailed indicates a mutation step failed. Structured
+	// blockers[] describes recovery; the agent reads them and either
+	// retries with a fresh launchKey or aborts.
+	LaunchStatusFailed LaunchProductionStatus = "failed"
+	// LaunchStatusLaunched is the terminal success state. Response
+	// carries the post-launch checklist + mandatory key-deletion atom
+	// (P-LP-4 invariant).
+	LaunchStatusLaunched LaunchProductionStatus = "launched"
+)
+
+// BlockerSeverity ranks Blocker entries returned by the launch workflow.
+//
+//   - BlockerSeverityBlock — must clear before the workflow advances.
+//   - BlockerSeverityWarn  — informational; advances may proceed.
+type BlockerSeverity string
+
+const (
+	BlockerSeverityBlock BlockerSeverity = "block"
+	BlockerSeverityWarn  BlockerSeverity = "warn"
+)
+
+// BlockerCategory taxonomy for launch workflow blockers.
+type BlockerCategory string
+
+const (
+	BlockerCategoryScope          BlockerCategory = "scope"           // missing/invalid scope input
+	BlockerCategorySchema         BlockerCategory = "schema"          // import.yaml schema-validation failure
+	BlockerCategorySourceControl  BlockerCategory = "source-control"  // unpushed setup: prod block
+	BlockerCategorySourceDrift    BlockerCategory = "source-drift"    // P-LP-3 immutability guard fired
+	BlockerCategoryExternalSecret BlockerCategory = "external-secret" // user must set in Zerops UI
+	BlockerCategoryCost           BlockerCategory = "cost"            // estimated cost ack pending
+	BlockerCategoryHealthCheck    BlockerCategory = "healthcheck"     // run.healthCheck missing in source
+	BlockerCategoryOrphan         BlockerCategory = "orphan-project"  // target project created but import failed
+	BlockerCategoryAuth           BlockerCategory = "auth"            // launchKey invalid / missing permission
+	BlockerCategoryOther          BlockerCategory = "other"
+)
+
+// Blocker carries one launch-workflow obstruction the agent must surface
+// to the user (and, where applicable, resolve before advancing).
+type Blocker struct {
+	ID       string          `json:"id"`
+	Severity BlockerSeverity `json:"severity"`
+	Category BlockerCategory `json:"category"`
+	Message  string          `json:"message"`
+	// Recovery is optional structured guidance — when set, names the tool
+	// + action + args the agent invokes to clear this blocker. Mirrors
+	// the existing Recovery hint shape on CheckResult.
+	Recovery *Recovery `json:"recovery,omitempty"`
+}

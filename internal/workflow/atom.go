@@ -203,6 +203,10 @@ var validAtomEnumValues = map[string]map[string]struct{}{
 		"recipe-active":       {},
 		"strategy-setup":      {},
 		"export-active":       {},
+		// launch-production-active fires when zerops_workflow workflow="launch-production"
+		// is mid-flow on a source project. Atoms scoped to this phase
+		// drive the launch handler's per-status guidance.
+		"launch-production-active": {},
 	},
 	"modes": {
 		"dev":         {},
@@ -362,6 +366,26 @@ func sortedEnumKeys(set map[string]struct{}) string {
 	}
 	sort.Strings(keys)
 	return strings.Join(keys, ", ")
+}
+
+// LookupAtomBody returns the raw body of the atom with the given ID, or
+// "" when no atom matches. Used by handlers that need static atom content
+// (no envelope-driven axis filtering or placeholder substitution).
+//
+// Lives here in the parser/atom file so the
+// `TestNoProductionAtomBodyReads` discipline test allows the .Body
+// access — callers (e.g. internal/tools/workflow_launch_production.go)
+// route through this function rather than touching KnowledgeAtom.Body
+// directly. Atoms with `{placeholder}` tokens MUST be rendered via
+// Synthesize, not via LookupAtomBody, since this helper does no
+// substitution.
+func LookupAtomBody(corpus []KnowledgeAtom, id string) string {
+	for _, a := range corpus {
+		if a.ID == id {
+			return a.Body
+		}
+	}
+	return ""
 }
 
 // ParseAtom parses a `.md` file body containing YAML frontmatter and a

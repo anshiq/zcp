@@ -1168,6 +1168,13 @@ func TestScenario_PinCoverage_AllAtomsReachable(t *testing.T) {
 			ExportStatus: topology.ExportStatusPublishReady,
 			Services:     []ServiceSnapshot{{Hostname: "appdev", TypeVersion: "nodejs@22", RuntimeClass: topology.RuntimeDynamic, Mode: topology.ModeStandard, Bootstrapped: true}},
 		}},
+
+		// Launch-production active. Atoms gate on `phases:
+		// [launch-production-active]` only — they fire on any envelope in
+		// that phase. Single envelope covers all six launch atoms.
+		{"launch-production-active", StateEnvelope{
+			Phase: PhaseLaunchProductionActive, Environment: EnvContainer,
+		}},
 	}
 
 	var union []MatchedRender
@@ -1273,5 +1280,13 @@ func TestScenario_PinCoverage_AllAtomsReachable(t *testing.T) {
 		"export-publish",
 		"export-publish-needs-setup",
 		"scaffold-zerops-yaml",
+		// launch-production — Phase E pin. The six launch atoms fire on
+		// the PhaseLaunchProductionActive envelope above.
+		"launch-intro",
+		"launch-scope-prompt",
+		"launch-mutation-key-required",
+		"launch-write-prod-setup",
+		"launch-delete-key",
+		"launch-post-checklist",
 	)
 }

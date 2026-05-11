@@ -74,6 +74,12 @@ const (
 	PhaseRecipeActive    Phase = "recipe-active"
 	PhaseStrategySetup   Phase = "strategy-setup"
 	PhaseExportActive    Phase = "export-active"
+	// PhaseLaunchProductionActive fires when the launch-production
+	// workflow is mid-flow on a source project. The workflow handler
+	// emits its own atom guidance per LaunchProductionStatus; BuildPlan
+	// returns an empty Plan so callers know there's nothing to suggest
+	// outside the handler's response (same pattern as ExportActive).
+	PhaseLaunchProductionActive Phase = "launch-production-active"
 )
 
 // SelfService names the ZCP host service when running in container environment.
