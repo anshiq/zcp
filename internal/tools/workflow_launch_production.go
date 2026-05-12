@@ -49,6 +49,11 @@ import (
 //nolint:gochecknoglobals // test-injection point for the cross-project surface
 var projectAdminClientFactory = platform.NewProjectAdminClient
 
+// processStatusFinished is the canonical platform.Process success
+// terminal status. Pulled to a constant to satisfy strict-lint
+// (goconst) and centralize the magic string.
+const processStatusFinished = "FINISHED"
+
 // setProjectAdminClientFactory swaps the factory for tests. Restore with
 // the returned cleanup func via defer.
 func setProjectAdminClientFactory(f func(launchKey, apiHost string) (platform.ProjectAdminClient, error)) func() {
@@ -378,7 +383,7 @@ func pollImportedServices(ctx context.Context, admin platform.ProjectAdminClient
 // isProcessSuccess returns true for the platform's success-terminal
 // process status. FINISHED is the canonical success state.
 func isProcessSuccess(proc *platform.Process) bool {
-	return proc.Status == "FINISHED"
+	return proc.Status == processStatusFinished
 }
 
 // readAndValidateSourceState runs source-control gate before the
@@ -437,8 +442,18 @@ func readAndValidateSourceState(
 	}
 	if !hasSetupProd(source.ZeropsYAMLBody) {
 		auditFail("source zerops.yaml lacks `setup: prod` block")
+		// Item #6: derive a concrete proposed block from the source's
+		// existing dev/stage setup. Agent applies + tweaks instead of
+		// guessing from a generic template. Falls back to the generic
+		// message if derivation fails (malformed yaml, no template).
+		proposed, derr := deriveProdSetupBlock(source.ZeropsYAMLBody)
+		if derr != nil {
+			return nil, launchSourceControlBlockerResponse(corpus,
+				"Source zerops.yaml lacks a `setup: prod` block — write it (see launch-write-prod-setup atom), commit, push, then re-call publish.",
+			)
+		}
 		return nil, launchSourceControlBlockerResponse(corpus,
-			"Source zerops.yaml lacks a `setup: prod` block — write it (see launch-write-prod-setup atom), commit, push, then re-call publish.",
+			prodSetupGuidanceWithBlock(proposed),
 		)
 	}
 	if source.RepoURL == "" {

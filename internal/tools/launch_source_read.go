@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/zeropsio/zcp/internal/ops"
@@ -175,28 +176,33 @@ func readLocalZeropsYAML(workingDir string) (string, error) {
 
 // readLocalGitRemote reads the local repo's `git remote get-url origin`.
 // Empty stdout = no remote configured; caller surfaces source-control
-// blocker.
+// blocker. Both "not a git repo" and "no origin" surface as
+// exit-status-1; the function intentionally swallows that error and
+// returns empty so caller chains to setup-git-push (same path as
+// container-mode empty remote).
+//
+//nolint:unparam // error return preserved for symmetry with container-mode read path; future enhancements may need to distinguish "not a repo" from "no origin"
 func readLocalGitRemote(ctx context.Context, workingDir string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "remote", "get-url", "origin")
 	cmd.Dir = workingDir
 	out, err := cmd.Output()
 	if err != nil {
-		// Both "not a git repo" and "no origin" surface as exit-status-1.
-		// Return empty so caller chains to setup-git-push (same path as
-		// container-mode empty remote).
-		return "", nil //nolint:nilerr // git failure → empty is the documented signal
+		return "", nil //nolint:nilerr // exit-status-1 means "not a repo" or "no origin" — both surface as empty per the source-control gate contract; caller chains to setup-git-push the same way container-mode does
 	}
 	return strings.TrimSpace(string(out)), nil
 }
 
 // readLocalGitSHA reads the local repo's `git rev-parse HEAD`. Empty
 // stdout = no commits; caller surfaces source-control blocker.
+// Symmetric error handling with readLocalGitRemote.
+//
+//nolint:unparam // see readLocalGitRemote
 func readLocalGitSHA(ctx context.Context, workingDir string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	cmd.Dir = workingDir
 	out, err := cmd.Output()
 	if err != nil {
-		return "", nil //nolint:nilerr // git failure → empty is the documented signal
+		return "", nil //nolint:nilerr // exit-status-1 means "not a repo" or "no origin" — both surface as empty per the source-control gate contract; caller chains to setup-git-push the same way container-mode does
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -206,12 +212,7 @@ func readLocalGitSHA(ctx context.Context, workingDir string) (string, error) {
 // it (guided by launch-write-prod-setup atom) before publish.
 func hasSetupProd(zeropsYAMLBody string) bool {
 	names, _ := listSetupNames(zeropsYAMLBody)
-	for _, n := range names {
-		if n == "prod" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(names, "prod")
 }
 
 // _ keeps workflow.ServiceMeta in scope for the helper file even when
