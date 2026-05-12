@@ -47,9 +47,10 @@ func completeLaunchInput() WorkflowInput {
 	}
 }
 
-// TestHandleLaunchProduction_Mutation_SourceControlBlocker fires when
-// publish is called but source-control fields aren't supplied.
-func TestHandleLaunchProduction_Mutation_SourceControlBlocker(t *testing.T) {
+// TestHandleLaunchProduction_Mutation_MissingTargetService fires when
+// publish is called without targetService — handler short-circuits to
+// a source-control blocker BEFORE attempting source-state read.
+func TestHandleLaunchProduction_Mutation_MissingTargetService(t *testing.T) {
 	stateDir := withTempState(t)
 	mock := platform.NewMockProjectAdminClient()
 	defer installMockAdminFactory(t, mock)()
@@ -59,11 +60,9 @@ func TestHandleLaunchProduction_Mutation_SourceControlBlocker(t *testing.T) {
 	})
 
 	input := completeLaunchInput()
-	// TargetService present but other source-control inputs missing —
-	// the handler should surface the source-control blocker because
-	// ServiceType/RepoURL/ZeropsYAMLBody come via the launch-write-prod-setup
-	// preparation phase (not yet wired in D.2 MVP via SSH read).
-	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{})
+	input.TargetService = "" // explicit empty
+
+	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -217,7 +216,7 @@ func TestHandleLaunchProduction_Mutation_AuthFailureWrappedSafely(t *testing.T) 
 	})
 
 	input := completeLaunchInput()
-	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{})
+	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -262,7 +261,7 @@ func TestHandleLaunchProduction_IdempotentResume(t *testing.T) {
 	})
 
 	input := completeLaunchInput()
-	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{})
+	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -300,7 +299,7 @@ func TestHandleLaunchProduction_LaunchedResponseIncludesDeleteKey(t *testing.T) 
 	})
 
 	input := completeLaunchInput()
-	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{})
+	result, _, err := handleLaunchProduction(context.Background(), "source-project-id", client, input, stateDir, runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
