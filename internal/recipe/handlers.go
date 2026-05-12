@@ -196,7 +196,7 @@ type RecipeInput struct {
 	// (classification, fragmentId) pairs per the
 	// docs/spec-content-surfaces.md compatibility table. Empty
 	// classification keeps prior behavior (no refusal).
-	Classification string `json:"classification,omitempty" jsonschema:"For record-fragment: optional fact classification — one of platform-invariant, intersection, framework-quirk, library-metadata, scaffold-decision, operational, self-inflicted. The engine refuses classifications that don't belong on the fragment's surface (e.g. self-inflicted on KB, scaffold-decision on CLAUDE.md). See docs/spec-content-surfaces.md#classification--surface-compatibility."`
+	Classification string `json:"classification,omitempty" jsonschema:"For record-fragment: optional fact classification — one of platform-invariant, intersection, framework-quirk, library-metadata, scaffold-decision, operational, self-inflicted. The engine refuses classifications that don't belong on the fragment's surface (e.g. self-inflicted on KB, scaffold-decision on CLAUDE.md); the refusal payload spells out the compatibility rule for the offending pair."`
 	// FeaturePass — for build-brief / build-subagent-prompt with
 	// briefKind=feature. Run-23 F-21 split the feature phase into a
 	// sequential backend pass + frontend-integration pass; the brief
@@ -559,6 +559,7 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 		}
 		r.BriefPath = indexPath
 		r.Notice = "brief written to disk as multi-file index; dispatch sub-agent with this path. Sub-agent must Read index.md, then Read each part file listed in its 'Read order' section in order."
+		r.Notice += refinement2MainAgentTriageGuidance(BriefKind(in.BriefKind))
 		flipDispatchFlags(sess, BriefKind(in.BriefKind))
 		r.OK = true
 		return r
@@ -581,6 +582,7 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 		r.BriefPath = path
 		r.BriefSize = len(prompt)
 		r.Notice = "brief written to disk; dispatch sub-agent with this path"
+		r.Notice += refinement2MainAgentTriageGuidance(BriefKind(in.BriefKind))
 		// Run-23 F-26 / Run-41 — flip the per-kind Dispatched flag only
 		// after the brief is actually deliverable (inline or pointer).
 		// Earlier flip would let the downstream close-gate pass even
@@ -595,7 +597,33 @@ func handleBuildSubagentPrompt(sess *Session, in RecipeInput, r RecipeResult) Re
 	// Single-flip is fine; the gate only reads the boolean.
 	flipDispatchFlags(sess, BriefKind(in.BriefKind))
 	r.Prompt, r.OK = prompt, true
+	if guidance := refinement2MainAgentTriageGuidance(BriefKind(in.BriefKind)); guidance != "" {
+		r.Notice += guidance
+	}
 	return r
+}
+
+// refinement2MainAgentTriageGuidance returns the per-finding triage
+// contract reminder that surfaces on the MAIN AGENT's view of a
+// successful refinement-2 dispatch response. Empty for all other
+// brief kinds.
+//
+// Why this lives on the response.Notice channel: the per-finding
+// triage instruction lives inside the refinement-2 SUB-AGENT brief
+// (`phase_entry.md §"Per-finding triage is the contract"`), but the
+// MAIN AGENT is the one who triages findings post-return. The main
+// agent doesn't read the sub-agent's brief — it dispatches the
+// sub-agent and reads the sub-agent's returned text. Run-41 dogfood
+// ([plans/run-41-validation.md]) shipped with the main agent bulk-
+// HOLDING all 10 advisory findings with one-line "ships acceptably"
+// because the triage contract was invisible to it. Surface it on
+// the dispatch response so the main agent sees the contract at
+// dispatch time.
+func refinement2MainAgentTriageGuidance(kind BriefKind) string {
+	if kind != BriefRefinement2 {
+		return ""
+	}
+	return "\n\nMAIN AGENT — refinement-2 triage contract: when the sub-agent returns its findings JSON block, you MUST record an ACT / HOLD / ACCEPT decision per finding, NOT a bulk dismissal. `advisory` severity does NOT mean ignore — it means YOU triage. Bulk-HOLD with one-line reasoning like `all advisory severity, recipe ships acceptably` is the documented failure pattern and violates the contract. For each finding: ACT (apply the fix via `record-fragment mode=replace` per the suggestedAction), HOLD (record per-finding reasoning why the advisory is acceptable for ship — not bulk), or ACCEPT (record one sentence on why the audit fired on a borderline that doesn't actually violate the contract). Blocker-severity HOLD requires contract-anchored justification — name the rule and explain why this specific instance falls outside its scope. The contract exists because severity is a prior, not a verdict; the seven-surface content rules require per-finding judgment."
 }
 
 // writeBriefToDisk persists an oversized sub-agent dispatch prompt to

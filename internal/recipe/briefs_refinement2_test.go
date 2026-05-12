@@ -76,6 +76,11 @@ func TestBuildRefinement2Brief_CarriesAuditDefectClasses(t *testing.T) {
 		"ig-cites-recipe-internal-file",
 		"missing-citation",
 		"cross-codebase-named-constant-drift",
+		// Run-41 dogfood additions — spec-anchored classes the
+		// run-41 audit's 10-class set didn't cover.
+		"framework-quirk-as-gotcha",
+		"scaffold-decision-as-gotcha",
+		"cross-codebase-content-duplication",
 	} {
 		if !strings.Contains(brief.Body, defectClass) {
 			t.Errorf("brief.Body missing defect class %q", defectClass)
@@ -273,9 +278,123 @@ func TestBuildRefinement2Brief_CitationMapMatchesSpec(t *testing.T) {
 		"subdomain access",
 		"managed NATS broker",
 		"managed Meilisearch service",
+		// Run-41 — spec-parity widening. These three topics live in
+		// the spec's citation map but were missing from the brief's
+		// rendered block; the audit silently passed bullets that
+		// should have flagged.
+		"deploy-files",
+		"readiness",
+		"trust proxy",
 	} {
 		if !strings.Contains(brief.Body, topic) {
 			t.Errorf("citation map missing topic %q", topic)
+		}
+	}
+}
+
+// TestBuildRefinement2Brief_HostGlossary — run-41 dogfood found every
+// finding mis-routed fragmentIds through the SSHFS-mount form
+// (`codebase/appdev/...`) instead of the plan.fragments canonical
+// short form (`codebase/app/...`). Pin the audit-checklist glossary
+// that disambiguates `<host>`.
+func TestBuildRefinement2Brief_HostGlossary(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug:      "synth-showcase",
+		Codebases: []Codebase{{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"}},
+	}
+	brief, err := BuildRefinement2Brief(plan, nil, "/run/dir", nil)
+	if err != nil {
+		t.Fatalf("BuildRefinement2Brief: %v", err)
+	}
+	// Glossary names the short-form / SSHFS-mount distinction
+	// explicitly.
+	for _, want := range []string{
+		"<host>` placeholder convention",
+		"READ FIRST",
+		"plan.codebases[].host",
+		"NOT the SSHFS-mount",
+		// wrong shape — must be called out explicitly
+		"codebase/appdev/knowledge-base",
+		// right shape — must be shown
+		"codebase/app/knowledge-base",
+	} {
+		if !strings.Contains(brief.Body, want) {
+			t.Errorf("brief.Body missing host-glossary substring %q", want)
+		}
+	}
+}
+
+// TestBuildRefinement2Brief_PerFindingTriageContract — run-41 dogfood
+// the main agent bulk-HELD all 10 advisory findings with a one-line
+// "ships acceptably" rather than per-finding ACT/HOLD/ACCEPT. Pin
+// the phase_entry instruction that requires per-finding triage in
+// the close transcript.
+func TestBuildRefinement2Brief_PerFindingTriageContract(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug:      "synth-showcase",
+		Codebases: []Codebase{{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"}},
+	}
+	brief, err := BuildRefinement2Brief(plan, nil, "/run/dir", nil)
+	if err != nil {
+		t.Fatalf("BuildRefinement2Brief: %v", err)
+	}
+	for _, want := range []string{
+		"Severity is a starting point",
+		"Per-finding triage is the contract",
+		"ACT",
+		"HOLD",
+		"ACCEPT",
+		"Bulk dismissals like \"all advisories HELD\" are not acceptable",
+	} {
+		if !strings.Contains(brief.Body, want) {
+			t.Errorf("brief.Body missing per-finding-triage substring %q", want)
+		}
+	}
+}
+
+// TestBuildRefinement2Brief_NewDefectClassesAreBlocker — the three
+// run-41 spec-anchored classes are blocker severity because the
+// spec's classification taxonomy + cross-surface duplication rule
+// are unambiguous. Pin the severity assignment in the checklist
+// body so an inadvertent demotion to advisory surfaces in CI.
+func TestBuildRefinement2Brief_NewDefectClassesAreBlocker(t *testing.T) {
+	t.Parallel()
+	plan := &Plan{
+		Slug:      "synth-showcase",
+		Codebases: []Codebase{{Hostname: "api", Role: RoleAPI, BaseRuntime: "nodejs@22"}},
+	}
+	brief, err := BuildRefinement2Brief(plan, nil, "/run/dir", nil)
+	if err != nil {
+		t.Fatalf("BuildRefinement2Brief: %v", err)
+	}
+	// Each class header + its severity line in the audit_checklist
+	// embed. The atom uses a `**Severity**: **blocker** ...` shape
+	// after each defect class.
+	for _, cls := range []string{
+		"framework-quirk-as-gotcha",
+		"scaffold-decision-as-gotcha",
+		"cross-codebase-content-duplication",
+	} {
+		header := "## Defect class: " + cls
+		idx := strings.Index(brief.Body, header)
+		if idx < 0 {
+			t.Errorf("class header missing for %q", cls)
+			continue
+		}
+		// Look at the body from class header until next class header
+		// or end-of-body.
+		tail := brief.Body[idx:]
+		nextDivider := strings.Index(tail[1:], "\n## Defect class:")
+		var chunk string
+		if nextDivider > 0 {
+			chunk = tail[:nextDivider+1]
+		} else {
+			chunk = tail
+		}
+		if !strings.Contains(chunk, "**Severity**: **blocker**") {
+			t.Errorf("class %q must declare **Severity**: **blocker** in its body; chunk did not match", cls)
 		}
 	}
 }

@@ -137,13 +137,30 @@ func BuildRefinement2Brief(plan *Plan, parent *ParentRecipe, runDir string, fact
 }
 
 // citationMapBlock renders the topic → required-guide-citation map.
-// Anchored to `docs/spec-content-surfaces.md §"Citation map"`; kept
-// inline because the spec doc isn't embedded in the binary
-// (//go:embed all:content covers internal/recipe/content/ only).
+// Anchored to the seven-surface content contract. Kept inline as a
+// rendered block in the brief body because the contract doc itself
+// isn't embedded in the binary (//go:embed all:content covers
+// internal/recipe/content/ only) and the sub-agent can't Read it
+// at runtime. Spec drift is pinned by
+// TestBuildRefinement2Brief_CitationMapMatchesSpec.
 //
-// When a topic listed below is amended in the spec, update this
-// block to match. The test
-// TestRefinement2Brief_CitationMapMatchesSpec keeps the two in sync.
+// The map carries seven heuristic topic rows that mirror the
+// content-surface contract's citation table, plus two managed-
+// service rows (`managed NATS broker`, `managed Meilisearch
+// service`) that aren't in the contract's heuristic table but are
+// stable per-service-guide pointers the contract's spirit covers.
+// Adjust counter assertions in the matching test, not the rule.
+//
+// Citation acceptance is three-form: each topic row lists the
+// canonical guide ID in backticks, the friendly display name, and
+// the docs URL. A bullet passes if its body cites any of the three
+// USING CITATION FRAMING (`the \`<guide-id>\` guide covers …`,
+// `[friendly name](URL)`, or a bare URL — not a passing mention of
+// the literal token as a noun phrase). The framing requirement
+// prevents bare-backtick narration (e.g. *"Zerops's `init-commands`
+// feature stamps each `key:` value"*) from being read as a real
+// citation when the bullet doesn't actually point the porter at
+// the guide.
 func citationMapBlock() string {
 	return `## Citation map — topics requiring zerops_knowledge citation
 
@@ -151,11 +168,32 @@ When a KB bullet covers one of these topics, the body MUST cite the
 named guide. Missing citations get flagged with
 ` + "`missing-citation`" + ` (advisory).
 
-- ` + "`rolling-deploys`" + ` / multi-container setups / minContainers≥2 / zero-downtime → cite ` + "`zero-downtime deploys with multi-container setups`" + ` (docs.zerops.io/features/scaling-ha)
-- ` + "`init-commands`" + ` / ` + "`zsc execOnce`" + ` / ` + "`${appVersionId}`" + ` / per-deploy lock → cite ` + "`zsc execOnce + per-deploy key model`" + ` (docs.zerops.io/zerops-yaml/specification#initcommands-)
-- object-storage / MinIO / S3 / forcePathStyle / presigned URL → cite ` + "`S3-compatible storage on the MinIO backend`" + ` (docs.zerops.io/services/object-storage)
-- env-var-model / cross-service alias / same-key shadow / ` + "`${<host>_<key>}`" + ` → cite ` + "`per-key env shape and cross-service aliases`" + ` (docs.zerops.io/zerops-yaml/specification#envvariables-)
-- subdomain access / ` + "`httpSupport`" + ` / L7 balancer / VXLAN routing → cite ` + "`Zerops L7 balancer + subdomain access`" + ` (docs.zerops.io/features/access)
+**Acceptable citation forms** — for each topic, a bullet passes if
+its body contains ANY of these, USED AS A CITATION (pointing the
+porter at the guide), not as a passing mention of the literal token:
+
+- (a) **Canonical guide ID in citation framing** — ` + "`the \\`<guide-id>\\` guide covers …`" + `,
+  ` + "`see the \\`<guide-id>\\` reference`" + `, or equivalent
+  framing where the backticked guide ID is the subject of a
+  sentence pointing the porter at the guide. **Bare backtick token
+  use that doesn't reference the guide DOES NOT count**: a bullet
+  saying *"Zerops's ` + "`init-commands`" + ` feature stamps each
+  ` + "`key:`" + ` value"* mentions the feature but does not cite
+  the guide — fails this form.
+- (b) **Friendly display name as markdown link text** —
+  ` + "`[zero-downtime deploys with multi-container setups](URL)`" + `;
+  the link text spells out the friendly name verbatim and the URL
+  is a docs.zerops.io link.
+- (c) **Bare docs URL** — the literal ` + "`docs.zerops.io/...`" + ` URL
+  for the guide, present in the bullet body.
+
+- ` + "`rolling-deploys`" + ` / ` + "`minContainers-semantics`" + ` / multi-container setups / minContainers≥2 / zero-downtime / SIGTERM-before-teardown / drain semantics → cite guide ID ` + "`rolling-deploys`" + ` OR friendly ` + "`zero-downtime deploys with multi-container setups`" + ` OR URL ` + "`docs.zerops.io/features/scaling-ha`" + `
+- ` + "`init-commands`" + ` / ` + "`zsc execOnce`" + ` / ` + "`${appVersionId}`" + ` / per-deploy lock / ` + "`--retryUntilSuccessful`" + ` → cite guide ID ` + "`init-commands`" + ` OR friendly ` + "`zsc execOnce + per-deploy key model`" + ` OR URL ` + "`docs.zerops.io/zerops-yaml/specification#initcommands-`" + `
+- ` + "`object-storage`" + ` / MinIO / S3 / forcePathStyle / presigned URL / ` + "`storage_*`" + ` env vars → cite guide ID ` + "`object-storage`" + ` OR friendly ` + "`S3-compatible storage on the MinIO backend`" + ` OR URL ` + "`docs.zerops.io/services/object-storage`" + `
+- ` + "`env-var-model`" + ` / cross-service alias / same-key shadow / ` + "`${<host>_<key>}`" + ` / envIsolation / project-level vs service-level → cite guide ID ` + "`env-var-model`" + ` OR friendly ` + "`per-key env shape and cross-service aliases`" + ` OR URL ` + "`docs.zerops.io/zerops-yaml/specification#envvariables-`" + `
+- ` + "`http-support`" + ` / ` + "`l7-balancer`" + ` / subdomain access / ` + "`httpSupport`" + ` / VXLAN routing / TLS termination / ` + "`trust proxy`" + ` / bind 0.0.0.0 → cite guide ID ` + "`http-support`" + ` OR ` + "`l7-balancer`" + ` OR friendly ` + "`Zerops L7 balancer + subdomain access`" + ` OR URL ` + "`docs.zerops.io/features/access`" + `
+- ` + "`deploy-files`" + ` / ` + "`static-runtime`" + ` / tilde suffix / ` + "`./dist/~`" + ` strip-prefix / ` + "`base: static`" + ` runtime / Nginx SPA fallback → cite guide ID ` + "`deploy-files`" + ` OR ` + "`static-runtime`" + ` OR friendly ` + "`deploy-files tilde syntax + static runtime`" + ` OR URL ` + "`docs.zerops.io/zerops-yaml/specification#deployfiles-`" + `
+- ` + "`readiness-health-checks`" + ` / readiness check / health check / routing gates / what routes traffic vs restarts container → cite guide ID ` + "`readiness-health-checks`" + ` OR friendly ` + "`readiness + health checks`" + ` OR URL ` + "`docs.zerops.io/zerops-yaml/specification#readinesscheck-`" + `
 - managed NATS / queue groups / pub-sub → cite ` + "`managed NATS broker`" + ` (docs.zerops.io/services/nats)
 - managed Meilisearch / search keys / index admin → cite ` + "`managed Meilisearch service`" + ` (docs.zerops.io/services/meilisearch)
 

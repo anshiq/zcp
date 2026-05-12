@@ -56,6 +56,39 @@ func TestBuildSubagentPromptRefinement2_FlipsDispatchFlag(t *testing.T) {
 	if !sess.Refinement2Dispatched {
 		t.Error("Refinement2Dispatched should flip to true after successful brief build")
 	}
+	// Run-41 dogfood — main agent triage contract MUST surface on the
+	// response so the main agent sees it; the contract text in the
+	// sub-agent brief is invisible to the main agent. Pin the
+	// load-bearing phrases.
+	for _, want := range []string{
+		"MAIN AGENT",
+		"refinement-2 triage contract",
+		"ACT / HOLD / ACCEPT",
+		"Bulk-HOLD",
+		"`advisory` severity does NOT mean ignore",
+	} {
+		if !strings.Contains(r.Notice, want) {
+			t.Errorf("refinement-2 dispatch Notice missing %q; got %q", want, r.Notice)
+		}
+	}
+}
+
+// TestRefinement2MainAgentTriageGuidance_OnlyFiresForRefinement2 —
+// the guidance helper is scoped to BriefRefinement2; every other
+// brief kind returns empty so its Notice channel is undisturbed.
+func TestRefinement2MainAgentTriageGuidance_OnlyFiresForRefinement2(t *testing.T) {
+	t.Parallel()
+	if got := refinement2MainAgentTriageGuidance(BriefRefinement2); got == "" {
+		t.Error("refinement2MainAgentTriageGuidance(BriefRefinement2) returned empty; expected triage contract text")
+	}
+	for _, kind := range []BriefKind{
+		BriefScaffold, BriefFeature, BriefCodebaseContent, BriefClaudeMDAuthor,
+		BriefEnvContent, BriefFinalize, BriefRefinement,
+	} {
+		if got := refinement2MainAgentTriageGuidance(kind); got != "" {
+			t.Errorf("refinement2MainAgentTriageGuidance(%v) = %q; want empty for non-refinement2 kinds", kind, got)
+		}
+	}
 }
 
 // TestCompletePhaseRefinement_RefusesWithoutRefinement2 — gate

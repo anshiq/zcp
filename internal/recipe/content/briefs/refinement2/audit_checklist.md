@@ -1,11 +1,26 @@
 # Cross-surface audit checklist
 
 Each section names a defect class, the surfaces involved, the check
-to run, and the suggested action. Walk them in order. Findings go in
-the JSON list per `phase_entry.md`.
+to run, and the suggested action. Walk them in order. Findings go
+into the JSON findings block defined in the preceding section of
+this brief.
 
-The seven content surfaces (anchored to
-`docs/spec-content-surfaces.md`):
+**`<host>` placeholder convention (READ FIRST)** — every fragmentId
+template in this checklist uses `<host>` to mean the **short
+codebase name** from `plan.codebases[].host` (`api`, `app`,
+`worker`, etc.) — NOT the SSHFS-mount path or the deployed hostname
+(`apidev` / `appdev` / `workerdev`). The fragment store keys against
+the short form; `codebase/appdev/knowledge-base` is **not** a valid
+fragmentId and would route nowhere. When citing
+`evidence.primary` use the deliverable file path
+(`/var/www/appdev/README.md:123` is fine — that's the file
+location); `fragmentId` itself must be the short-form key like
+`codebase/app/knowledge-base`. The main agent's `record-fragment`
+fix path needs the short form to resolve the target fragment;
+blocker-severity findings with the wrong-form fragmentId would
+fail-or-loop the close.
+
+The seven content surfaces:
 
 - S1 — Root README (`root/intro` fragment)
 - S2 — Tier README (`env/<N>/intro` fragments)
@@ -33,16 +48,17 @@ ID in findings (`env/<N>/import-comments/<host>` etc.), but be aware
 the main agent's fix path may use `record-fragment` or a typed-store
 write depending on surface. Cite the SHIPPED file path
 (`environments/<tier-folder>/import.yaml`) alongside the fragment ID
-so the main agent can navigate either way.
+so the main agent can navigate either way. Recall the `<host>`
+short-form rule from the preamble — `codebase/<host>/...` keys use
+`api`/`app`/`worker`, not `apidev`/`appdev`/`workerdev`.
 
 ---
 
 ## Per-surface caps + floors (line-budget contract)
 
-These are the hard caps from `docs/spec-content-surfaces.md` §"Per-
-surface line-budget table". Cross-surface audit cares about FLOORS
-(under-population) more than caps; the structural cap validators in
-refinement-1 already gate over-cap.
+These are the hard per-surface caps. Cross-surface audit cares
+about FLOORS (under-population) more than caps; the structural cap
+validators in refinement-1 already gate over-cap.
 
 | Surface | Bullet floor | Bullet cap | Defect-class on miss |
 |---|---|---|---|
@@ -125,8 +141,8 @@ selection). Emit findings with `suggestedAction: "drop"` and
 explain in `rationale` that the main agent must decide whether to
 add bullets from the facts log (for below-floor) or rank-and-cut
 (for over-cap). The `suggestedAction` field is required by the
-JSON schema in `phase_entry.md`; "drop" is the conservative
-fallback when no specific action applies.
+JSON schema defined earlier in this brief; "drop" is the
+conservative fallback when no specific action applies.
 
 ---
 
@@ -275,7 +291,7 @@ Hosts WITHOUT a matching entry in `plan.services[]` are runtime
 codebases (api/app/worker); their cross-service tokens reference
 peer services and follow the peer-service-type's allowlist.
 
-**Worked example (run-40 N-1)**: tier-0 import.yaml comment says
+**Worked example**: a tier import.yaml comment says
 `"shared with both services via ${search_password}"`. Host `search`
 has service type `meilisearch@1.20`. Meilisearch allowlist publishes
 `masterKey` + `defaultSearchKey` — NOT `password`. The yaml content's
@@ -302,9 +318,10 @@ facts). For each constant:
 1. Scan every fragment for the constant name.
 2. If any surface uses a value different from the canonical, flag.
 
-**Worked example (run-39 closed in run-40)**: `'workers'` in source
-vs `'showcase-workers'` in tier yamls. Canonical: `worker-indexer`.
-Find any place still using a non-canonical value.
+**Worked example**: source code uses `'workers'` as a queue-group
+name while tier yamls use `'showcase-workers'` in env-var defaults;
+canonical (per `plan.NamedConstants` or canonical-topic facts) is
+`worker-indexer`. Find any place still using a non-canonical value.
 
 **Action**: `fix-named-constant`.
 
@@ -335,6 +352,189 @@ referencing recipe-internal files is dead weight.
 
 ---
 
+## Defect class: framework-quirk-as-gotcha
+
+**What**: A KB bullet teaches a framework's own documented behavior
+as if it were a Zerops trap. The content-surface contract classifies
+these as `framework-quirk` (npm registry metadata, framework
+bootstrap APIs, framework-specific console warnings, library-version
+peer-dep errors) and routes them to **DISCARD** — they belong in
+framework docs, not on any Zerops recipe surface.
+
+**Check**: For each KB bullet, identify the bullet's underlying
+mechanism. **All three tests run together; Check #1 is the decisive
+gate — Checks #2 and #3 are signal collected to confirm Check #1's
+verdict, not independent triggers.**
+
+1. **The "Zerops side material" test (DECISIVE)**: does the Zerops
+   platform contribute to producing the failure? If Zerops's
+   container model, env-injection, SIGTERM-on-rolling-deploy timing,
+   L7 routing, subdomain shape, build/run-asymmetric runtime, etc.
+   materially CAUSES the trap (not just provides the runtime), it's
+   `intersection` and stays. If Zerops only provides where the code
+   runs (any container platform — Docker locally, Heroku, fly.io —
+   would behave identically), it's framework-quirk. This is the
+   primary test; an `intersection` verdict here stops the rule from
+   firing regardless of the other tests.
+2. **The "different scaffold" test (CONFIRMS)**: would a porter
+   using the SAME framework with DIFFERENT scaffold code (different
+   file layout, different deps choice, different config) hit the
+   same trap with the same fix? If yes AND the fix has no Zerops
+   component, the bullet is framework-quirk. If the answer is "yes
+   but the trap fires because Zerops's runtime invariant forces the
+   shape," it's intersection — defer to Check #1.
+3. **The "documented elsewhere" test (CONFIRMS — never triggers
+   alone)**: is this behavior covered in the framework's own docs,
+   the library's README, or the npm/composer/pypi page? If yes AND
+   the bullet adds no Zerops-specific interaction beyond restating,
+   it's framework-quirk. **Note**: legitimate `intersection` bullets
+   often DO appear in framework docs (nats.js's README documents the
+   URL-credential double-auth issue) — the rule must NOT fire on
+   those because Check #1's "Zerops side material" verdict overrides.
+   This test only confirms a Check #1 framework-quirk verdict; it
+   never elevates an intersection bullet to framework-quirk.
+
+**Worked example**: a KB bullet titled *"CDN-loaded utility-CSS
+shows a 'do not use in production' console warning"* describing
+how the SPA loads its CSS framework from a third-party CDN
+domain. Mechanism is the CDN's documented runtime behavior;
+Zerops's side: zero involvement (the CDN logs to the browser
+console identically on Docker locally, on Heroku, on Vercel).
+"Different scaffold" test: a porter who uses a different CSS
+framework hits zero of this; a porter who installs the framework
+locally instead of the CDN hits zero of this. Discard.
+
+**Counter-example (NOT framework-quirk)**: a KB bullet titled
+*"Missing queue option drops zero rows but doubles every write at
+minContainers ≥ 2"* — queue groups are a broker-library feature,
+but the trap fires because **Zerops's `minContainers ≥ 2` brings a
+second replica online during rolling deploys**. The Zerops side
+materially causes the failure mode. Keep.
+
+**Action**: `drop`.
+
+**Severity**: **blocker** — spec classification taxonomy is
+unambiguous on this routing.
+
+---
+
+## Defect class: scaffold-decision-as-gotcha
+
+**What**: A KB bullet documents a choice the recipe made (CDN over
+build pipeline, polling interval, file layout, helper module shape)
+as if it were a Zerops trap. Scaffold decisions of the recipe-
+internal flavor route to **DISCARD** (or move the underlying
+principle, stripped of implementation, to IG). Distinct from
+`scaffold-code-in-kb` — that fires on `src/<path>` file references;
+this fires on prose framing ("the recipe accepts this trade", "this
+recipe chose X over Y", "the SPA polls every 700ms").
+
+**Check**: For each KB bullet, run THREE tests. **Check #1 is the
+decisive gate; Checks #2 and #3 are signal that confirm Check #1's
+verdict, never independent triggers.** First-person framing alone
+does NOT fire the rule — legitimate intersection bullets often use
+phrases like "this recipe sets X" when teaching a Zerops-forced
+mechanic. The "remove the bullet" test is the load-bearing
+decision; first-person framing only signals where to look.
+
+1. **The "remove the bullet, recipe still works" test (DECISIVE)**:
+   if the teaching describes a recipe-internal choice AND a porter
+   could make a DIFFERENT choice without hitting any Zerops trap,
+   the bullet is scaffold-decision → fire. If a porter making a
+   different choice WOULD hit a Zerops trap (e.g., omitting the
+   queue group at `minContainers ≥ 2` produces duplicated state),
+   the bullet is intersection → do not fire, regardless of how it's
+   framed.
+2. **First-person scaffold framing (SIGNAL)**: "the recipe accepts
+   this", "we chose this trade", "this recipe sets X for Y", "the
+   recipe wires …" — the author signalling they're documenting
+   their own scaffold. This signal IS NOT the trigger; legitimate
+   intersection bullets use the same phrasing — e.g., a bullet that
+   says *"This recipe sets `queue: 'worker'` for the items.events
+   subscription so two NestJS replicas split the load"* is
+   `intersection` because removing it at `minContainers ≥ 2`
+   produces duplicated state per Check #1.
+3. **Recipe-specific values without platform forcing (CONFIRMS)**:
+   poll intervals, file paths, UI design choices, CSS frameworks —
+   values the porter would replace with their own choices, that
+   Zerops doesn't force. Confirms a Check #1 scaffold-decision
+   verdict; does NOT elevate a Check #1 intersection.
+
+**Worked example**: a KB bullet that includes *"...the recipe
+accepts this trade as a build-pipeline simplification (no PostCSS,
+no `tailwind.config.js`, no separate build step), since the goal is
+showcasing the Zerops integration..."* — the bullet body literally
+narrates the scaffold decision. Drop.
+
+**Worked example**: a KB bullet titled *"Queue panel polls the api
+every ~700ms"* — recipe-internal polling implementation. Not a
+platform trap. The porter would replace the polling cadence with
+their own choice; nothing about Zerops forces 700ms.
+
+**Action**: `drop`. If the underlying principle is genuinely
+platform-relevant (e.g., the "Nginx SPA fallback returns 200 on
+/api/*" mechanic underneath an api.ts content-type check), the main
+agent may move the principle (stripped of recipe specifics) to IG
+— but the audit emits `drop`; the main agent makes the move
+decision.
+
+**Severity**: **blocker** — the classification taxonomy routes
+recipe-internal scaffold decisions away from KB unambiguously.
+
+---
+
+## Defect class: cross-codebase-content-duplication
+
+**What**: A KB bullet OR IG item teaches the same platform trap +
+the same fix on more than one codebase's README, with full re-
+authoring on each. The seven-surface content rule is **each fact
+lives on one surface; other surfaces that need it cross-reference
+— they do not re-author**. This applies within a single codebase
+(don't author the same fact on IG + KB + yaml comment of one
+codebase) AND across codebases (don't fully author the same fact
+on two codebases' READMEs).
+
+**Check**: For each KB bullet and each IG item, scan ACROSS all
+other codebases' KB+IG fragments for:
+
+1. **Same error string quoted** (`"Authorization Violation"`,
+   `getaddrinfo ENOTFOUND ${db_hostname}`,
+   `"Blocked request. This host is not allowed."`).
+2. **Same code fix shown** (`servers + user + pass`, `allowedHosts:
+   true`, `dist/~`, the "self-shadow" yaml example).
+3. **Same env-var / yaml-field as the central artifact**.
+
+If two surfaces (across different codebases) author the SAME
+teaching with substantially the same depth + body, flag the LATER-
+read one — the one the porter would land on second. Pass condition:
+one codebase carries the full teaching; the other says *"See
+[apidev README KB #N] — same trap on this codebase too."* That's
+cross-reference, not duplication.
+
+**Worked examples**:
+- A multi-codebase recipe where the api codebase teaches the
+  same-key shadow trap as a full IG item (with the yaml self-shadow
+  example AND the `getaddrinfo ENOTFOUND ${db_hostname}` symptom)
+  AND the worker codebase teaches the same trap as a full IG item
+  (near-identical body, same symptom). Same-key shadow is a
+  platform-invariant teaching that applies to any codebase using
+  cross-service aliases; one codebase carries the canonical
+  teaching, the other cross-references.
+- Two codebases each carrying a full KB bullet titled "NATS
+  Authorization Violation on boot with `${broker_connectionString}`"
+  with the same nats.js double-auth explanation. Same fact, two
+  surfaces, no cross-reference.
+
+**Action**: `cross-reference-canonical-surface`. The suggested fix
+is to keep the canonical (typically the codebase that uses the
+trap-causing feature first or most centrally) and replace the
+duplicate with a 1-2 sentence pointer.
+
+**Severity**: **blocker** — same fact on multiple surfaces is
+noise.
+
+---
+
 ## Defect class: missing-citation
 
 **What**: A KB bullet covers a topic that has a dedicated
@@ -351,17 +551,44 @@ citation map is engine-versioned and will evolve.
 For each KB bullet:
 
 1. Identify the topic family the bullet covers (rolling-deploys,
-   init-commands, object-storage, env-var-model, subdomain-access,
-   managed-nats, managed-meilisearch, etc.).
-2. Match against the brief's citation map. If the bullet's topic
-   has a required citation, scan the bullet body for the cited
-   guide name OR the cited docs URL.
-3. If neither the guide name nor the URL appears, flag.
+   init-commands, object-storage, env-var-model, http-support,
+   deploy-files, readiness-health-checks, managed-nats,
+   managed-meilisearch, etc.).
+2. Match against the citation map below. If the bullet's topic has
+   a required citation, scan the bullet body for ANY of the three
+   acceptable forms named in the citation-map block's "Acceptable
+   citation forms" paragraph: (a) canonical guide ID IN CITATION
+   FRAMING — `` `the \`<guide-id>\` guide covers …` `` or
+   equivalent (not a bare backtick mention used as a noun phrase),
+   (b) friendly display name as markdown link text
+   (`` `[friendly name](URL)` ``), or (c) the literal docs URL.
+   The scan passes on any of the three.
+3. If none of the three forms appears, flag.
+
+**Worked counter-example**: a bullet says *"Zerops's
+`init-commands` feature stamps each `key:` value into a per-deploy
+ledger"* — the literal backticked token `init-commands` appears,
+but the framing is descriptive prose ("the feature stamps…"), not
+citation framing ("the guide covers…"). Form (a) does NOT match.
+If the bullet covers the init-commands topic (it does) and contains
+no form-(b) link / form-(c) URL either, flag as `missing-citation`.
 
 **Worked tolerance**: a bullet may legitimately reference multiple
 guide topics. The citation is required ONCE per bullet, not once
 per topic mention. If bullet body cites the guide for any of its
 topics, the bullet passes.
+
+**Keyword-over-match guard**: topic matching is topic-family, not raw
+substring. A bare keyword mention does NOT trigger the citation
+requirement unless the bullet's TOPIC is the matched family. Worked
+example: `SIGTERM` appears in the rolling-deploys row keywords
+(`SIGTERM-before-teardown`), but a Node-stdout-buffering bullet
+that merely mentions `SIGTERM` as the trigger for log loss is NOT
+about rolling deploys — its topic is generic Node process-exit +
+stdout flushing. Don't fire `missing-citation` on it. The check is
+"is this bullet's PRIMARY teaching covered by the guide?" — not
+"does this bullet contain any keyword from the guide's row?". When
+the keyword fires but the topic is foreign, pass.
 
 **Action**: `add-citation`.
 
@@ -371,8 +598,16 @@ topics, the bullet passes.
 
 ## Findings emission
 
-Walk the seven defect classes in order. For each hit, emit ONE
-finding. Empty findings list = pass.
+Walk EVERY defect class in this checklist in order — the full
+set is `kb-ig-duplication`, `kb-below-floor` / `kb-over-cap`,
+`surface-misplacement`, `scaffold-code-in-kb`,
+`aspirational-as-current`, `yaml-comment-content-drift`,
+`cross-codebase-named-constant-drift`,
+`ig-cites-recipe-internal-file`, `framework-quirk-as-gotcha`,
+`scaffold-decision-as-gotcha`, `cross-codebase-content-duplication`,
+`missing-citation`. For each hit, emit ONE finding. Empty findings
+list = pass.
 
-After the walk, emit the single fenced JSON block as defined in
-`phase_entry.md`. No prose around it.
+After the walk, emit the single fenced JSON block in the shape
+defined at the top of this brief (the `findings` array). No prose
+around it.
