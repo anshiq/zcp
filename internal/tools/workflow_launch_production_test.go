@@ -40,7 +40,7 @@ func TestHandleLaunchProduction_ScopePrompt_MissingProductionProjectName(t *test
 		// ProductionProjectName intentionally empty
 	}
 
-	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{})
+	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestHandleLaunchProduction_ClassifyPrompt(t *testing.T) {
 		// EnvClassifications empty — every env unclassified
 	}
 
-	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{})
+	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestHandleLaunchProduction_ClassifyPrompt_PartialClassifications(t *testing
 		EnvClassifications:    map[string]string{"LOG_LEVEL": "plain-config"}, // only one of two
 	}
 
-	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{})
+	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestHandleLaunchProduction_ReadyToLaunch_NoLaunchKey(t *testing.T) {
 		EnvClassifications:    map[string]string{"LOG_LEVEL": "plain-config"},
 	}
 
-	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{})
+	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestHandleLaunchProduction_NoSourceEnvs_AdvancesToReadyToLaunch(t *testing.
 		ProductionProjectName: "myapp-prod",
 	}
 
-	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{})
+	result, _, err := handleLaunchProduction(ctx, "source-project-id", client, input, "/tmp", runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestHandleLaunchProduction_LaunchKeyNeverInResponse(t *testing.T) {
 
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
-			result, _, err := handleLaunchProduction(ctx, "source-project-id", client, sc.input, "/tmp", runtime.Info{})
+			result, _, err := handleLaunchProduction(ctx, "source-project-id", client, sc.input, "/tmp", runtime.Info{}, nil)
 			if err != nil {
 				t.Fatalf("handleLaunchProduction: %v", err)
 			}
@@ -232,7 +232,7 @@ func TestHandleLaunchProduction_LaunchKeyNeverInResponse(t *testing.T) {
 // TestHandleLaunchProduction_NilClientReturnsError pins the nil-client guard.
 func TestHandleLaunchProduction_NilClientReturnsError(t *testing.T) {
 	ctx := context.Background()
-	result, _, err := handleLaunchProduction(ctx, "source-project-id", nil, WorkflowInput{}, "/tmp", runtime.Info{})
+	result, _, err := handleLaunchProduction(ctx, "source-project-id", nil, WorkflowInput{}, "/tmp", runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestHandleLaunchProduction_NilClientReturnsError(t *testing.T) {
 // empty-projectID guard.
 func TestHandleLaunchProduction_EmptyProjectIDReturnsError(t *testing.T) {
 	ctx := context.Background()
-	result, _, err := handleLaunchProduction(ctx, "", newLaunchMockClient(), WorkflowInput{}, "/tmp", runtime.Info{})
+	result, _, err := handleLaunchProduction(ctx, "", newLaunchMockClient(), WorkflowInput{}, "/tmp", runtime.Info{}, nil)
 	if err != nil {
 		t.Fatalf("handleLaunchProduction: %v", err)
 	}

@@ -256,7 +256,7 @@ func handleWorkflowAction(ctx context.Context, projectID string, engine *workflo
 			return handleExport(ctx, projectID, engine, client, input, sshDeployer, stateDir, rt)
 		}
 		if input.Workflow == workflowLaunchProduction {
-			return handleLaunchProduction(ctx, projectID, client, input, stateDir, rt)
+			return handleLaunchProduction(ctx, projectID, client, input, stateDir, rt, sshDeployer)
 		}
 		return handleStart(ctx, projectID, engine, client, cache, input, rt)
 	case "reset":

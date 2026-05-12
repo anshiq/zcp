@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -48,6 +49,11 @@ import (
 //nolint:gochecknoglobals // test-injection point for the cross-project surface
 var projectAdminClientFactory = platform.NewProjectAdminClient
 
+// processStatusFinished is the canonical platform.Process success
+// terminal status. Pulled to a constant to satisfy strict-lint
+// (goconst) and centralize the magic string.
+const processStatusFinished = "FINISHED"
+
 // setProjectAdminClientFactory swaps the factory for tests. Restore with
 // the returned cleanup func via defer.
 func setProjectAdminClientFactory(f func(launchKey, apiHost string) (platform.ProjectAdminClient, error)) func() {
@@ -63,9 +69,8 @@ func handleLaunchProduction(
 	input WorkflowInput,
 	stateDir string,
 	rt runtime.Info,
+	sshDeployer ops.SSHDeployer,
 ) (*mcp.CallToolResult, any, error) {
-	_ = rt // reserved for environment-aware (container vs local) behavior in source-control verification
-
 	if client == nil {
 		return convertError(platform.NewPlatformError(
 			platform.ErrInvalidParameter,
@@ -132,7 +137,7 @@ func handleLaunchProduction(
 	}
 
 	// Mutation pipeline — LaunchKey supplied, no existing target.
-	return executeLaunchMutation(ctx, projectID, input, sourceEnvs, classifications, corpus, stateDir, launchID)
+	return executeLaunchMutation(ctx, projectID, client, sshDeployer, rt, input, sourceEnvs, classifications, corpus, stateDir, launchID)
 }
 
 // executeLaunchMutation runs the read-modify-write mutation pipeline:
@@ -150,6 +155,9 @@ func handleLaunchProduction(
 func executeLaunchMutation(
 	ctx context.Context,
 	sourceProjectID string,
+	client platform.Client,
+	sshDeployer ops.SSHDeployer,
+	rt runtime.Info,
 	input WorkflowInput,
 	sourceEnvs []ops.ProjectEnvVar,
 	classifications map[string]topology.SecretClassification,
@@ -164,54 +172,27 @@ func executeLaunchMutation(
 	}
 	defer admin.Close()
 
-	// Compose bundle. For D.2 MVP we synthesize a minimal bundle from
-	// the source-project's envs + a fabricated zerops.yaml body that
-	// carries the expected setup: prod marker. Real source-yaml read
-	// via SSH lives in the next iteration; the bundle composition path
-	// is structurally correct and exercised by tests with mock inputs.
+	// Source-state validation + read. Returns a blocker response when
+	// any check fails (target service missing, zerops.yaml missing,
+	// setup: prod block missing, git remote missing). Otherwise returns
+	// the fully-populated source state for bundle composition.
+	source, blocker := readAndValidateSourceState(ctx, client, sshDeployer, rt, corpus, input, sourceProjectID, stateDir, launchID)
+	if blocker != nil {
+		return blocker, nil, nil
+	}
+
 	bundleInputs := ops.LaunchBundleInputs{
 		SourceProjectID:   sourceProjectID,
 		TargetProjectName: input.ProductionProjectName,
 		TargetHostname:    input.TargetService,
-		// ServiceType / RepoURL / ZeropsYAMLBody / GitCommitSHA / ManagedServices
-		// are sourced by full integration in a follow-up — D.2 MVP returns a
-		// structured "source-control-required" blocker so the agent knows
-		// to provide them via prior phase outputs.
-		ProjectEnvs: sourceEnvs,
-		KeepNonHA:   input.KeepNonHA,
-	}
-
-	// Structural validation: TargetHostname required for bundle.
-	if bundleInputs.TargetHostname == "" {
-		_ = appendAuditLog(stateDir, launchAuditEntry{
-			LaunchID:          launchID,
-			Action:            "publish-rejected",
-			SourceProjectID:   sourceProjectID,
-			TargetProjectName: input.ProductionProjectName,
-			Result:            "failure",
-			ErrorMessage:      "TargetService (runtime hostname) required for launch publish",
-		})
-		return launchSourceControlBlockerResponse(corpus,
-			"TargetService input required — launch needs the source-runtime hostname to compose the bundle. Pass targetService=<hostname> from the source project.",
-		), nil, nil
-	}
-
-	// MVP gate: source-control fields not supplied yet. Surface a
-	// source-control blocker that names the missing artifacts so the
-	// agent can populate them via the read-side narrowing path. Future
-	// iteration will read these via SSH in the same handler call.
-	if missingSrc := missingSourceControlInputs(input, bundleInputs); len(missingSrc) > 0 {
-		_ = appendAuditLog(stateDir, launchAuditEntry{
-			LaunchID:          launchID,
-			Action:            "publish-rejected",
-			SourceProjectID:   sourceProjectID,
-			TargetProjectName: input.ProductionProjectName,
-			Result:            "failure",
-			ErrorMessage:      "source-control inputs missing: " + fmt.Sprintf("%v", missingSrc),
-		})
-		return launchSourceControlBlockerResponse(corpus,
-			fmt.Sprintf("Source-control inputs missing: %v. Provide setupName + serviceType + repoURL + zeropsYAMLBody via the launch-production scope path before publish.", missingSrc),
-		), nil, nil
+		ServiceType:       source.ServiceType,
+		SetupName:         "prod",
+		RepoURL:           source.RepoURL,
+		ZeropsYAMLBody:    source.ZeropsYAMLBody,
+		GitCommitSHA:      source.GitCommitSHA,
+		ProjectEnvs:       sourceEnvs,
+		ManagedServices:   source.ManagedServices,
+		KeepNonHA:         input.KeepNonHA,
 	}
 
 	// Bundle composition — uses ops.BuildLaunchBundle (Phase C).
@@ -316,10 +297,22 @@ func executeLaunchMutation(
 	if hasPerServiceError {
 		state.Status = topology.LaunchStatusFailed
 		state.LastError = "one or more service stacks reported import errors"
+		_ = writeLaunchState(stateDir, state)
 	} else {
-		state.Status = topology.LaunchStatusLaunched
+		// Poll per-service async processes (build + start) until
+		// terminal. Aggregates result into launched / failed.
+		state.Status = topology.LaunchStatusLaunching
+		_ = writeLaunchState(stateDir, state)
+
+		pollErr := pollImportedServices(ctx, admin, state)
+		if pollErr != nil {
+			state.Status = topology.LaunchStatusFailed
+			state.LastError = pollErr.Error()
+		} else {
+			state.Status = topology.LaunchStatusLaunched
+		}
+		_ = writeLaunchState(stateDir, state)
 	}
-	_ = writeLaunchState(stateDir, state)
 
 	_ = appendAuditLog(stateDir, launchAuditEntry{
 		LaunchID:          launchID,
@@ -341,8 +334,135 @@ func executeLaunchMutation(
 			fmt.Sprintf("Target project %s created but one or more services had import errors. Inspect imported-services in state file; delete via Zerops dashboard or retry with corrected inputs.", result.ProjectID),
 		), nil, nil
 	}
+	if state.Status == topology.LaunchStatusFailed {
+		return launchFailedResponse(corpus, topology.BlockerCategoryOther,
+			"first-deploy-failed",
+			fmt.Sprintf("Target project %s created but first deploy did not complete cleanly: %s", result.ProjectID, state.LastError),
+		), nil, nil
+	}
 
 	return launchLaunchedResponse(corpus, state), nil, nil
+}
+
+// pollImportedServices polls every recorded service-stack process to
+// terminal state. Aggregates: any FAILED process surfaces as an error
+// with the offending process ID + reason; success returns nil. Timeouts
+// also surface as errors (caller treats as failed for now; future
+// follow-up may distinguish launching-timeout from outright failure).
+//
+// Uses ops.PollProcess via the ProcessGetter interface — same poll
+// machinery as deploy_ssh / deploy_local / scale / manage, including
+// the "no progress notification before response" race-avoidance pattern.
+// Launch passes nil onProgress because the launch workflow returns a
+// summary response per call, not interactive progress.
+func pollImportedServices(ctx context.Context, admin platform.ProjectAdminClient, state *launchState) error {
+	for _, svc := range state.ImportedServices {
+		for _, pid := range svc.ProcessIDs {
+			proc, err := ops.PollProcess(ctx, admin, pid, nil)
+			if err != nil {
+				return fmt.Errorf("poll process %s (service %s): %w", pid, svc.Name, err)
+			}
+			if proc == nil {
+				continue
+			}
+			// Treat non-FINISHED terminal statuses as failure. Reuse
+			// the export workflow's terminal-status semantics: FAILED,
+			// CANCELED, etc. all mean "did not succeed".
+			if !isProcessSuccess(proc) {
+				reason := proc.Status
+				if proc.FailReason != nil {
+					reason = *proc.FailReason
+				}
+				return fmt.Errorf("service %s: process %s terminal status %s (%s)", svc.Name, pid, proc.Status, reason)
+			}
+		}
+	}
+	return nil
+}
+
+// isProcessSuccess returns true for the platform's success-terminal
+// process status. FINISHED is the canonical success state.
+func isProcessSuccess(proc *platform.Process) bool {
+	return proc.Status == processStatusFinished
+}
+
+// readAndValidateSourceState runs source-control gate before the
+// mutation pipeline:
+//  1. Require targetService input (runtime hostname).
+//  2. Call readSourceState (SSH/local FS env-aware).
+//  3. Validate source zerops.yaml present + contains `setup: prod` block.
+//  4. Validate git remote configured.
+//
+// Each failure path appends an audit log entry and returns a blocker
+// response. On success returns the populated LaunchSourceState + nil
+// blocker.
+//
+// Pulled out of executeLaunchMutation to keep that function under
+// maintainability-index threshold; the call sites are otherwise
+// straight-line.
+func readAndValidateSourceState(
+	ctx context.Context,
+	client platform.Client,
+	sshDeployer ops.SSHDeployer,
+	rt runtime.Info,
+	corpus []workflow.KnowledgeAtom,
+	input WorkflowInput,
+	sourceProjectID string,
+	stateDir string,
+	launchID string,
+) (*LaunchSourceState, *mcp.CallToolResult) {
+	auditFail := func(reason string) {
+		_ = appendAuditLog(stateDir, launchAuditEntry{
+			LaunchID:          launchID,
+			Action:            "publish-rejected",
+			SourceProjectID:   sourceProjectID,
+			TargetProjectName: input.ProductionProjectName,
+			Result:            "failure",
+			ErrorMessage:      reason,
+		})
+	}
+
+	if input.TargetService == "" {
+		auditFail("TargetService (runtime hostname) required for launch publish")
+		return nil, launchSourceControlBlockerResponse(corpus,
+			"TargetService input required — launch needs the source-runtime hostname. Pass targetService=<hostname> from the source project.",
+		)
+	}
+
+	source, err := readSourceState(ctx, client, sshDeployer, rt, sourceProjectID, input.TargetService, "")
+	if err != nil {
+		auditFail("read source state: " + err.Error())
+		return nil, convertError(err, WithRecoveryStatus())
+	}
+	if strings.TrimSpace(source.ZeropsYAMLBody) == "" {
+		auditFail("source zerops.yaml missing")
+		return nil, launchSourceControlBlockerResponse(corpus,
+			"Source zerops.yaml is missing — write it (with `setup: prod` block), commit, push, then re-call publish.",
+		)
+	}
+	if !hasSetupProd(source.ZeropsYAMLBody) {
+		auditFail("source zerops.yaml lacks `setup: prod` block")
+		// Item #6: derive a concrete proposed block from the source's
+		// existing dev/stage setup. Agent applies + tweaks instead of
+		// guessing from a generic template. Falls back to the generic
+		// message if derivation fails (malformed yaml, no template).
+		proposed, derr := deriveProdSetupBlock(source.ZeropsYAMLBody)
+		if derr != nil {
+			return nil, launchSourceControlBlockerResponse(corpus,
+				"Source zerops.yaml lacks a `setup: prod` block — write it (see launch-write-prod-setup atom), commit, push, then re-call publish.",
+			)
+		}
+		return nil, launchSourceControlBlockerResponse(corpus,
+			prodSetupGuidanceWithBlock(proposed),
+		)
+	}
+	if source.RepoURL == "" {
+		auditFail("source git remote not configured")
+		return nil, launchSourceControlBlockerResponse(corpus,
+			"Source git remote `origin` is empty — configure git remote (see zerops_workflow action=\"git-push-setup\"), then re-call publish.",
+		)
+	}
+	return source, nil
 }
 
 // boolStr returns t when cond, f otherwise.
@@ -359,27 +479,6 @@ func stringIf(cond bool, s string) string {
 		return s
 	}
 	return ""
-}
-
-// missingSourceControlInputs reports source-control fields that the
-// agent must populate before the bundle compose can produce a valid
-// import yaml. Caller responds with a source-control blocker pointing
-// at the launch-write-prod-setup atom.
-func missingSourceControlInputs(input WorkflowInput, b ops.LaunchBundleInputs) []string {
-	var missing []string
-	if input.TargetService == "" {
-		missing = append(missing, "targetService")
-	}
-	if b.ServiceType == "" {
-		missing = append(missing, "serviceType")
-	}
-	if b.RepoURL == "" {
-		missing = append(missing, "repoURL")
-	}
-	if b.ZeropsYAMLBody == "" {
-		missing = append(missing, "zeropsYAMLBody (write setup: prod block and commit)")
-	}
-	return missing
 }
 
 // launchProductionResponse is the wire shape returned by every status of
