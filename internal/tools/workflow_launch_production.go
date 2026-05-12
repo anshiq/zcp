@@ -292,10 +292,22 @@ func executeLaunchMutation(
 	if hasPerServiceError {
 		state.Status = topology.LaunchStatusFailed
 		state.LastError = "one or more service stacks reported import errors"
+		_ = writeLaunchState(stateDir, state)
 	} else {
-		state.Status = topology.LaunchStatusLaunched
+		// Poll per-service async processes (build + start) until
+		// terminal. Aggregates result into launched / failed.
+		state.Status = topology.LaunchStatusLaunching
+		_ = writeLaunchState(stateDir, state)
+
+		pollErr := pollImportedServices(ctx, admin, state)
+		if pollErr != nil {
+			state.Status = topology.LaunchStatusFailed
+			state.LastError = pollErr.Error()
+		} else {
+			state.Status = topology.LaunchStatusLaunched
+		}
+		_ = writeLaunchState(stateDir, state)
 	}
-	_ = writeLaunchState(stateDir, state)
 
 	_ = appendAuditLog(stateDir, launchAuditEntry{
 		LaunchID:          launchID,
@@ -317,8 +329,56 @@ func executeLaunchMutation(
 			fmt.Sprintf("Target project %s created but one or more services had import errors. Inspect imported-services in state file; delete via Zerops dashboard or retry with corrected inputs.", result.ProjectID),
 		), nil, nil
 	}
+	if state.Status == topology.LaunchStatusFailed {
+		return launchFailedResponse(corpus, topology.BlockerCategoryOther,
+			"first-deploy-failed",
+			fmt.Sprintf("Target project %s created but first deploy did not complete cleanly: %s", result.ProjectID, state.LastError),
+		), nil, nil
+	}
 
 	return launchLaunchedResponse(corpus, state), nil, nil
+}
+
+// pollImportedServices polls every recorded service-stack process to
+// terminal state. Aggregates: any FAILED process surfaces as an error
+// with the offending process ID + reason; success returns nil. Timeouts
+// also surface as errors (caller treats as failed for now; future
+// follow-up may distinguish launching-timeout from outright failure).
+//
+// Uses ops.PollProcess via the ProcessGetter interface — same poll
+// machinery as deploy_ssh / deploy_local / scale / manage, including
+// the "no progress notification before response" race-avoidance pattern.
+// Launch passes nil onProgress because the launch workflow returns a
+// summary response per call, not interactive progress.
+func pollImportedServices(ctx context.Context, admin platform.ProjectAdminClient, state *launchState) error {
+	for _, svc := range state.ImportedServices {
+		for _, pid := range svc.ProcessIDs {
+			proc, err := ops.PollProcess(ctx, admin, pid, nil)
+			if err != nil {
+				return fmt.Errorf("poll process %s (service %s): %w", pid, svc.Name, err)
+			}
+			if proc == nil {
+				continue
+			}
+			// Treat non-FINISHED terminal statuses as failure. Reuse
+			// the export workflow's terminal-status semantics: FAILED,
+			// CANCELED, etc. all mean "did not succeed".
+			if !isProcessSuccess(proc) {
+				reason := proc.Status
+				if proc.FailReason != nil {
+					reason = *proc.FailReason
+				}
+				return fmt.Errorf("service %s: process %s terminal status %s (%s)", svc.Name, pid, proc.Status, reason)
+			}
+		}
+	}
+	return nil
+}
+
+// isProcessSuccess returns true for the platform's success-terminal
+// process status. FINISHED is the canonical success state.
+func isProcessSuccess(proc *platform.Process) bool {
+	return proc.Status == "FINISHED"
 }
 
 // readAndValidateSourceState runs source-control gate before the

@@ -11,6 +11,19 @@ import (
 // ProgressCallback is called by PollProcess to report progress.
 type ProgressCallback func(message string, progress, total float64)
 
+// ProcessGetter is the minimal interface PollProcess needs from a
+// platform client. Both platform.Client and platform.ProjectAdminClient
+// satisfy this structurally, so PollProcess works against either the
+// session-bound Client (existing callers: deploy_ssh, deploy_local,
+// scale, manage, subdomain, import) OR the cross-project
+// ProjectAdminClient (new caller: launch-production mutation pipeline).
+//
+// Extracted to allow launch-production to poll first-deploy processes
+// without duplicating the timeout / progress-coalescing-guard logic.
+type ProcessGetter interface {
+	GetProcess(ctx context.Context, processID string) (*platform.Process, error)
+}
+
 type pollConfig struct {
 	initialInterval time.Duration
 	stepUpInterval  time.Duration
@@ -27,9 +40,13 @@ var defaultPollConfig = pollConfig{
 
 // PollProcess polls a process until terminal state.
 // onProgress may be nil (no notifications sent).
+//
+// Accepts ProcessGetter (narrow interface) so the same poll loop serves
+// both bound-project Client and cross-project ProjectAdminClient
+// callers. See type docs for the boundary rationale.
 func PollProcess(
 	ctx context.Context,
-	client platform.Client,
+	client ProcessGetter,
 	processID string,
 	onProgress ProgressCallback,
 ) (*platform.Process, error) {
@@ -170,7 +187,7 @@ func isBuildInProgress(status string) bool {
 
 func pollProcess(
 	ctx context.Context,
-	client platform.Client,
+	client ProcessGetter,
 	processID string,
 	onProgress ProgressCallback,
 	cfg pollConfig,

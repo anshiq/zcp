@@ -312,3 +312,61 @@ func TestHandleLaunchProduction_LaunchedResponseIncludesDeleteKey(t *testing.T) 
 		t.Errorf("launched response does not mention key deletion: %s", text)
 	}
 }
+
+// TestPollImportedServices_AllSuccess verifies that when every recorded
+// process returns FINISHED, the poll completes without error.
+func TestPollImportedServices_AllSuccess(t *testing.T) {
+	t.Parallel()
+	mock := platform.NewMockProjectAdminClient().
+		WithProcess(&platform.Process{ID: "p1", Status: "FINISHED"})
+
+	state := &launchState{
+		ImportedServices: []importedServiceEntry{
+			{ID: "svc1", Name: "app", ProcessIDs: []string{"p1"}},
+		},
+	}
+	if err := pollImportedServices(context.Background(), mock, state); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+// TestPollImportedServices_FailedProcess surfaces the failure with
+// service + process + reason in the error message.
+func TestPollImportedServices_FailedProcess(t *testing.T) {
+	t.Parallel()
+	reason := "build failed: tsc compilation error"
+	mock := platform.NewMockProjectAdminClient().
+		WithProcess(&platform.Process{ID: "p1", Status: "FAILED", FailReason: &reason})
+
+	state := &launchState{
+		ImportedServices: []importedServiceEntry{
+			{ID: "svc1", Name: "app", ProcessIDs: []string{"p1"}},
+		},
+	}
+	err := pollImportedServices(context.Background(), mock, state)
+	if err == nil {
+		t.Fatal("expected error for FAILED process")
+	}
+	msg := err.Error()
+	for _, substr := range []string{"app", "p1", "FAILED"} {
+		if !strings.Contains(msg, substr) {
+			t.Errorf("error message missing %q: %s", substr, msg)
+		}
+	}
+}
+
+// TestPollImportedServices_NoProcessesNoOp pins behavior when a
+// service has no recorded ProcessIDs (e.g., import returned 0 procs
+// for managed deps).
+func TestPollImportedServices_NoProcessesNoOp(t *testing.T) {
+	t.Parallel()
+	mock := platform.NewMockProjectAdminClient()
+	state := &launchState{
+		ImportedServices: []importedServiceEntry{
+			{ID: "svc1", Name: "db"}, // ProcessIDs empty
+		},
+	}
+	if err := pollImportedServices(context.Background(), mock, state); err != nil {
+		t.Fatalf("expected nil for empty process list, got %v", err)
+	}
+}
