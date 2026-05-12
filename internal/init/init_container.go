@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/zeropsio/zcp/internal/content"
@@ -59,7 +60,12 @@ func configureClaude(_ string, _ runtime.Info) error {
 }
 
 // buildClaudeJSON merges the claude.json base template with mcpServers from
-// mcp-config.json so the MCP server definition is not duplicated across templates.
+// mcp-config.json, then injects a pre-trusted projects[vsCodeWorkDir]
+// entry, then (when ANTHROPIC_API_KEY is set) pre-approves it under
+// customApiKeyResponses. Without these injections the Claude CLI prompts
+// for trust/onboarding on first interactive launch and the VS Code Claude
+// extension's first-run flow shows a subscription/API-key entry screen
+// that overrides the bootstrap.
 func buildClaudeJSON() ([]byte, error) {
 	baseTmpl, err := content.GetTemplate("claude.json")
 	if err != nil {
@@ -80,7 +86,44 @@ func buildClaudeJSON() ([]byte, error) {
 	}
 
 	maps.Copy(base, mcp)
+
+	base["projects"] = map[string]any{
+		vsCodeWorkDir: claudeProjectEntry(),
+	}
+
+	if key := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")); key != "" {
+		last := key
+		if len(key) > 20 {
+			last = key[len(key)-20:]
+		}
+		base["customApiKeyResponses"] = map[string]any{
+			"approved": []string{last},
+			"rejected": []string{},
+		}
+	}
+
 	return json.Marshal(base)
+}
+
+// claudeProjectEntry returns the per-project entry Claude Code writes
+// after the user accepts the trust dialog and finishes onboarding. The
+// shape matches what a real interactive first-run produces, so the VS
+// Code Claude extension sees a "settled" project rather than a fresh
+// one and skips its own onboarding gating.
+func claudeProjectEntry() map[string]any {
+	return map[string]any{
+		"allowedTools":                            []string{},
+		"mcpContextUris":                          []string{},
+		"mcpServers":                              map[string]any{},
+		"enabledMcpjsonServers":                   []string{},
+		"disabledMcpjsonServers":                  []string{},
+		"hasTrustDialogAccepted":                  true,
+		"projectOnboardingSeenCount":              0,
+		"hasClaudeMdExternalIncludesApproved":     false,
+		"hasClaudeMdExternalIncludesWarningShown": false,
+		"lastGracefulShutdown":                    true,
+		"hasCompletedProjectOnboarding":           true,
+	}
 }
 
 const defaultVSCodeWorkDir = "/var/www"

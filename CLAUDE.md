@@ -231,6 +231,17 @@ Spec: `docs/spec-architecture.md` — per-package mapping + examples.
   `zerops_subdomain action=enable` in happy path. Pinned by
   `TestServiceEligible_*`, `TestMaybeAutoEnable_ServiceStackIsNotHttp_BenignSkip`.
   Spec: `spec-workflows.md §4.8` + O3.
+- **Container `.claude.json` pre-trusts the workspace and pre-approves
+  `ANTHROPIC_API_KEY` when set** — `zcp init` on containers always writes
+  `projects[vsCodeWorkDir]` with `hasTrustDialogAccepted` and
+  `hasCompletedProjectOnboarding` true, and (gated on the env var) emits
+  `customApiKeyResponses.approved = [last20(key)]` matching Claude Code's
+  own format. Without both, the VS Code Claude extension's first-run
+  flow surfaces a subscription/API-key entry screen that overwrites
+  zcp init's setup; with them the extension reads the env-var key
+  silently. customApiKeyResponses is OMITTED when the env var is unset
+  so OAuth/Subscription users don't get a phantom approval. Pinned by
+  `TestContainerSteps_ClaudeConfigs_{ProjectEntry,APIKeyApproved,NoAPIKey}`.
 - **Engine version stamps the plan** — every fresh recipe session writes
   `plan.EngineVersion = server.Version` before the first `WritePlan()`;
   any complete-phase refuses when missing or mismatched against the running

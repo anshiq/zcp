@@ -90,6 +90,154 @@ func TestContainerSteps_ClaudeConfigs(t *testing.T) {
 	}
 }
 
+// TestContainerSteps_ClaudeConfigs_ProjectEntry locks the contract that
+// .claude.json always carries a projects[vsCodeWorkDir] entry with
+// trust+onboarding pre-accepted, independent of auth mode. Without this,
+// the Claude CLI prompts on first interactive launch and the VS Code
+// Claude extension's first-run flow can short-circuit before reaching
+// the API-key approval path.
+func TestContainerSteps_ClaudeConfigs_ProjectEntry(t *testing.T) {
+	dir := t.TempDir()
+	homeDir := t.TempDir()
+	vsWorkDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	zcpinit.SetVSCodeWorkDir(vsWorkDir)
+	t.Cleanup(func() { zcpinit.ResetVSCodeWorkDir() })
+
+	zcpinit.SetCommandRunner(func(_ string, _ ...string) error { return nil })
+	t.Cleanup(func() { zcpinit.ResetCommandRunner() })
+
+	if err := zcpinit.Run(dir, runtime.Info{InContainer: true}); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(homeDir, ".claude.json"))
+	if err != nil {
+		t.Fatalf("read .claude.json: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("parse .claude.json: %v\nraw: %s", err, data)
+	}
+
+	projects, ok := got["projects"].(map[string]any)
+	if !ok {
+		t.Fatalf(".claude.json missing top-level projects map; got: %s", data)
+	}
+	entry, ok := projects[vsWorkDir].(map[string]any)
+	if !ok {
+		t.Fatalf("projects[%q] missing or wrong shape; projects=%v", vsWorkDir, projects)
+	}
+
+	checks := []struct {
+		field string
+		want  any
+	}{
+		{"hasTrustDialogAccepted", true},
+		{"hasCompletedProjectOnboarding", true},
+		{"lastGracefulShutdown", true},
+		{"hasClaudeMdExternalIncludesApproved", false},
+		{"hasClaudeMdExternalIncludesWarningShown", false},
+	}
+	for _, c := range checks {
+		if got := entry[c.field]; got != c.want {
+			t.Errorf("projects[%q].%s = %v, want %v", vsWorkDir, c.field, got, c.want)
+		}
+	}
+	if _, ok := entry["allowedTools"].([]any); !ok {
+		t.Errorf("projects[%q].allowedTools should be a JSON array, got %T", vsWorkDir, entry["allowedTools"])
+	}
+}
+
+// TestContainerSteps_ClaudeConfigs_APIKeyApproved locks the contract that
+// when ANTHROPIC_API_KEY is set at init time, .claude.json carries
+// customApiKeyResponses.approved = [last 20 chars of the key] and
+// rejected = []. Without this, the VS Code Claude extension treats the
+// container as unauthenticated and shows its subscription/API-key entry
+// landing screen, overriding zcp init's setup.
+func TestContainerSteps_ClaudeConfigs_APIKeyApproved(t *testing.T) {
+	dir := t.TempDir()
+	homeDir := t.TempDir()
+	vsWorkDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-fake-"+strings.Repeat("a", 20))
+	zcpinit.SetVSCodeWorkDir(vsWorkDir)
+	t.Cleanup(func() { zcpinit.ResetVSCodeWorkDir() })
+
+	zcpinit.SetCommandRunner(func(_ string, _ ...string) error { return nil })
+	t.Cleanup(func() { zcpinit.ResetCommandRunner() })
+
+	if err := zcpinit.Run(dir, runtime.Info{InContainer: true}); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(homeDir, ".claude.json"))
+	if err != nil {
+		t.Fatalf("read .claude.json: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("parse .claude.json: %v\nraw: %s", err, data)
+	}
+
+	resp, ok := got["customApiKeyResponses"].(map[string]any)
+	if !ok {
+		t.Fatalf(".claude.json missing customApiKeyResponses; got: %s", data)
+	}
+
+	approved, ok := resp["approved"].([]any)
+	if !ok {
+		t.Fatalf("customApiKeyResponses.approved missing or wrong shape; resp=%v", resp)
+	}
+	if len(approved) != 1 {
+		t.Fatalf("customApiKeyResponses.approved = %v, want exactly one entry", approved)
+	}
+	wantLast20 := strings.Repeat("a", 20)
+	if got, _ := approved[0].(string); got != wantLast20 {
+		t.Errorf("customApiKeyResponses.approved[0] = %q, want %q (last 20 chars of key)", got, wantLast20)
+	}
+
+	rejected, ok := resp["rejected"].([]any)
+	if !ok {
+		t.Fatalf("customApiKeyResponses.rejected missing or wrong shape; resp=%v", resp)
+	}
+	if len(rejected) != 0 {
+		t.Errorf("customApiKeyResponses.rejected = %v, want []", rejected)
+	}
+}
+
+// TestContainerSteps_ClaudeConfigs_NoAPIKey locks the contract that
+// customApiKeyResponses is OMITTED when ANTHROPIC_API_KEY is not set —
+// OAuth/Subscription mode users must not get a phantom approval entry
+// pre-written that would shadow their own auth flow.
+func TestContainerSteps_ClaudeConfigs_NoAPIKey(t *testing.T) {
+	dir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	setupContainerTest(t)
+
+	zcpinit.SetCommandRunner(func(_ string, _ ...string) error { return nil })
+	t.Cleanup(func() { zcpinit.ResetCommandRunner() })
+
+	if err := zcpinit.Run(dir, runtime.Info{InContainer: true}); err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(homeDir, ".claude.json"))
+	if err != nil {
+		t.Fatalf("read .claude.json: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("parse .claude.json: %v\nraw: %s", err, data)
+	}
+	if _, present := got["customApiKeyResponses"]; present {
+		t.Errorf("customApiKeyResponses should be absent without ANTHROPIC_API_KEY; got: %s", data)
+	}
+}
+
 func TestContainerSteps_VSCode_Enabled(t *testing.T) {
 	// Not parallel — mutates HOME and ZCP_VSCODE env vars.
 	dir := t.TempDir()
